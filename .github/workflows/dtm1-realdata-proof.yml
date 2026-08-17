@@ -28,6 +28,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from collections import Counter
           from urllib.request import Request, urlopen
 
           from nwe_compiler.sources.dtm1_atom import (
@@ -38,6 +39,7 @@ jobs:
               select_service_dataset,
               spatial_provenance,
           )
+          from nwe_compiler.spatial import target_wgs84_polygon
 
           SERVICE_URL = 'https://nedlasting.geonorge.no/geonorge/ATOM/hoydedata/Hoydedata_ServiceFeed.atom'
           headers = {'User-Agent': 'NorgeWorldEngine/0.1 DTM1 source probe', 'Accept': 'application/atom+xml, application/xml;q=0.9'}
@@ -60,18 +62,57 @@ jobs:
 
           dataset_bytes = fetch(dataset_url)
           dataset_entries = parse_feed(dataset_bytes)
-          selected, href, target_bbox, extent = select_dataset_entry(dataset_entries)
+          target = target_wgs84_polygon()
+
+          category_terms = Counter()
+          crs_counts = Counter()
+          extent_counts = Counter()
+          overlaps = []
+          for entry in dataset_entries:
+              crs = tuple(category_crs(entry)) or ('UNRESOLVED',)
+              crs_counts[crs] += 1
+              for category in entry.categories:
+                  category_terms[(category.get('term'), category.get('label'), category.get('scheme'))] += 1
+              if entry.declared_extent is None:
+                  extent_counts['none'] += 1
+                  continue
+              extent_counts[entry.declared_extent.geometry_type] += 1
+              if entry.declared_extent.geometry.intersects(target):
+                  overlaps.append({
+                      'id': entry.id,
+                      'title': entry.title,
+                      'updated': entry.updated,
+                      'category_crs_parser': list(crs),
+                      'categories': entry.categories,
+                      'extent_type': entry.declared_extent.geometry_type,
+                      'extent_bounds_lon_lat': list(entry.declared_extent.geometry.bounds),
+                      'covers_target': entry.declared_extent.geometry.covers(target),
+                      'links': entry.links,
+                  })
+
           print(json.dumps({
               'dataset_entry_count': len(dataset_entries),
+              'extent_counts': dict(extent_counts),
+              'category_crs_parser_counts': {str(key): value for key, value in crs_counts.items()},
+              'top_raw_categories': [
+                  {'term': key[0], 'label': key[1], 'scheme': key[2], 'count': count}
+                  for key, count in category_terms.most_common(20)
+              ],
+              'target_wgs84_bbox': list(target.bounds),
+              'spatial_overlap_count_without_crs_filter': len(overlaps),
+              'spatial_overlaps': overlaps[:20],
+          }, indent=2, ensure_ascii=False))
+
+          # The real acceptance call remains strict. If it fails, the diagnostics
+          # above show which source field must be modelled instead of guessed.
+          selected, href, target_bbox, extent = select_dataset_entry(dataset_entries)
+          print(json.dumps({
+              'status': 'PASS',
               'selected_id': selected.id,
               'selected_title': selected.title,
               'selected_updated': selected.updated,
               'selected_crs': category_crs(selected),
               'selected_href': href,
-              'selected_href_rel_type': [
-                  {'rel': link['rel'], 'type': link['type'], 'href': link['href']}
-                  for link in selected.links if link['href'] == href
-              ],
               'target_wgs84_bbox': target_bbox,
               'declared_spatial': spatial_provenance(extent),
           }, indent=2, ensure_ascii=False))
