@@ -1,0 +1,45 @@
+{
+  "status": "pass",
+  "generated_by": "verify_nannestad_source_contracts.py",
+  "runtime": {
+    "python": "3.13.5",
+    "pyproj": "3.7.2"
+  },
+  "anchor": {
+    "name": "Teiealleen 31, Nannestad",
+    "source_crs": "EPSG:4258",
+    "lat": 60.21649430093953,
+    "lon": 11.01091774941974
+  },
+  "normalized_crs": "EPSG:25832",
+  "canonical_vertical_datum": "NN2000",
+  "roundtrip": {
+    "easting_m": 611419.0999999999,
+    "northing_m": 6677219.300000001,
+    "lon_back": 11.010917749419738,
+    "lat_back": 60.21649430093953,
+    "lon_error_deg": -1.7763568394002505e-15,
+    "lat_error_deg": 0.0,
+    "geodesic_error_m": 9.847238258047212e-11
+  },
+  "acceptance": {
+    "roundtrip_error_lt_1e-6_m": true,
+    "nvdb_known_srid_is_5973": true,
+    "nvdb_known_z_valid": true,
+    "nvdb_sentinel_z_becomes_null": true,
+    "nvdb_missing_z_policy": "Any absent/non-finite/sentinel z <= -999000 is normalized to null; never interpreted as elevation.",
+    "anonymous_z_forbidden": true
+  },
+  "known_samples": {
+    "kartverket_dtm1": {
+      "z": 195.22,
+      "datakilde": "dtm1",
+      "vertical_datum": "NN2000 (source contract metadata)"
+    },
+    "nvdb": {
+      "wkt": "POINT Z (279062.329 6682178.909 194.42)",
+      "srid": 5973,
+      "vertical_datum": "NN2000"
+    }
+  }
+}
