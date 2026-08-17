@@ -178,3 +178,27 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Feed the exact verified terrain artifact into the artifact-only Android/world-viewer together with the 246 road paths + 135 building footprints, use the DTM for ground Z, and measure terrain decode/mesh/upload/first-visible/frame-time/draw calls. In parallel, another agent can work Issue #5 on viewer batching/performance without touching compiler/geodata contracts.
+
+## 2026-08-17 — Forsøk 16 Android terrain-integrated runtime
+
+**Gjort**
+- User executed Forsøk 16 on Android and supplied an oblique device screenshot of the exact terrain + road + building artifact harness.
+- Inspected the harness implementation to separate displayed proof from inference: 1 m / 1000×1000 DTM1 remains world truth, the mobile GPU terrain is sampled to 129×129, roads preserve valid NVDB NN2000 centerline Z with DTM1 fallback, and unresolved building heights remain explicit 5 m debug geometry.
+- Added `docs/proofs/2026-08-17-forsok16-android-runtime.md` and posted the measured device baseline to parallel viewer-performance Issue #5.
+- Updated the P0 queue so terrain integration is no longer marked open; viewer measurement/batching and streaming behavior are now the immediate runtime gates.
+
+**Bevist**
+- Device HUD: road/building/terrain artifact PASS; 246 roads / 14.89 km; 135 footprints; 15 source-backed building heights / 120 debug heights; 1,000,000 DTM samples; DTM range 168.97–197.62 m; runtime `READY ×3`; raw source network `BLOKKERT · 0 KALL`.
+- Captured performance: 1.3 ms terrain decode, 19.4 ms terrain mesh build, 220 ms boot, 224 draw calls, 16.7 ms / 60 FPS, 382 geometries / 2 textures at the captured camera.
+- The screenshot rejects a gross CRS/origin/Z integration failure: terrain relief, imagery, road network and footprints occupy the same world area.
+- The 224-call number is not accepted as a batching improvement because Forsøk 15's ~391 count used a different view and Forsøk 16 still creates separate geometries. The 382-geometry counter confirms per-object pressure remains.
+- The 19.4 ms synchronous terrain mesh build exceeds one 60 Hz frame budget, so repeating it on the main thread during tile streaming is a concrete hitch risk.
+
+**Endret**
+- No new architecture decision was accepted; D-007 remains unchanged. This session adds device evidence and narrows the next experiments rather than selecting a renderer/format.
+- Issue #5 now has the Forsøk 16 device metrics and same-camera comparison requirement.
+
+**Neste**
+- Build the repo-side fixed-camera benchmark required by Issue #5 and compare current per-object rendering against batching while preserving source-debug identity.
+- Instrument first-visible separately and capture p50/p95/p99 frame time rather than one rolling average.
+- Test terrain mesh generation in a worker or incrementally before moving to dynamic multi-tile load/unload/LOD.
