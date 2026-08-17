@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.request import Request, urlopen
 
-from nwe_compiler.acquisition import TILE_BOUNDS, TILE_ID, transformed_envelope
+from nwe_compiler.acquisition import transformed_envelope
 from nwe_compiler.raster import RasterContractError, RasterMetadata, file_sha256, inspect_raster
 from nwe_compiler.sources.dtm1_atom import (
     DTM1_SOURCE_CRS,
@@ -20,6 +20,7 @@ from nwe_compiler.sources.dtm1_atom import (
     select_service_dataset,
     source_snapshot_from_digest,
 )
+from nwe_compiler.tiles import NANNESTAD_TILE, TileSpec
 
 SERVICE_URL = "https://nedlasting.geonorge.no/geonorge/ATOM/hoydedata/Hoydedata_ServiceFeed.atom"
 USER_AGENT = "NorgeWorldEngine/0.1 terrain-compiler"
@@ -103,7 +104,7 @@ def _metadata_dict(metadata: RasterMetadata) -> dict:
     }
 
 
-def _validate_dtm1_raster(path: Path) -> dict:
+def _validate_dtm1_raster(path: Path, tile: TileSpec = NANNESTAD_TILE) -> dict:
     try:
         metadata = inspect_raster(path)
     except (OSError, RasterContractError) as exc:
@@ -117,20 +118,40 @@ def _validate_dtm1_raster(path: Path) -> dict:
     if metadata.nodata is None:
         raise TerrainAcquisitionError("DTM1 GeoTIFF must declare nodata for deterministic warp")
 
-    target_33 = transformed_envelope(TILE_BOUNDS, "EPSG:25832", DTM1_SOURCE_CRS)
+    target_33 = transformed_envelope(tile.bounds, tile.horizontal_crs, DTM1_SOURCE_CRS)
     left, bottom, right, top = metadata.bounds
     t_left, t_bottom, t_right, t_top = target_33
     if not (left <= t_left and bottom <= t_bottom and right >= t_right and top >= t_top):
-        raise TerrainAcquisitionError("selected DTM1 raster does not cover the canonical Nannestad tile")
+        raise TerrainAcquisitionError(f"selected DTM1 raster does not cover tile {tile.tile_id}")
     return _metadata_dict(metadata)
 
 
-def _cache_dir(cache_root: str | Path) -> Path:
-    return Path(cache_root) / "raw" / TILE_ID / SOURCE_KEY
+def validate_terrain_source_covers_tile(acquired: AcquiredTerrainSource, tile: TileSpec) -> dict:
+    """Re-verify exact cached source bytes and prove they cover ``tile``.
+
+    Multi-tile compilation may reuse one authoritative 15 km DTM1 source for
+    several 1 km runtime tiles. Reuse is allowed only after byte identity and
+    raster coverage are revalidated; a warp is never allowed to silently create
+    nodata outside the acquired source extent.
+    """
+
+    raw_path = Path(acquired.raw_path)
+    try:
+        if raw_path.stat().st_size != acquired.raw_byte_size:
+            raise TerrainAcquisitionError("DTM1 source byte size changed after acquisition")
+    except OSError as exc:
+        raise TerrainAcquisitionError("DTM1 source file is unavailable") from exc
+    if file_sha256(raw_path) != acquired.raw_sha256:
+        raise TerrainAcquisitionError("DTM1 source SHA changed after acquisition")
+    return _validate_dtm1_raster(raw_path, tile)
 
 
-def _load_cached(cache_root: str | Path) -> AcquiredTerrainSource | None:
-    cache_dir = _cache_dir(cache_root)
+def _cache_dir(cache_root: str | Path, tile: TileSpec = NANNESTAD_TILE) -> Path:
+    return Path(cache_root) / "raw" / tile.tile_id / SOURCE_KEY
+
+
+def _load_cached(cache_root: str | Path, tile: TileSpec = NANNESTAD_TILE) -> AcquiredTerrainSource | None:
+    cache_dir = _cache_dir(cache_root, tile)
     pointer_path = cache_dir / "latest.json"
     if not pointer_path.exists():
         return None
@@ -144,7 +165,9 @@ def _load_cached(cache_root: str | Path) -> AcquiredTerrainSource | None:
             raise TerrainAcquisitionError("DTM1 cached raw byte size mismatch")
         if file_sha256(raw_path) != raw_sha:
             raise TerrainAcquisitionError("DTM1 cached raw SHA mismatch")
-        raster_metadata = _validate_dtm1_raster(raw_path)
+        if pointer.get("tile_id") != tile.tile_id:
+            raise TerrainAcquisitionError("DTM1 cache pointer tile identity mismatch")
+        raster_metadata = _validate_dtm1_raster(raw_path, tile)
         return AcquiredTerrainSource(
             str(raw_path),
             raw_sha,
@@ -165,6 +188,7 @@ def acquire_dtm1(
     refresh: bool = False,
     offline: bool = False,
     timeout: float = 180.0,
+    tile: TileSpec = NANNESTAD_TILE,
     feed_fetcher: Callable[[str, float], bytes] | None = None,
     file_fetcher: Callable[[str, Path, float], tuple[str, int]] | None = None,
 ) -> AcquiredTerrainSource:
@@ -173,10 +197,11 @@ def acquire_dtm1(
     Online selection is driven exclusively by official Atom service/dataset
     metadata, EPSG category and GeoRSS geometry. Offline mode uses the persisted
     retrieval identity and content-addressed raw file and performs no source
-    request.
+    request. ``tile`` controls only target selection/coverage and cache pointer
+    identity; source identity remains the exact official raw file bytes.
     """
     if not refresh:
-        cached = _load_cached(cache_root)
+        cached = _load_cached(cache_root, tile)
         if cached is not None:
             return cached
     if offline:
@@ -192,7 +217,7 @@ def acquire_dtm1(
     dataset_bytes = fetch_bytes(dataset_url, timeout)
     dataset_sha = _sha256(dataset_bytes)
     dataset_entries = parse_feed(dataset_bytes)
-    selected, file_url, _, extent = select_dataset_entry(dataset_entries)
+    selected, file_url, _, extent = select_dataset_entry(dataset_entries, target=tile.bounds)
     identity = retrieval_identity(SERVICE_URL, dataset_url, selected, extent)
     identity = {
         **identity,
@@ -200,7 +225,7 @@ def acquire_dtm1(
         "dataset_feed_sha256": dataset_sha,
     }
 
-    cache_dir = _cache_dir(cache_root)
+    cache_dir = _cache_dir(cache_root, tile)
     cache_dir.mkdir(parents=True, exist_ok=True)
     _write_exact(cache_dir / "feeds" / f"{service_sha}.atom", service_bytes)
     _write_exact(cache_dir / "feeds" / f"{dataset_sha}.atom", dataset_bytes)
@@ -215,7 +240,7 @@ def acquire_dtm1(
         actual_sha = file_sha256(tmp_raw)
         if actual_sha != raw_sha:
             raise TerrainAcquisitionError("streamed DTM1 SHA mismatch")
-        raster_metadata = _validate_dtm1_raster(tmp_raw)
+        raster_metadata = _validate_dtm1_raster(tmp_raw, tile)
         raw_path = cache_dir / f"{raw_sha}.tif"
         if raw_path.exists():
             if raw_path.stat().st_size != raw_size or file_sha256(raw_path) != raw_sha:
@@ -229,7 +254,7 @@ def acquire_dtm1(
 
     pointer = {
         "schema": "nwe.dtm1-raw-cache-pointer/0.1",
-        "tile_id": TILE_ID,
+        "tile_id": tile.tile_id,
         "source_key": SOURCE_KEY,
         "raw_sha256": raw_sha,
         "raw_byte_size": raw_size,
