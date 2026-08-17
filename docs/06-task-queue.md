@@ -3,7 +3,7 @@
 ## P0 — nå
 
 ### P0-REALDATA-01 — ekte DTM1 raw → compiled terrain
-**Status:** høyest prioritet.
+**Status:** høyest teknisk prioritet.
 
 Akseptanse:
 - faktisk Kartverket DTM1 bulk/native source snapshot for Nannestad
@@ -36,6 +36,15 @@ Akseptanse:
 - hash-verifisering før decode
 - lokal-origin/rebasing
 - runtime metrics
+
+## Infrastruktur
+
+### INFRA-CI-01 — GitHub Actions hosted runner
+**Status:** BLOKKERT AV KONTO/BILLING, ikke av validator-kode.
+
+`Validate Agent Skills` er registrert, men runneren starter ikke fordi GitHub rapporterer betalings-/spending-limit-problem. Ingen steps er kjørt. Lokal strukturell skill-validering er PASS, men CI skal rerunnes før workflowen regnes som bevist grønn.
+
+Denne infraoppgaven skal ikke fortrenge P0-REALDATA-01 som høyeste tekniske motoroppgave.
 
 ## Ikke trekk inn ennå
 
