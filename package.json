@@ -1,0 +1,14 @@
+{
+  "name": "norge-world-engine",
+  "private": true,
+  "workspaces": [
+    "engine/schemas/js",
+    "tools/runtime-packaging",
+    "prototypes/cesium-baseline"
+  ],
+  "scripts": {
+    "test:schemas": "npm --workspace @nwe/schemas-js test",
+    "build:cesium-baseline": "npm --workspace @nwe/cesium-baseline run build",
+    "dev:cesium-baseline": "npm --workspace @nwe/cesium-baseline run dev"
+  }
+}
