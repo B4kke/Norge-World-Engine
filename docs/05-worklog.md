@@ -123,3 +123,31 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 **Neste**
 - User: check personal GitHub `Settings -> Billing & Licensing -> Overview / Budgets and alerts` for Actions quota/budget/payment blocking. If not immediately resolved, register the PC at repository `Settings -> Actions -> Runners -> New self-hosted runner` and trigger `baseline-self-hosted`.
 - Android: run COLD CAPTURE online; then enable airplane mode without closing the tab and run WARM/OFFLINE. Export the capture JSON and return it. Decode/verify those exact raw bytes and feed them into the production offline compiler path; do not reimplement normalization in the browser.
+
+## 2026-08-17 — Hosted real-data vector proof + artifact-only runtime handoff
+
+**Gjort**
+- Repository visibility was changed to public by the owner; GitHub-hosted Actions immediately resumed normal runner assignment. A full baseline then completed checkout, dependency installation, Python compiler regressions, cross-language RFC8785/JCS, runtime provenance regression, artifact-consumer regression, Cesium baseline build and migrated VEKTOR checks successfully.
+- Decoded the supplied Android mobile-capture JSON and verified source byte sizes and SHA-256 values before using its metadata as proof input. Raw bytes remain outside Git; only a small verified manifest is committed.
+- First hosted cold compiler attempt exposed NVDB `HTTP 400`. Root cause: server-side NVDB API Les V4 requires `X-Client`; `nwe_compiler.acquisition` now sends `X-Client: NorgeWorldEngine-Compiler` only to the NVDB host, reports response body/request-id on HTTP failure, and has regression coverage for the header boundary.
+- Added `vector-realdata-proof.yml`: cold live acquisition/compile, warm network-free compile, cold/warm determinism checks, mobile-capture comparison, runtime bundle verification, attribution and short-retention compiled proof artifact upload with raw cache excluded.
+- Added `docs/proofs/2026-08-17-nannestad-vector-realdata.md` with exact execution evidence.
+- Generated a one-file Android Forsøk 15 artifact-only viewer from the successful Actions proof package. It embeds the verified road/building artifacts, browser-SHA-verifies the exact bytes, hard-blocks NVDB/OSM/Overpass networking, renders source-debug information and keeps unresolved building heights visually distinct from source-backed heights. Terrain remains explicitly historical reference data pending DTM1.
+
+**Bevist**
+- Mobile capture: NVDB 722,013 B / 471 objects / SHA `789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30`; OSM 1,053,121 B / 5,704 elements / 141 candidates. Android NVDB bytes are exactly identical to later runner acquisition.
+- Hosted real-data roads: `471 raw -> 407 normalized -> 246 compiled paths`; artifact 171,732 B, SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`. Cold total 2168.958 ms; warm/offline 148.363 ms.
+- Hosted real-data buildings: `5,704 raw / 141 candidates -> 135 validated+compiled footprints`; artifact 80,846 B, SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms.
+- Cold and warm runs yield identical per-source raw/artifact hashes and counts; warm reports raw-cache hits.
+- `runtime_verifier.mjs` returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS` for both exact compiled artifact byte streams.
+- OSM runner response had the same byte size and 5,704/141 counts as the earlier Android capture but a different raw SHA. The pipeline correctly represents it as a distinct SourceSnapshot instead of silently equating source revisions.
+
+**Endret**
+- PR #4 remains draft/unmerged and now contains the live proof workflow, NVDB request fix, mobile-capture manifest, proof documentation and updated P0 queue.
+- `INFRA-CI-01` is resolved; hosted runners are no longer a blocker.
+- `P0-VECTOR-ARTIFACT-01` has real cold/warm + runtime verification evidence rather than fixture-only evidence.
+
+**Neste**
+- Android: test Forsøk 15 and record artifact SHA PASS, raw source request counter = 0, visual alignment, draw calls and source-debug behavior.
+- Engine: execute `P0-REALDATA-01` DTM1 authoritative terrain vertical; this is now the highest unresolved world-foundation gate.
+- Then package the same terrain+vector inputs for custom viewer and Cesium baseline and compare measured runtime behavior before any renderer/format decision.
