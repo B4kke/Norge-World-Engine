@@ -48,8 +48,16 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Status:** REAL TERRAIN + VECTOR ANDROID VISUAL PASS / PERFORMANCE BASELINE PARTIAL  
 **Done now:** Forsøk 16 SHA-verifies and renders the real terrain, road and building artifacts with 0 raw-source calls. The 1 m / 1000×1000 DTM1 artifact remains world truth while the mobile GPU terrain is sampled to 129×129. Android screenshot evidence reports **1.3 ms terrain decode, 19.4 ms terrain mesh build, 220 ms boot, 224 draw calls, 16.7 ms / 60 FPS, 382 geometries and 2 textures** at the captured oblique camera. No gross CRS/origin/Z failure is visible.  
 **Important limitation:** 224 vs the earlier ~391 draw-call observation is **not batching evidence** because the camera differs and the harness still creates separate geometries. `382 geo` confirms per-object pressure remains high. The 19.4 ms synchronous terrain mesh build exceeds one 60 Hz frame budget and is a likely future streaming hitch if repeated on the main thread.  
-**Next highest-value work:** turn Forsøk 16 into a repeatable repo-side benchmark with an identical fixed camera for before/after runs; record first-visible separately, p50/p95/p99 frame time, scene-build, verify/decode, draw calls and memory. Compare per-object rendering against at least one batching strategy while preserving artifact/source debug traceability. Then test terrain mesh generation in a worker or incrementally before dynamic multi-tile streaming.  
+**Next highest-value work:** Issue #5 owns the fixed-camera renderer benchmark and batching comparison. In parallel, streaming work must move terrain mesh/buffer generation behind a worker/incremental job boundary before real multi-tile load/unload is accepted.  
 **Parallel issue:** GitHub Issue #5 owns viewer batching/performance and now contains the Forsøk 16 device baseline.
+
+### P0-STREAMING-01 — World tile lifecycle scheduler
+**Status:** SYNTHETIC 3×3 SCHEDULER + CACHE/FAILURE REGRESSIONS PASS / REAL MULTI-TILE OPEN  
+**Owner area:** `engine/streaming`  
+**Done/evidence:** renderer-independent `TileStreamingScheduler` provides deterministic camera-distance priority, active/retain radii, max resident count, max concurrent loads, resident↔cached lifecycle, inactive-cache byte budget/eviction, load aborts, stale-completion rejection, failure retry and lifecycle metrics. Hosted baseline passes **6 adversarial scheduler cases**. A synthetic 3×3 Nannestad descriptor benchmark (`center -> east -> north-east -> center-return`) completes 9/9 loads with **peak concurrency 2**, **2 cache hits**, **4 evictions**, final **5 resident / 0 cached**, **22,282,240 B retained**, queue/active loads 0, and final budget overcommit 0.  
+**Important limitation:** the benchmark uses opaque synthetic 4.25 MiB payloads. It proves scheduling mechanics only; it does not prove neighbouring Nannestad artifacts, real HTTP/cache latency, browser/GPU memory, frame-time stability, seams or LOD. `maxCacheBytes` currently budgets inactive cached payloads, not a hard resident/GPU memory ceiling; peak retained bytes can temporarily exceed that number when desired tiles are resident.  
+**Proof:** `docs/proofs/2026-08-17-streaming-scheduler-synthetic.md`.  
+**Next:** first move the measured 19.4 ms terrain mesh build behind a deterministic worker/incremental job boundary, then materialize a real 2×2/3×3 terrain artifact experiment and drive it through this scheduler with first-visible, load/unload latency, bytes, retained memory and p50/p95/p99 frame-time measurements. Final whole-Norway tile addressing/LOD remains open.
 
 ### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
 **Status:** TOOLING + CESIUM BASELINE BUILD PASS / SHARED TERRAIN+VECTOR RENDER ARTIFACT OPEN  
@@ -61,7 +69,7 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
 **Status:** RESOLVED  
-Repository is public and GitHub-hosted runners execute normally. Baseline passes on `main` and on the DTM1 branch. `baseline-self-hosted.yml` remains only as an optional controlled fallback.
+Repository is public and GitHub-hosted runners execute normally. Baseline passes on `main` and on the DTM1/streaming branches. `baseline-self-hosted.yml` remains only as an optional controlled fallback.
 
 ### INFRA-CI-02 — Real-data proof trigger hygiene
 **Status:** FIXED ON DTM1 BRANCH / PENDING MERGE  
