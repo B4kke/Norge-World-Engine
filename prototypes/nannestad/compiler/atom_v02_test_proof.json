@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "dataset_url": "https://example.invalid/dtm1-dataset.atom",
+  "dataset_href": "https://example.invalid/dtm1.tif",
+  "target_wgs84_bbox": [
+    11.00323908421006,
+    60.214367176568494,
+    11.021825770804512,
+    60.223614277941905
+  ],
+  "source_snapshot_hash": "47f01d5e0124c4b2222f3748954512f5eed810aec5386878215c3e8079521f4c"
+}

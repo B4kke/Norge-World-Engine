@@ -1,0 +1,2 @@
+-e ./engine/compiler
+pytest==9.1.1

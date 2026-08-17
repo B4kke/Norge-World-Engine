@@ -1,0 +1,17 @@
+{
+  "name": "@nwe/runtime-packaging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gltf-transform/cli": "4.4.2",
+    "3d-tiles-tools": "0.5.4",
+    "3d-tiles-validator": "0.6.1",
+    "meshoptimizer": "1.2.0"
+  },
+  "scripts": {
+    "gltf:optimize": "gltf-transform optimize",
+    "gltf:meshopt": "gltf-transform meshopt",
+    "tiles:validate": "3d-tiles-validator"
+  }
+}

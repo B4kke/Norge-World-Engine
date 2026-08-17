@@ -1,0 +1,12 @@
+{
+  "name": "@nwe/schemas-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "canonicalize": "3.0.0"
+  },
+  "scripts": {
+    "test": "node test/canonical.test.mjs"
+  }
+}

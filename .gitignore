@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node / web
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Norge World Engine: never version raw or generated geodata/runtime caches
+data/raw/
+data/cache/
+data/normalized/
+data/compiled/
+artifacts/
+cache/
+*.tif
+*.tiff
+*.laz
+*.las
+*.gpkg
+*.mbtiles
+*.pmtiles
+
+# Local benchmark output
+benchmarks/local/
