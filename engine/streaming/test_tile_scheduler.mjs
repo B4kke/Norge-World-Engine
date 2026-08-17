@@ -156,13 +156,43 @@ async function testStaleCompletionCannotResurrectAbortedTile() {
   assert.equal(snapshot.records.find((record) => record.id === 'b').state, 'resident');
 }
 
+async function testFailedLoadCanRetryWithoutPoisoningTile() {
+  const tile = { id: 'retry', centerE: 0, centerN: 0 };
+  let attempts = 0;
+  const scheduler = new TileStreamingScheduler({
+    activeRadiusMeters: 100,
+    retainRadiusMeters: 200,
+    maxResidentTiles: 1,
+    maxConcurrentLoads: 1,
+    maxCacheBytes: 1000,
+    loadTile: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('synthetic transport failure');
+      return { payload: { verified: true }, byteSize: 100 };
+    },
+  });
+
+  await scheduler.update({ e: 0, n: 0 }, [tile]);
+  let snapshot = await scheduler.whenIdle();
+  assert.equal(snapshot.metrics.loadsFailed, 1);
+  assert.equal(snapshot.records[0].state, 'failed');
+
+  await scheduler.update({ e: 0, n: 0 }, [tile]);
+  snapshot = await scheduler.whenIdle();
+  assert.equal(attempts, 2);
+  assert.equal(snapshot.metrics.loadsCompleted, 1);
+  assert.equal(snapshot.records[0].state, 'resident');
+  assert.equal(snapshot.records[0].error, null);
+}
+
 async function main() {
   await testRanking();
   await testConcurrencyAnd3x3Residency();
   await testWarmCacheReentry();
   await testCacheBudgetEvictsOldestInactiveTile();
   await testStaleCompletionCannotResurrectAbortedTile();
-  console.log('tile scheduler regressions: PASS (5 cases)');
+  await testFailedLoadCanRetryWithoutPoisoningTile();
+  console.log('tile scheduler regressions: PASS (6 cases)');
 }
 
 main().catch((error) => {
