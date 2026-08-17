@@ -148,7 +148,8 @@ export class TileStreamingScheduler {
   async update(camera, tiles) {
     finite(camera?.e, 'camera.e');
     finite(camera?.n, 'camera.n');
-    const ranked = rankTileCandidates(camera, tiles, {
+    const tileList = Array.isArray(tiles) ? tiles : [...tiles];
+    const ranked = rankTileCandidates(camera, tileList, {
       activeRadiusMeters: this.activeRadiusMeters,
       maxResidentTiles: this.maxResidentTiles,
     });
@@ -159,7 +160,7 @@ export class TileStreamingScheduler {
     this.generation += 1;
     this.metrics.updates += 1;
 
-    for (const tile of tiles) {
+    for (const tile of tileList) {
       const record = this.#recordFor(tile);
       knownIds.add(tile.id);
       record.distance = distanceMeters(camera, tile);
