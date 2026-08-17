@@ -120,13 +120,7 @@ def relation_href(links: list, preferred=("alternate",)) -> Optional[str]:
 
 
 def geotiff_href(entry: Entry) -> str:
-    """Resolve the concrete DTM1 GeoTIFF link from official Atom metadata.
-
-    The live Kartverket DTM1 feed currently exposes file downloads as
-    rel="section" / type="application/geotiff". We accept equivalent TIFF media
-    types for defensive interoperability, but never infer the file from entry
-    title/id/filename tokens.
-    """
+    """Resolve the concrete DTM1 GeoTIFF link from official Atom metadata."""
     candidates = [
         item
         for item in entry.links
@@ -240,9 +234,10 @@ def retrieval_identity(service_url: str, dataset_url: str, entry: Entry, extent:
     }
 
 
-def source_snapshot(
+def source_snapshot_from_digest(
     retrieval: dict,
-    raw: bytes,
+    raw_sha256: str,
+    raw_byte_size: int,
     metadata: dict,
     *,
     expected_source_crs: str = DTM1_SOURCE_CRS,
@@ -252,6 +247,10 @@ def source_snapshot(
     missing = [key for key in required if key not in metadata]
     if missing:
         raise FeedError("source validation missing " + ",".join(missing))
+    if len(raw_sha256) != 64:
+        raise FeedError("invalid raw SHA-256")
+    if raw_byte_size <= 0:
+        raise FeedError("raw byte size must be positive")
     if metadata["crs"] != expected_source_crs:
         raise FeedError(f"unexpected DTM1 source CRS: expected {expected_source_crs}, got {metadata['crs']}")
     if metadata["vertical_datum"] != expected_vertical_datum:
@@ -262,8 +261,8 @@ def source_snapshot(
         "schema": "nwe.source-snapshot/0.3",
         "source_id": "kartverket:hoyde-dtm1",
         "retrieval_identity": retrieval,
-        "raw_sha256": sha256(raw),
-        "raw_byte_size": len(raw),
+        "raw_sha256": raw_sha256,
+        "raw_byte_size": raw_byte_size,
         "source_crs": metadata["crs"],
         "source_vertical_datum": metadata["vertical_datum"],
         "z_semantics": "normal_height_m",
@@ -273,6 +272,24 @@ def source_snapshot(
         "license_profile": "CC-BY-4.0",
         "promotion_state": "VALIDATED_SOURCE",
     }
+
+
+def source_snapshot(
+    retrieval: dict,
+    raw: bytes,
+    metadata: dict,
+    *,
+    expected_source_crs: str = DTM1_SOURCE_CRS,
+    expected_vertical_datum: str = DTM1_VERTICAL_DATUM,
+) -> dict:
+    return source_snapshot_from_digest(
+        retrieval,
+        sha256(raw),
+        len(raw),
+        metadata,
+        expected_source_crs=expected_source_crs,
+        expected_vertical_datum=expected_vertical_datum,
+    )
 
 
 def runtime_verification_bundle_source_stage(source_snapshot_object: dict) -> dict:
