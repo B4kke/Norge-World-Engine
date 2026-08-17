@@ -1,12 +1,6 @@
 name: dtm1-seam-diagnostic
 
 on:
-  pull_request:
-    paths:
-      - 'tools/geo/dtm1_seam_diagnostic.py'
-      - 'engine/compiler/src/nwe_compiler/seam_diagnostic.py'
-      - 'engine/compiler/tests/test_dtm1_seam_diagnostic.py'
-      - '.github/workflows/dtm1-seam-diagnostic.yml'
   workflow_dispatch:
 
 jobs:
