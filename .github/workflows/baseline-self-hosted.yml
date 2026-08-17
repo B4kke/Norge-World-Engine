@@ -1,0 +1,70 @@
+name: baseline-self-hosted
+
+on:
+  workflow_dispatch:
+
+jobs:
+  contracts-and-compiler-regressions:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Validate repo-local Agent Skills
+        run: python scripts/validate_agent_skills.py
+
+      - name: Install Python verification dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Python syntax checks
+        run: |
+          python -m py_compile tools/geo/verify_nannestad_source_contracts.py
+          python -m compileall -q engine/compiler/src engine/compiler/tests
+          python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
+          python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
+
+      - name: Source contract verifier
+        run: python tools/geo/verify_nannestad_source_contracts.py --output nwe-source-proof.json
+
+      - name: Production-direction compiler regressions
+        run: pytest -q engine/compiler/tests
+
+      - name: Migrated SMIA baseline test
+        working-directory: prototypes/nannestad/compiler
+        run: python test_dtm1_atom_adapter_v02.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install lightweight Node workspaces
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
+
+      - name: Cross-language RFC 8785 schema test
+        run: npm run test:schemas
+
+      - name: Runtime provenance reconstruction regression
+        run: |
+          node --check engine/streaming/runtime_verifier.mjs
+          node --check engine/streaming/test_runtime_verifier.mjs
+          node engine/streaming/test_runtime_verifier.mjs
+
+      - name: Compiled-artifact consumer boundary regression
+        run: |
+          node --check apps/world-viewer/artifact_consumer.mjs
+          node --check apps/world-viewer/test_artifact_consumer.mjs
+          node apps/world-viewer/test_artifact_consumer.mjs
+
+      - name: Cesium 3D Tiles baseline build
+        run: npm run build:cesium-baseline
+
+      - name: Migrated VEKTOR syntax and baseline test
+        run: |
+          node --check prototypes/nannestad/runtime/vektor_runtime_gate_v03.mjs
+          node --check prototypes/nannestad/runtime/test_vektor_runtime_gate_v03.mjs
+          node prototypes/nannestad/runtime/test_vektor_runtime_gate_v03.mjs
