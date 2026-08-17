@@ -29,6 +29,7 @@ jobs:
           mkdir -p /tmp/nwe-seam-data /tmp/nwe-seam-proof
           python - <<'PY'
           import json
+          import urllib.request
           from pathlib import Path
 
           from nwe_compiler.dtm1_source_pool import (
@@ -60,7 +61,7 @@ jobs:
           )
           by_name = {Path(source.retrieval_identity['dataset_entry_href']).name: source for source in sources.values()}
           snapshot = {
-              'schema': 'nwe.dtm1-seam-source-snapshot/0.1',
+              'schema': 'nwe.dtm1-seam-source-snapshot/0.2',
               'diagnostic_tile_id': tile.tile_id,
               'diagnostic_bounds_epsg25832': list(tile.bounds),
               'catalog': {
@@ -74,6 +75,18 @@ jobs:
           }
           for selection in selections:
               source = sources[selection.href]
+              headers = {}
+              try:
+                  request = urllib.request.Request(
+                      selection.href,
+                      method='HEAD',
+                      headers={'User-Agent': 'NorgeWorldEngine/0.1 terrain-seam-diagnostic'},
+                  )
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      for key in ('ETag', 'Last-Modified', 'Content-Length', 'Content-Type', 'Accept-Ranges'):
+                          headers[key.lower().replace('-', '_')] = response.headers.get(key)
+              except Exception as exc:
+                  headers = {'head_error': f'{type(exc).__name__}: {exc}'}
               snapshot['sources'].append({
                   'dataset_entry_id': selection.entry.id,
                   'dataset_entry_href': selection.href,
@@ -81,6 +94,7 @@ jobs:
                   'raw_sha256': source.raw_sha256,
                   'raw_byte_size': source.raw_byte_size,
                   'raster_metadata': source.raster_metadata,
+                  'http_head': headers,
               })
           snapshot['sources'].sort(key=lambda item: item['dataset_entry_href'])
           (proof / 'source-snapshot.json').write_text(json.dumps(snapshot, indent=2, sort_keys=True) + '\n', encoding='utf-8')
@@ -98,7 +112,7 @@ jobs:
             --source-b "$SOURCE_117" \
             --output /tmp/nwe-seam-proof/raw-overlap.json
 
-      - name: Fetch current Kartverket 1 m DTM WCS reference and normalize comparison grids
+      - name: Fetch exact Kartverket DTM WCS QA grid and compare projected raw candidates
         run: |
           python - <<'PY'
           import hashlib
@@ -115,25 +129,24 @@ jobs:
           WCS_BASE = 'https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25832'
           EXPECTED_COVERAGE = 'nhm_dtm_topo_25832'
           BOUNDS = (611000.0, 6676000.0, 612000.0, 6677000.0)
+          EXPECTED_TRANSFORM = (1.0, 0.0, 611000.0, 0.0, -1.0, 6677000.0)
           proof = Path('/tmp/nwe-seam-proof')
           paths = json.loads((proof / 'source-paths.json').read_text(encoding='utf-8'))
 
-          def fetch(url, *, accept='application/xml,text/xml;q=0.9,*/*;q=0.1'):
-              req = urllib.request.Request(url, headers={
+          def fetch(url, accept):
+              request = urllib.request.Request(url, headers={
                   'User-Agent': 'NorgeWorldEngine/0.1 terrain-seam-diagnostic',
                   'Accept': accept,
               })
-              with urllib.request.urlopen(req, timeout=120) as response:
-                  return response.status, response.headers.get('Content-Type'), response.read()
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.headers.get('Content-Type'), response.read()
 
           caps_url = WCS_BASE + '?' + urllib.parse.urlencode({
-              'SERVICE': 'WCS',
-              'VERSION': '1.0.0',
-              'REQUEST': 'GetCapabilities',
+              'SERVICE': 'WCS', 'VERSION': '1.0.0', 'REQUEST': 'GetCapabilities',
           })
-          status, caps_type, caps = fetch(caps_url)
-          if status != 200:
-              raise SystemExit(f'WCS GetCapabilities HTTP {status}')
+          caps_type, caps = fetch(caps_url, 'application/xml,text/xml;q=0.9,*/*;q=0.1')
           root = ET.fromstring(caps)
           names = []
           for element in root.iter():
@@ -144,24 +157,17 @@ jobs:
                       names.append(child.text.strip())
           names = sorted(set(names))
           if EXPECTED_COVERAGE not in names:
-              raise SystemExit(f'expected terrain WCS coverage {EXPECTED_COVERAGE!r}, advertised={names!r}')
-          coverage = EXPECTED_COVERAGE
+              raise SystemExit(f'missing expected terrain coverage {EXPECTED_COVERAGE!r}: {names!r}')
 
           describe_url = WCS_BASE + '?' + urllib.parse.urlencode({
-              'SERVICE': 'WCS',
-              'VERSION': '1.0.0',
-              'REQUEST': 'DescribeCoverage',
-              'COVERAGE': coverage,
+              'SERVICE': 'WCS', 'VERSION': '1.0.0', 'REQUEST': 'DescribeCoverage', 'COVERAGE': EXPECTED_COVERAGE,
           })
-          d_status, describe_type, describe = fetch(describe_url)
-          if d_status != 200:
-              raise SystemExit(f'WCS DescribeCoverage HTTP {d_status}')
-
+          describe_type, describe = fetch(describe_url, 'application/xml,text/xml;q=0.9,*/*;q=0.1')
           coverage_url = WCS_BASE + '?' + urllib.parse.urlencode({
               'SERVICE': 'WCS',
               'VERSION': '1.0.0',
               'REQUEST': 'GetCoverage',
-              'COVERAGE': coverage,
+              'COVERAGE': EXPECTED_COVERAGE,
               'CRS': 'EPSG:25832',
               'RESPONSE_CRS': 'EPSG:25832',
               'BBOX': ','.join(str(int(value)) for value in BOUNDS),
@@ -169,59 +175,59 @@ jobs:
               'HEIGHT': '1000',
               'FORMAT': 'GeoTIFF',
           })
-          c_status, coverage_type, coverage_bytes = fetch(
+          coverage_type, coverage = fetch(
               coverage_url,
-              accept='image/tiff,application/geotiff,application/octet-stream;q=0.9,*/*;q=0.1',
+              'image/tiff,application/geotiff,application/octet-stream;q=0.9,*/*;q=0.1',
           )
-          if c_status != 200:
-              raise SystemExit(f'WCS GetCoverage HTTP {c_status}')
-          if coverage_bytes[:4] not in (b'II*\x00', b'MM\x00*'):
-              text = coverage_bytes[:1000].decode('utf-8', errors='replace')
-              raise SystemExit(f'WCS GetCoverage did not return TIFF: type={coverage_type!r} head={text!r}')
+          if coverage[:4] not in (b'II*\x00', b'MM\x00*'):
+              raise SystemExit('WCS GetCoverage response is not TIFF')
           wcs_raw = proof / 'wcs-reference-raw.tif'
-          wcs_raw.write_bytes(coverage_bytes)
+          wcs_raw.write_bytes(coverage)
 
-          normalized_116 = proof / '116-normalized.tif'
-          normalized_117 = proof / '117-normalized.tif'
-          normalized_wcs = proof / 'wcs-normalized.tif'
-          warp_dtm_to_canonical_grid(paths['116'], normalized_116, BOUNDS)
-          warp_dtm_to_canonical_grid(paths['117'], normalized_117, BOUNDS)
-          warp_dtm_to_canonical_grid(
-              wcs_raw,
-              normalized_wcs,
-              BOUNDS,
-              expected_source_crs='EPSG:25832',
-              target_crs='EPSG:25832',
-          )
-
-          with rasterio.open(normalized_wcs) as dataset:
+          with rasterio.open(wcs_raw) as dataset:
               wcs_meta = {
                   'crs': dataset.crs.to_string() if dataset.crs else None,
                   'bounds': list(dataset.bounds),
                   'width': dataset.width,
                   'height': dataset.height,
+                  'count': dataset.count,
                   'dtype': dataset.dtypes[0],
                   'nodata': dataset.nodata,
+                  'pixel_size': [abs(dataset.transform.a), abs(dataset.transform.e)],
+                  'transform': list(dataset.transform)[:6],
               }
+          if wcs_meta['crs'] != 'EPSG:25832':
+              raise SystemExit(f'WCS CRS mismatch: {wcs_meta["crs"]}')
+          if wcs_meta['bounds'] != list(BOUNDS):
+              raise SystemExit(f'WCS bounds mismatch: {wcs_meta["bounds"]}')
+          if wcs_meta['width'] != 1000 or wcs_meta['height'] != 1000 or wcs_meta['count'] != 1:
+              raise SystemExit(f'WCS grid shape mismatch: {wcs_meta}')
+          if wcs_meta['pixel_size'] != [1.0, 1.0] or tuple(wcs_meta['transform']) != EXPECTED_TRANSFORM:
+              raise SystemExit(f'WCS grid transform mismatch: {wcs_meta}')
+
+          normalized_116 = proof / '116-normalized.tif'
+          normalized_117 = proof / '117-normalized.tif'
+          warp_dtm_to_canonical_grid(paths['116'], normalized_116, BOUNDS)
+          warp_dtm_to_canonical_grid(paths['117'], normalized_117, BOUNDS)
+
           metadata = {
-              'schema': 'nwe.dtm1-wcs-seam-reference/0.1',
+              'schema': 'nwe.dtm1-wcs-seam-reference/0.2',
               'role': 'independent_qa_sensor_not_promotion_source',
               'endpoint': WCS_BASE,
               'advertised_coverages': names,
-              'coverage': coverage,
+              'coverage': EXPECTED_COVERAGE,
               'capabilities_sha256': hashlib.sha256(caps).hexdigest(),
               'describe_coverage_sha256': hashlib.sha256(describe).hexdigest(),
-              'getcoverage_sha256': hashlib.sha256(coverage_bytes).hexdigest(),
-              'getcoverage_byte_size': len(coverage_bytes),
+              'getcoverage_sha256': hashlib.sha256(coverage).hexdigest(),
+              'getcoverage_byte_size': len(coverage),
               'content_types': {
                   'capabilities': caps_type,
                   'describe_coverage': describe_type,
                   'getcoverage': coverage_type,
               },
               'requested_bounds_epsg25832': list(BOUNDS),
-              'requested_width': 1000,
-              'requested_height': 1000,
-              'normalized_reference': wcs_meta,
+              'raster_metadata': wcs_meta,
+              'note': 'WCS nodata=None is accepted only for this exact diagnostic grid; production SourceSnapshot/warp rules are unchanged.',
           }
           (proof / 'wcs-reference.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           print(json.dumps(metadata, indent=2, sort_keys=True))
@@ -234,7 +240,7 @@ jobs:
             --source-b "$SOURCE_117" \
             --normalized-a /tmp/nwe-seam-proof/116-normalized.tif \
             --normalized-b /tmp/nwe-seam-proof/117-normalized.tif \
-            --reference /tmp/nwe-seam-proof/wcs-normalized.tif \
+            --reference /tmp/nwe-seam-proof/wcs-reference-raw.tif \
             --output /tmp/nwe-seam-proof/seam-diagnostic.json
 
       - name: Persist evidence only, never raw terrain objects
@@ -257,11 +263,12 @@ jobs:
               'raw_valid_overlap_pixels': raw['valid_overlap_pixels'],
               'raw_differing_pixels': raw['differing_pixels'],
               'raw_differing_fraction': raw['differing_fraction'],
-              'raw_max_abs_delta_m': raw['absolute_delta_m']['max'],
-              'raw_p99_abs_delta_m': raw['absolute_delta_m']['p99'],
+              'raw_abs_delta_m': raw['absolute_delta_m'],
               'wcs_closer_source': comparison['closer_source'],
-              'wcs_rmse_source_a_m': comparison['reference_vs_source_a']['rmse_m'],
-              'wcs_rmse_source_b_m': comparison['reference_vs_source_b']['rmse_m'],
+              'wcs_rmse_source_116_m': comparison['reference_vs_source_a']['rmse_m'],
+              'wcs_rmse_source_117_m': comparison['reference_vs_source_b']['rmse_m'],
+              'wcs_abs_residual_116_m': comparison['reference_vs_source_a']['absolute_residual_m'],
+              'wcs_abs_residual_117_m': comparison['reference_vs_source_b']['absolute_residual_m'],
               'wcs_position_between_sources': comparison['reference_position_between_raw_surfaces'],
           }
           print(json.dumps(summary, indent=2, sort_keys=True))
