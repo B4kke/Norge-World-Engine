@@ -8,6 +8,9 @@ from typing import Optional
 
 CANONICALIZATION_ID = "urn:ietf:rfc:8785"
 HASH_ALGORITHM = "sha-256"
+DTM1_SOURCE_CRS = "EPSG:25833"
+DTM1_VERTICAL_DATUM = "NN2000"
+DTM1_MEDIA_TYPES = {"application/geotiff", "image/tiff", "image/geotiff"}
 
 from nwe_compiler.spatial import (
     TARGET_EPSG25832,
@@ -116,6 +119,26 @@ def relation_href(links: list, preferred=("alternate",)) -> Optional[str]:
     return None
 
 
+def geotiff_href(entry: Entry) -> str:
+    """Resolve the concrete DTM1 GeoTIFF link from official Atom metadata.
+
+    The live Kartverket DTM1 feed currently exposes file downloads as
+    rel="section" / type="application/geotiff". We accept equivalent TIFF media
+    types for defensive interoperability, but never infer the file from entry
+    title/id/filename tokens.
+    """
+    candidates = [
+        item
+        for item in entry.links
+        if item.get("rel") in {"section", "enclosure", "alternate"}
+        and str(item.get("type") or "").casefold() in DTM1_MEDIA_TYPES
+        and item.get("href")
+    ]
+    if len(candidates) != 1:
+        raise FeedError(f"selected DTM1 entry must expose exactly one GeoTIFF link, got {len(candidates)}")
+    return str(candidates[0]["href"])
+
+
 def select_service_dataset(entries: list[Entry], token: str = "DTM1") -> tuple[Entry, str]:
     matches = [
         entry
@@ -145,7 +168,7 @@ def category_crs(entry: Entry) -> list[str]:
 def select_dataset_entry(
     entries: list[Entry],
     target: tuple[float, float, float, float] = TARGET_EPSG25832,
-    required_crs: str = "EPSG:25832",
+    required_crs: str = DTM1_SOURCE_CRS,
 ):
     target_polygon = target_wgs84_polygon(target)
     matches: list[Entry] = []
@@ -161,9 +184,7 @@ def select_dataset_entry(
 
     if len(matches) == 1:
         selected = matches[0]
-        href = relation_href(selected.links, ("alternate", "enclosure"))
-        if not href:
-            raise FeedError("selected dataset entry lacks dataset href")
+        href = geotiff_href(selected)
         return selected, href, target_polygon.bounds, selected.declared_extent
     if len(matches) > 1:
         raise UnresolvedSpatialIndex(f"multiple GeoRSS entries contain target: {len(matches)}")
@@ -212,20 +233,31 @@ def retrieval_identity(service_url: str, dataset_url: str, entry: Entry, extent:
         "service_feed_url": service_url,
         "dataset_feed_url": dataset_url,
         "dataset_entry_id": entry.id,
-        "dataset_entry_href": relation_href(entry.links, ("alternate", "enclosure")),
+        "dataset_entry_href": geotiff_href(entry),
         "dataset_entry_updated": entry.updated,
         "dataset_entry_category_crs": category_crs(entry),
         "spatial": spatial_provenance(extent),
     }
 
 
-def source_snapshot(retrieval: dict, raw: bytes, metadata: dict) -> dict:
+def source_snapshot(
+    retrieval: dict,
+    raw: bytes,
+    metadata: dict,
+    *,
+    expected_source_crs: str = DTM1_SOURCE_CRS,
+    expected_vertical_datum: str = DTM1_VERTICAL_DATUM,
+) -> dict:
     required = ("crs", "vertical_datum", "pixel_size", "bounds", "nodata")
     missing = [key for key in required if key not in metadata]
     if missing:
         raise FeedError("source validation missing " + ",".join(missing))
-    if metadata["crs"] != "EPSG:25832":
-        raise FeedError("unexpected DTM1 CRS for Prototype 0")
+    if metadata["crs"] != expected_source_crs:
+        raise FeedError(f"unexpected DTM1 source CRS: expected {expected_source_crs}, got {metadata['crs']}")
+    if metadata["vertical_datum"] != expected_vertical_datum:
+        raise FeedError(
+            f"unexpected DTM1 vertical datum: expected {expected_vertical_datum}, got {metadata['vertical_datum']}"
+        )
     return {
         "schema": "nwe.source-snapshot/0.3",
         "source_id": "kartverket:hoyde-dtm1",
