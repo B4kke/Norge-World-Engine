@@ -77,3 +77,30 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Persist real Nannestad NVDB/OSM responses outside Git as raw cache, bind SourceSnapshot/retrieval/license identity, run these adapters over the real 443/133 sample and emit deterministic normalized/compiled vector artifacts with RFC 8785 hashes. Viewer/runtime must then consume artifacts with zero raw NVDB/OSM contact.
+
+## 2026-08-17 — Persisted vector-artifact vertical
+
+**Gjort**
+- Synced PR #4 onto the latest `agent/core-geospatial-tooling` head and preserved the corrected Rasterio 1.5.0/provenance state. Removed an unrelated README drift found during stacked-PR QA.
+- Recovered the exact working NVDB/OSM source requests from Drive `Forsøk 14` and revalidated the live endpoints. The compiler now derives its own source envelopes from all four EPSG:25832 tile corners rather than copying the browser's two-corner OSM bbox.
+- Added `nwe_compiler.acquisition`: source contracts, live fetch boundary, JSON validation, SHA-256 content-addressed raw cache, cache integrity checks, `--offline` fail-closed behavior and SourceSnapshot metadata/licensing.
+- Added `nwe_compiler.vector_artifacts`: deterministic normalized road/building JSON, compiled runtime artifacts, CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle compatible with `engine/streaming/runtime_verifier.mjs`.
+- Added `nwe-compile-vectors --refresh|--offline` CLI with raw/normalized/compiled counts, bytes, hashes, cache state and phase timings.
+- Added dependency-free `apps/world-viewer/artifact_consumer.mjs`: bundle + compiled-artifact only, WebCrypto SHA-256/size verification and fail-before-fetch rejection of NVDB/OSM/raw-source transports.
+- Documented Prototype-0 NVDB NLOD and OSM ODbL contracts in `docs/data-licenses/vector-sources.md`; no whole-Norway acquisition decision was made.
+
+**Bevist**
+- Exact code copied to the branch was exercised in an isolated repo mirror: existing vector tests + acquisition/cache/artifact structural regressions = `12 passed` (0.19–0.20 s across repeated run).
+- Viewer artifact-boundary regression PASS: 2 cases, happy path performs exactly two requests (bundle + compiled artifact), malicious NVDB transport is rejected before a second request; reported raw source calls = 0.
+- Cold/warm raw-cache fixture proves a second identical acquisition uses cached bytes and performs zero fetcher calls; offline cache miss fails closed.
+- Live NVDB V4 returned segmented `LINESTRING Z` data for the Nannestad query and live OSM API v0.6 returned ODbL-attributed map elements/building ways, confirming the current source shapes remain available.
+
+**Ikke bevist / blokkert**
+- The execution container has no outbound DNS, so the actual live response bytes cannot be persisted into its ignored `data/raw` workspace. GitHub Actions is still zero-step blocked. Therefore no new production raw SHA-256, actual compiler `raw -> normalized -> compiled` count, artifact SHA or cold/warm timing from the live 443/133-class source set is claimed here.
+- Python `rfc8785` remains unavailable in this isolated container. Structural artifact tests inject a deterministic test serializer; production code defaults to the pinned RFC 8785 implementation and full JCS execution remains a dependency-capable-runner gate.
+
+**Endret**
+- PR #4 now carries the acquisition/cache/artifact/viewer boundary rather than browser-local source compilation. Raw geodata remains outside Git by construction.
+
+**Neste**
+- In the first network + dependency-capable execution, run `nwe-compile-vectors --cache-root data --refresh`, record the real NVDB/OSM hashes/counts/artifact metrics, then immediately run `nwe-compile-vectors --cache-root data --offline` and prove identical artifact hashes with zero source requests. Only then wire those persisted artifacts into the visual Nannestad viewer.
