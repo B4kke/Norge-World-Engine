@@ -2,7 +2,17 @@ import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from nwe_compiler.acquisition import TILE_BOUNDS, AcquisitionError, acquire_source, nvdb_contract, osm_contract, transformed_envelope
+from nwe_compiler.acquisition import (
+    TILE_BOUNDS,
+    AcquisitionError,
+    NVDB_X_CLIENT,
+    _default_fetch,
+    _request_headers,
+    acquire_source,
+    nvdb_contract,
+    osm_contract,
+    transformed_envelope,
+)
 
 
 def test_source_envelopes_transform_all_four_tile_corners():
@@ -28,6 +38,39 @@ def test_nvdb_request_contract_is_v4_srid5973():
     assert query["antall"] == ["1000"]
     assert query["inkluderAntall"] == ["false"]
     assert len(query["kartutsnitt"][0].split(",")) == 4
+
+
+def test_nvdb_requests_identify_world_compiler_but_osm_does_not():
+    assert _request_headers(nvdb_contract().request_url)["X-Client"] == NVDB_X_CLIENT
+    assert "X-Client" not in _request_headers(osm_contract().request_url)
+
+
+def test_default_fetch_passes_x_client_to_nvdb(monkeypatch):
+    raw = b'{"objekter":[{"geometri":{"wkt":"LINESTRING Z (1 2 3, 4 5 6)"}}]}'
+    captured = {}
+
+    class Response:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self):
+            return raw
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("nwe_compiler.acquisition.urlopen", fake_urlopen)
+    assert _default_fetch(nvdb_contract().request_url, 7.5) == raw
+    assert captured["request"].get_header("X-client") == NVDB_X_CLIENT
+    assert captured["timeout"] == 7.5
 
 
 def test_raw_cache_cold_then_warm_has_zero_second_fetch(tmp_path: Path):
