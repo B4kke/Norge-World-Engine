@@ -6,7 +6,11 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 
-from nwe_compiler.seam_diagnostic import analyze_raw_overlap, compare_normalized_sources_to_reference
+from nwe_compiler.seam_diagnostic import (
+    analyze_raw_overlap,
+    compare_mosaic_policies_to_reference,
+    compare_normalized_sources_to_reference,
+)
 
 
 def _raster(path: Path, data: np.ndarray, *, left: float, top: float, crs: str = "EPSG:25833", nodata=-32767.0):
@@ -69,3 +73,37 @@ def test_reference_comparison_identifies_closer_raw_surface(tmp_path: Path):
     assert result["closer_source"]["equal_distance_pixels"] == 0
     assert result["reference_vs_source_b"]["exact_within_1e-5_pixels"] == 80
     assert result["reference_position_between_raw_surfaces"]["between_0_and_1_fraction"] == 1.0
+
+
+def test_mosaic_policy_qa_can_identify_interior_margin_owner(tmp_path: Path):
+    # The normalized comparison grid is 10x10 EPSG:25833. Raw source A extends
+    # two metres farther north; raw source B extends two metres farther south.
+    # Their interior margins therefore define a deterministic north/south owner.
+    normalized_a = np.full((10, 10), 100.0, dtype="float32")
+    normalized_b = np.full((10, 10), 101.0, dtype="float32")
+
+    raw_a = tmp_path / "raw-a.tif"
+    raw_b = tmp_path / "raw-b.tif"
+    _raster(raw_a, np.full((12, 10), 100.0, dtype="float32"), left=0, top=12)
+    _raster(raw_b, np.full((12, 10), 101.0, dtype="float32"), left=0, top=10)
+
+    path_a = tmp_path / "normalized-a.tif"
+    path_b = tmp_path / "normalized-b.tif"
+    _raster(path_a, normalized_a, left=0, top=10)
+    _raster(path_b, normalized_b, left=0, top=10)
+
+    # Target pixel centers y=9.5..0.5. A has larger edge margin above y=5,
+    # B below y=5. Build the QA reference from that policy itself.
+    reference = normalized_b.copy()
+    reference[:5, :] = normalized_a[:5, :]
+    path_ref = tmp_path / "reference.tif"
+    _raster(path_ref, reference, left=0, top=10)
+
+    result = compare_mosaic_policies_to_reference(raw_a, raw_b, path_a, path_b, path_ref)
+
+    ranking = result["ranking_by_overlap_rmse"]
+    assert ranking[0]["policy"] == "max_interior_margin_owner"
+    assert ranking[0]["overlap_rmse_m"] == 0.0
+    assert result["policies"]["prefer_source_a"]["overlap_only"]["rmse_m"] > 0.0
+    assert result["policies"]["prefer_source_b"]["overlap_only"]["rmse_m"] > 0.0
+    assert result["role"] == "diagnostic_comparison_only_no_policy_selected"
