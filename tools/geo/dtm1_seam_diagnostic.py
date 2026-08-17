@@ -8,6 +8,7 @@ from typing import Any
 from nwe_compiler.seam_diagnostic import (
     SeamDiagnosticError,
     analyze_raw_overlap,
+    compare_mosaic_policies_to_reference,
     compare_normalized_sources_to_reference,
 )
 
@@ -23,7 +24,7 @@ def main() -> int:
     args = parser.parse_args()
 
     result: dict[str, Any] = {
-        "schema": "nwe.dtm1-seam-diagnostic/0.1",
+        "schema": "nwe.dtm1-seam-diagnostic/0.2",
         "raw_overlap": analyze_raw_overlap(args.source_a, args.source_b),
     }
     comparison_args = (args.normalized_a, args.normalized_b, args.reference)
@@ -32,6 +33,13 @@ def main() -> int:
             raise SeamDiagnosticError("normalized-a, normalized-b and reference must be supplied together")
         result["reference_comparison"] = compare_normalized_sources_to_reference(
             args.normalized_a, args.normalized_b, args.reference
+        )
+        result["mosaic_policy_qa"] = compare_mosaic_policies_to_reference(
+            args.source_a,
+            args.source_b,
+            args.normalized_a,
+            args.normalized_b,
+            args.reference,
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
