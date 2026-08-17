@@ -59,11 +59,14 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Added `nwe_compiler.sources.nvdb`: segmented road WKT ingestion, explicit EPSG:25833 -> EPSG:25832 reprojection with `always_xy=True`, NN2000 Z preservation, sentinel/invalid Z -> null and Shapely-based 1 km tile clipping. Z at new clip vertices is reconstructed from the original source segment instead of trusting GEOS Z behavior.
 - Added `nwe_compiler.sources.osm_buildings`: OSM Main API/Overpass way ingestion, WGS84 -> EPSG:25832, Shapely polygon validity/area/tile gates, explicit `height` and `building:levels` provenance and unresolved height rather than an authoritative heuristic.
 - Added six vector regressions covering road merge, junction boundaries, NVDB reprojection/Z policy, clip-boundary Z interpolation, OSM building normalization and invalid bow-tie rejection.
+- Opened draft stacked PR #4 against `agent/core-geospatial-tooling`; no merge performed.
 
 **Bevist**
 - Android Forsøk 14 supplied 443 NVDB raw segments and 133 OSM building footprints; source acquisition is feasible, while its browser road graph did not reduce raw segmentation.
 - Local focused vector suite: `6 passed in 0.15s`.
 - The first custom line-clipping implementation was rejected during self-review because repo policy prefers pinned Shapely for generic geometry. It was replaced before handoff and a boundary-Z regression was added.
+- PR #4 is mergeable into the stacked core branch.
+- PR #4 baseline run #67 reproduced the infrastructure failure: one job, `steps: []`, `runner_id: 0`, failure before repository commands execute.
 
 **Endret**
 - Branch: `agent/nvdb-osm-compiler-adapters`, stacked on the current core geospatial tooling branch. No merge to `main`.
