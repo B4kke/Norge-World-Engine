@@ -54,6 +54,12 @@ jobs:
           node --check engine/streaming/test_runtime_verifier.mjs
           node engine/streaming/test_runtime_verifier.mjs
 
+      - name: Viewer compiled-artifact boundary regression
+        run: |
+          node --check apps/world-viewer/artifact_consumer.mjs
+          node --check apps/world-viewer/test_artifact_consumer.mjs
+          node apps/world-viewer/test_artifact_consumer.mjs
+
       - name: Cesium 3D Tiles baseline build
         run: npm run build:cesium-baseline
 
