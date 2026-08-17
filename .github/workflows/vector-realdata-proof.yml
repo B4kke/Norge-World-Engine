@@ -1,0 +1,153 @@
+name: vector-realdata-proof
+
+on:
+  push:
+    branches:
+      - agent/nvdb-osm-compiler-adapters
+    paths:
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - 'tests/fixtures/nannestad_mobile_capture_manifest.json'
+      - '.github/workflows/vector-realdata-proof.yml'
+  workflow_dispatch:
+
+jobs:
+  compile-realdata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Cold live compile
+        run: |
+          mkdir -p /tmp/nwe-data /tmp/nwe-proof
+          nwe-compile-vectors --cache-root /tmp/nwe-data --refresh > /tmp/nwe-proof/cold.json
+          cat /tmp/nwe-proof/cold.json
+
+      - name: Warm offline compile
+        run: |
+          nwe-compile-vectors --cache-root /tmp/nwe-data --offline > /tmp/nwe-proof/warm.json
+          cat /tmp/nwe-proof/warm.json
+
+      - name: Verify cold/warm determinism and compare mobile capture
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          cold = json.loads(Path('/tmp/nwe-proof/cold.json').read_text())
+          warm = json.loads(Path('/tmp/nwe-proof/warm.json').read_text())
+          capture = json.loads(Path('tests/fixtures/nannestad_mobile_capture_manifest.json').read_text())
+
+          if cold.get('status') != 'PASS' or warm.get('status') != 'PASS':
+              raise SystemExit('compiler did not report PASS')
+
+          cold_by = {item['source']: item for item in cold['results']}
+          warm_by = {item['source']: item for item in warm['results']}
+          expected = {'roads': 'nvdb', 'buildings': 'osm'}
+          comparisons = {}
+
+          for source, capture_key in expected.items():
+              c = cold_by[source]
+              w = warm_by[source]
+              if c['raw_sha256'] != w['raw_sha256']:
+                  raise SystemExit(f'{source}: raw SHA changed cold->warm')
+              if c['artifact_sha256'] != w['artifact_sha256']:
+                  raise SystemExit(f'{source}: artifact SHA changed cold->warm')
+              if not w['raw_cache_hit']:
+                  raise SystemExit(f'{source}: warm compile did not use raw cache')
+              if c['normalized_count'] != w['normalized_count'] or c['compiled_count'] != w['compiled_count']:
+                  raise SystemExit(f'{source}: counts changed cold->warm')
+
+              mobile = capture['sources'][capture_key]
+              comparisons[source] = {
+                  'mobile_capture_sha256': mobile['sha256'],
+                  'live_sha256': c['raw_sha256'],
+                  'same_raw_bytes_as_mobile_capture': mobile['sha256'] == c['raw_sha256'],
+                  'mobile_raw_count': mobile['raw_count'],
+                  'live_raw_count': c['raw_object_count'],
+                  'mobile_selected_count': mobile['selected_count'],
+                  'live_selected_count': c['source_selected_count'],
+              }
+
+          report = {
+              'schema': 'nwe.vector-realdata-proof/0.1',
+              'status': 'PASS',
+              'cold': cold,
+              'warm': warm,
+              'mobile_capture_comparison': comparisons,
+          }
+          Path('/tmp/nwe-proof/vector-realdata-report.json').write_text(
+              json.dumps(report, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(report['mobile_capture_comparison'], indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install runtime canonicalization dependency
+        run: npm install --workspace @nwe/schemas-js --include-workspace-root=false
+
+      - name: Verify emitted RuntimeVerificationBundles against artifact bytes
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const report = JSON.parse(fs.readFileSync('/tmp/nwe-proof/cold.json', 'utf8'));
+          const results = [];
+          for (const item of report.results) {
+            const bundle = JSON.parse(fs.readFileSync(item.bundle_path, 'utf8'));
+            const artifact = new Uint8Array(fs.readFileSync(item.artifact_path));
+            const verification = verifyRuntimeBundle(bundle, artifact);
+            if (!verification.ok) {
+              throw new Error(`${item.source}: ${verification.code}: ${verification.detail}`);
+            }
+            results.push({ source: item.source, artifact_sha256: item.artifact_sha256, verification });
+          }
+          fs.writeFileSync(
+            '/tmp/nwe-proof/runtime-verification.json',
+            JSON.stringify({ schema: 'nwe.vector-runtime-verification-proof/0.1', status: 'PASS', results }, null, 2) + '\n'
+          );
+          console.log(JSON.stringify(results.map(({ source, artifact_sha256, verification }) => ({
+            source,
+            artifact_sha256,
+            decision: verification.decision,
+            code: verification.code,
+          })), null, 2));
+          NODE
+
+      - name: Add data attribution notice to proof package
+        run: |
+          cat > /tmp/nwe-proof/ATTRIBUTION.txt <<'EOF'
+          Norge World Engine · Nannestad Prototype 0 vector proof
+
+          Road data: Statens vegvesen. NLOD 1.0.
+          Building data: © OpenStreetMap contributors. ODbL 1.0.
+
+          Raw source responses are intentionally not uploaded by this workflow.
+          Compiled artifacts are prototype evidence only; production redistribution remains license-reviewed separately.
+          EOF
+
+      - name: Stage compiled proof artifacts without raw cache
+        run: |
+          mkdir -p /tmp/nwe-proof/compiled
+          cp -R /tmp/nwe-data/compiled/. /tmp/nwe-proof/compiled/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-vector-realdata-${{ github.sha }}
+          path: /tmp/nwe-proof
+          if-no-files-found: error
+          retention-days: 7
