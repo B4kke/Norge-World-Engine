@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  contracts-and-legacy-regressions:
+  contracts-and-compiler-regressions:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,11 +21,15 @@ jobs:
       - name: Python syntax checks
         run: |
           python -m py_compile tools/geo/verify_nannestad_source_contracts.py
+          python -m compileall -q engine/compiler/src engine/compiler/tests
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
 
       - name: Source contract verifier
         run: python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
+
+      - name: Production-direction compiler regressions
+        run: pytest -q engine/compiler/tests
 
       - name: Migrated SMIA baseline test
         working-directory: prototypes/nannestad/compiler
@@ -35,11 +39,17 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Node syntax checks
+      - name: Install lightweight Node workspaces
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
+
+      - name: Cross-language RFC 8785 schema test
+        run: npm run test:schemas
+
+      - name: Cesium 3D Tiles baseline build
+        run: npm run build:cesium-baseline
+
+      - name: Migrated VEKTOR syntax and baseline test
         run: |
           node --check prototypes/nannestad/runtime/vektor_runtime_gate_v03.mjs
           node --check prototypes/nannestad/runtime/test_vektor_runtime_gate_v03.mjs
-
-      - name: Migrated VEKTOR baseline test
-        working-directory: prototypes/nannestad/runtime
-        run: node test_vektor_runtime_gate_v03.mjs
+          node prototypes/nannestad/runtime/test_vektor_runtime_gate_v03.mjs
