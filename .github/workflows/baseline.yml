@@ -48,6 +48,12 @@ jobs:
       - name: Cross-language RFC 8785 schema test
         run: npm run test:schemas
 
+      - name: Runtime provenance reconstruction regression
+        run: |
+          node --check engine/streaming/runtime_verifier.mjs
+          node --check engine/streaming/test_runtime_verifier.mjs
+          node engine/streaming/test_runtime_verifier.mjs
+
       - name: Cesium 3D Tiles baseline build
         run: npm run build:cesium-baseline
 
