@@ -26,6 +26,29 @@ async function testRanking() {
   );
 }
 
+async function testUpdateAcceptsOneShotIterable() {
+  const tile = { id: 'generator-tile', centerE: 0, centerN: 0 };
+  const scheduler = new TileStreamingScheduler({
+    activeRadiusMeters: 100,
+    retainRadiusMeters: 200,
+    maxResidentTiles: 1,
+    maxConcurrentLoads: 1,
+    maxCacheBytes: 1000,
+    loadTile: async () => ({ payload: { verified: true }, byteSize: 100 }),
+  });
+
+  function* tileGenerator() {
+    yield tile;
+  }
+
+  await scheduler.update({ e: 0, n: 0 }, tileGenerator());
+  const snapshot = await scheduler.whenIdle();
+  assert.equal(snapshot.metrics.loadsStarted, 1);
+  assert.equal(snapshot.metrics.residentCount, 1);
+  assert.equal(snapshot.records[0].id, tile.id);
+  assert.equal(snapshot.records[0].state, 'resident');
+}
+
 async function testConcurrencyAnd3x3Residency() {
   const tiles = createSquareTileGrid({ originE: 611500, originN: 6677500, radius: 1, idPrefix: 'nannestad' });
   let active = 0;
@@ -187,12 +210,13 @@ async function testFailedLoadCanRetryWithoutPoisoningTile() {
 
 async function main() {
   await testRanking();
+  await testUpdateAcceptsOneShotIterable();
   await testConcurrencyAnd3x3Residency();
   await testWarmCacheReentry();
   await testCacheBudgetEvictsOldestInactiveTile();
   await testStaleCompletionCannotResurrectAbortedTile();
   await testFailedLoadCanRetryWithoutPoisoningTile();
-  console.log('tile scheduler regressions: PASS (6 cases)');
+  console.log('tile scheduler regressions: PASS (7 cases)');
 }
 
 main().catch((error) => {
