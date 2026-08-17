@@ -33,6 +33,8 @@ class TileSpec:
             )
         if len(self.bounds) != 4 or not all(isfinite(value) for value in self.bounds):
             raise TileContractError("tile bounds must contain four finite values")
+        if any(abs(value - round(value)) > 1e-9 for value in self.bounds):
+            raise TileContractError("Prototype 0 tile bounds must be aligned to whole metres")
         left, bottom, right, top = self.bounds
         if not (right > left and top > bottom):
             raise TileContractError("tile bounds must have positive width and height")
