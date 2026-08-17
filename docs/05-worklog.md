@@ -40,7 +40,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Final version verification corrected an initial bad Rasterio 1.5.1 pin: upstream marks 1.5.1 as TBD; 1.5.0 is the released stable version and is now pinned.
 - Local runtime versions: Rasterio 1.5.0, pyproj 3.7.2 and Shapely 2.1.2.
 - Local geospatial regressions PASS: 4 tests covering Shapely box/polygon containment, SENTINEL triangle rejection and byte-repeatable Rasterio clip (`4 passed`).
-- The Node JCS known-vector and runtime lineage regression were executed locally against the exact `canonicalize` v3.0.0 implementation from upstream tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
+- The Node JCS known-vector and runtime lineage regression were executed locally against the exact upstream `canonicalize` v3.0.0 source from tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
 - Local Node syntax checks PASS for the schema helper, runtime verifier/regression and Cesium benchmark source.
 - PR #3 is mergeable against `main`.
 - Latest GitHub Actions run #63 for the PR still fails before repository commands execute: the hosted job exposes an empty step list. This is runner/account infrastructure failure, not evidence of a failed repository test.
@@ -104,3 +104,22 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - In the first network + dependency-capable execution, run `nwe-compile-vectors --cache-root data --refresh`, record the real NVDB/OSM hashes/counts/artifact metrics, then immediately run `nwe-compile-vectors --cache-root data --offline` and prove identical artifact hashes with zero source requests. Only then wire those persisted artifacts into the visual Nannestad viewer.
+
+## 2026-08-17 — Mobile source bridge + self-hosted CI fallback
+
+**Gjort**
+- Confirmed the repository is private and the authenticated owner has admin permission. Hosted Actions still creates the job but never assigns a runner; the latest inspected job has no steps, no runner id/name and no downloadable log.
+- GitHub integration access to personal billing and repository Actions-permission endpoints returns 403, so quota/budget/payment state cannot be proven programmatically from the connector.
+- Added `.github/workflows/baseline-self-hosted.yml`, manual `workflow_dispatch` on `runs-on: self-hosted`, mirroring the full compiler/JCS/runtime/viewer/Cesium baseline. This gives a private-PC runner path that does not rely on GitHub-hosted minutes.
+- Added `prototypes/nannestad/mobile_source_capture.html`: exact compiler NVDB/OSM URLs, SHA-256, JSON/source-shape validation, IndexedDB raw-byte cache, cold/warm zero-fetch gate and one-file base64-preserving capture export.
+- Produced the same mobile capture HTML as a direct test artifact for Android; JavaScript passes `node --check`.
+- Updated the task queue so mobile acquisition is a diagnostic bridge only: raw bytes may be captured on Android, but production normalization/compilation remains in World Compiler.
+
+**Bevist**
+- GitHub repository metadata: private repo; owner/admin access is present. Workflow YAML is parsed far enough to create the named job, but hosted execution still has `steps: []` / no runner assignment, so this is not evidence of failing compiler code.
+- Current GitHub documentation confirms private repositories consume hosted Actions allowance while self-hosted runners do not consume hosted-runner minutes; exhausted budgets/allowances can block further hosted use.
+- Mobile bridge syntax and exact request contracts are locally validated; actual Android CORS/IndexedDB/download behavior intentionally remains a device test.
+
+**Neste**
+- User: check personal GitHub `Settings -> Billing & Licensing -> Overview / Budgets and alerts` for Actions quota/budget/payment blocking. If not immediately resolved, register the PC at repository `Settings -> Actions -> Runners -> New self-hosted runner` and trigger `baseline-self-hosted`.
+- Android: run COLD CAPTURE online; then enable airplane mode without closing the tab and run WARM/OFFLINE. Export the capture JSON and return it. Decode/verify those exact raw bytes and feed them into the production offline compiler path; do not reimplement normalization in the browser.
