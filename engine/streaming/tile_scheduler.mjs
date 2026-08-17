@@ -1,11 +1,18 @@
-const DEFAULT_ACTIVE_RADIUS_M = 1600;
-const DEFAULT_RETAIN_RADIUS_M = 2400;
-const DEFAULT_MAX_CONCURRENT = 2;
-const DEFAULT_MAX_RESIDENT_TILES = 9;
-const DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024;
+const DEFAULTS = Object.freeze({
+  activeRadiusMeters: 1600,
+  retainRadiusMeters: 2400,
+  maxConcurrentLoads: 2,
+  maxResidentTiles: 9,
+  maxCacheBytes: 64 * 1024 * 1024,
+});
 
-function finiteNumber(value, label) {
+function finite(value, label) {
   if (!Number.isFinite(value)) throw new TypeError(`${label} must be finite`);
+  return value;
+}
+
+function nonNegative(value, label) {
+  if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be >= 0`);
   return value;
 }
 
@@ -14,32 +21,25 @@ function positiveInteger(value, label) {
   return value;
 }
 
-function nonNegativeNumber(value, label) {
-  if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be >= 0`);
-  return value;
-}
-
 function validateTile(tile) {
   if (!tile || typeof tile !== 'object') throw new TypeError('tile must be an object');
   if (typeof tile.id !== 'string' || tile.id.length === 0) throw new TypeError('tile.id must be a non-empty string');
-  finiteNumber(tile.centerE, `${tile.id}.centerE`);
-  finiteNumber(tile.centerN, `${tile.id}.centerN`);
+  finite(tile.centerE, `${tile.id}.centerE`);
+  finite(tile.centerN, `${tile.id}.centerN`);
   return tile;
 }
 
 function distanceMeters(camera, tile) {
-  const de = tile.centerE - camera.e;
-  const dn = tile.centerN - camera.n;
-  return Math.hypot(de, dn);
+  return Math.hypot(tile.centerE - camera.e, tile.centerN - camera.n);
 }
 
 export function rankTileCandidates(camera, tiles, {
-  activeRadiusMeters = DEFAULT_ACTIVE_RADIUS_M,
-  maxResidentTiles = DEFAULT_MAX_RESIDENT_TILES,
+  activeRadiusMeters = DEFAULTS.activeRadiusMeters,
+  maxResidentTiles = DEFAULTS.maxResidentTiles,
 } = {}) {
-  finiteNumber(camera?.e, 'camera.e');
-  finiteNumber(camera?.n, 'camera.n');
-  nonNegativeNumber(activeRadiusMeters, 'activeRadiusMeters');
+  finite(camera?.e, 'camera.e');
+  finite(camera?.n, 'camera.n');
+  nonNegative(activeRadiusMeters, 'activeRadiusMeters');
   positiveInteger(maxResidentTiles, 'maxResidentTiles');
 
   const seen = new Set();
@@ -51,30 +51,8 @@ export function rankTileCandidates(camera, tiles, {
     const distance = distanceMeters(camera, tile);
     if (distance <= activeRadiusMeters) ranked.push({ tile, distance });
   }
-
   ranked.sort((a, b) => a.distance - b.distance || a.tile.id.localeCompare(b.tile.id));
   return ranked.slice(0, maxResidentTiles);
-}
-
-function cloneMetrics(metrics, records, queueDepth, activeLoads, bytesCached) {
-  let residentCount = 0;
-  let cachedCount = 0;
-  let failedCount = 0;
-  for (const record of records.values()) {
-    if (record.state === 'resident') residentCount += 1;
-    if (record.state === 'cached') cachedCount += 1;
-    if (record.state === 'failed') failedCount += 1;
-  }
-  return {
-    ...metrics,
-    queueDepth,
-    activeLoads,
-    residentCount,
-    cachedCount,
-    failedCount,
-    bytesCached,
-    budgetOvercommitBytes: Math.max(0, bytesCached - metrics.maxCacheBytes),
-  };
 }
 
 export class TileStreamingScheduler {
@@ -83,43 +61,45 @@ export class TileStreamingScheduler {
     activateTile = async () => {},
     deactivateTile = async () => {},
     disposeTile = async () => {},
-    activeRadiusMeters = DEFAULT_ACTIVE_RADIUS_M,
-    retainRadiusMeters = DEFAULT_RETAIN_RADIUS_M,
-    maxConcurrentLoads = DEFAULT_MAX_CONCURRENT,
-    maxResidentTiles = DEFAULT_MAX_RESIDENT_TILES,
-    maxCacheBytes = DEFAULT_MAX_CACHE_BYTES,
+    activeRadiusMeters = DEFAULTS.activeRadiusMeters,
+    retainRadiusMeters = DEFAULTS.retainRadiusMeters,
+    maxConcurrentLoads = DEFAULTS.maxConcurrentLoads,
+    maxResidentTiles = DEFAULTS.maxResidentTiles,
+    maxCacheBytes = DEFAULTS.maxCacheBytes,
     clock = () => performance.now(),
     onEvent = () => {},
   } = {}) {
     if (typeof loadTile !== 'function') throw new TypeError('loadTile is required');
-    if (typeof activateTile !== 'function') throw new TypeError('activateTile must be a function');
-    if (typeof deactivateTile !== 'function') throw new TypeError('deactivateTile must be a function');
-    if (typeof disposeTile !== 'function') throw new TypeError('disposeTile must be a function');
-    nonNegativeNumber(activeRadiusMeters, 'activeRadiusMeters');
-    nonNegativeNumber(retainRadiusMeters, 'retainRadiusMeters');
+    for (const [name, fn] of Object.entries({ activateTile, deactivateTile, disposeTile, clock, onEvent })) {
+      if (typeof fn !== 'function') throw new TypeError(`${name} must be a function`);
+    }
+    nonNegative(activeRadiusMeters, 'activeRadiusMeters');
+    nonNegative(retainRadiusMeters, 'retainRadiusMeters');
     if (retainRadiusMeters < activeRadiusMeters) throw new Error('retainRadiusMeters must be >= activeRadiusMeters');
     positiveInteger(maxConcurrentLoads, 'maxConcurrentLoads');
     positiveInteger(maxResidentTiles, 'maxResidentTiles');
-    nonNegativeNumber(maxCacheBytes, 'maxCacheBytes');
+    nonNegative(maxCacheBytes, 'maxCacheBytes');
 
-    this.loadTile = loadTile;
-    this.activateTile = activateTile;
-    this.deactivateTile = deactivateTile;
-    this.disposeTile = disposeTile;
-    this.activeRadiusMeters = activeRadiusMeters;
-    this.retainRadiusMeters = retainRadiusMeters;
-    this.maxConcurrentLoads = maxConcurrentLoads;
-    this.maxResidentTiles = maxResidentTiles;
-    this.maxCacheBytes = maxCacheBytes;
-    this.clock = clock;
-    this.onEvent = onEvent;
+    Object.assign(this, {
+      loadTile,
+      activateTile,
+      deactivateTile,
+      disposeTile,
+      activeRadiusMeters,
+      retainRadiusMeters,
+      maxConcurrentLoads,
+      maxResidentTiles,
+      maxCacheBytes,
+      clock,
+      onEvent,
+    });
 
     this.records = new Map();
+    this.pendingPromises = new Set();
     this.camera = { e: 0, n: 0 };
     this.generation = 0;
     this.activeLoads = 0;
     this.bytesCached = 0;
-    this.pendingPromises = new Set();
     this.metrics = {
       updates: 0,
       loadsStarted: 0,
@@ -166,18 +146,18 @@ export class TileStreamingScheduler {
   }
 
   async update(camera, tiles) {
-    finiteNumber(camera?.e, 'camera.e');
-    finiteNumber(camera?.n, 'camera.n');
-    this.camera = { e: camera.e, n: camera.n };
-    this.generation += 1;
-    this.metrics.updates += 1;
-
+    finite(camera?.e, 'camera.e');
+    finite(camera?.n, 'camera.n');
     const ranked = rankTileCandidates(camera, tiles, {
       activeRadiusMeters: this.activeRadiusMeters,
       maxResidentTiles: this.maxResidentTiles,
     });
     const desiredIds = new Set(ranked.map(({ tile }) => tile.id));
     const knownIds = new Set();
+
+    this.camera = { e: camera.e, n: camera.n };
+    this.generation += 1;
+    this.metrics.updates += 1;
 
     for (const tile of tiles) {
       const record = this.#recordFor(tile);
@@ -187,7 +167,6 @@ export class TileStreamingScheduler {
       record.desired = desiredIds.has(tile.id);
       if (record.desired) record.lastTouched = this.generation;
     }
-
     for (const record of this.records.values()) {
       if (!knownIds.has(record.tile.id)) {
         record.desired = false;
@@ -197,9 +176,7 @@ export class TileStreamingScheduler {
     }
 
     for (const record of this.records.values()) {
-      if (!record.desired && record.state === 'resident') {
-        await this.#deactivate(record, 'interest-lost');
-      }
+      if (!record.desired && record.state === 'resident') await this.#deactivate(record, 'interest-lost');
       if (!record.desired && record.state === 'queued') record.state = 'idle';
       if (!record.desired && record.state === 'loading' && record.distance > this.retainRadiusMeters) {
         this.#abort(record, 'outside-retain-radius');
@@ -228,17 +205,18 @@ export class TileStreamingScheduler {
 
   #abort(record, reason) {
     if (record.state !== 'loading') return;
+    const controller = record.controller;
     record.loadToken += 1;
-    record.controller?.abort(reason);
     record.controller = null;
     record.state = 'idle';
+    controller?.abort(reason);
     this.metrics.abortRequests += 1;
     this.#emit('load-abort-requested', { tileId: record.tile.id, reason });
   }
 
   async #activate(record, reason) {
     if (record.state === 'resident') return;
-    if (!record.payload) throw new Error(`cannot activate unloaded tile ${record.tile.id}`);
+    if (record.payload == null) throw new Error(`cannot activate unloaded tile ${record.tile.id}`);
     await this.activateTile(record.tile, record.payload, { reason });
     record.state = 'resident';
     record.lastTouched = this.generation;
@@ -260,14 +238,15 @@ export class TileStreamingScheduler {
       const next = [...this.records.values()]
         .filter((record) => record.desired && record.state === 'queued')
         .sort((a, b) => a.priority - b.priority || a.tile.id.localeCompare(b.tile.id))[0];
-      if (!next) break;
+      if (!next) return;
       this.#startLoad(next);
     }
   }
 
   #startLoad(record) {
     record.state = 'loading';
-    record.controller = new AbortController();
+    const controller = new AbortController();
+    record.controller = controller;
     record.loadToken += 1;
     const token = record.loadToken;
     const startedAt = this.clock();
@@ -277,7 +256,7 @@ export class TileStreamingScheduler {
     this.#emit('load-started', { tileId: record.tile.id, priority: record.priority });
 
     const promise = Promise.resolve()
-      .then(() => this.loadTile(record.tile, { signal: record.controller.signal }))
+      .then(() => this.loadTile(record.tile, { signal: controller.signal }))
       .then(async (result) => {
         if (record.loadToken !== token || record.state !== 'loading') {
           this.metrics.staleCompletionsDropped += 1;
@@ -285,7 +264,7 @@ export class TileStreamingScheduler {
           return;
         }
         if (!result || typeof result !== 'object') throw new TypeError(`loadTile(${record.tile.id}) must return an object`);
-        const byteSize = nonNegativeNumber(result.byteSize, `${record.tile.id}.byteSize`);
+        const byteSize = nonNegative(result.byteSize, `${record.tile.id}.byteSize`);
         record.payload = result.payload;
         record.byteSize = byteSize;
         record.controller = null;
@@ -300,15 +279,9 @@ export class TileStreamingScheduler {
           durationMs: this.clock() - startedAt,
         });
 
-        if (record.desired) {
-          record.state = 'cached';
-          await this.#activate(record, 'load-complete');
-        } else if (record.distance <= this.retainRadiusMeters) {
-          record.state = 'cached';
-        } else {
-          record.state = 'cached';
-          await this.#evict(record, 'completed-outside-retain');
-        }
+        record.state = 'cached';
+        if (record.desired) await this.#activate(record, 'load-complete');
+        else if (record.distance > this.retainRadiusMeters) await this.#evict(record, 'completed-outside-retain');
         await this.#enforceBudget();
       })
       .catch((error) => {
@@ -368,14 +341,14 @@ export class TileStreamingScheduler {
   async whenIdle() {
     for (;;) {
       this.#drainQueue();
-      if (this.activeLoads === 0 && ![...this.records.values()].some((record) => record.state === 'queued')) return this.snapshot();
+      const queued = [...this.records.values()].some((record) => record.state === 'queued');
+      if (this.activeLoads === 0 && !queued) return this.snapshot();
       if (this.pendingPromises.size === 0) return this.snapshot();
       await Promise.allSettled([...this.pendingPromises]);
     }
   }
 
   snapshot() {
-    const queueDepth = [...this.records.values()].filter((record) => record.state === 'queued').length;
     const records = [...this.records.values()]
       .map((record) => ({
         id: record.tile.id,
@@ -387,10 +360,21 @@ export class TileStreamingScheduler {
         error: record.error ? String(record.error?.message ?? record.error) : null,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
+    const counts = Object.fromEntries(['resident', 'cached', 'failed'].map((state) => [
+      `${state}Count`,
+      records.filter((record) => record.state === state).length,
+    ]));
     return {
       generation: this.generation,
       camera: { ...this.camera },
-      metrics: cloneMetrics(this.metrics, this.records, queueDepth, this.activeLoads, this.bytesCached),
+      metrics: {
+        ...this.metrics,
+        ...counts,
+        queueDepth: records.filter((record) => record.state === 'queued').length,
+        activeLoads: this.activeLoads,
+        bytesCached: this.bytesCached,
+        budgetOvercommitBytes: Math.max(0, this.bytesCached - this.maxCacheBytes),
+      },
       records,
     };
   }
@@ -403,10 +387,9 @@ export function createSquareTileGrid({
   radius = 1,
   idPrefix = 'tile',
 } = {}) {
-  finiteNumber(originE, 'originE');
-  finiteNumber(originN, 'originN');
-  nonNegativeNumber(tileSizeMeters, 'tileSizeMeters');
-  if (tileSizeMeters === 0) throw new TypeError('tileSizeMeters must be > 0');
+  finite(originE, 'originE');
+  finite(originN, 'originN');
+  if (!Number.isFinite(tileSizeMeters) || tileSizeMeters <= 0) throw new TypeError('tileSizeMeters must be > 0');
   if (!Number.isInteger(radius) || radius < 0) throw new TypeError('radius must be a non-negative integer');
 
   const tiles = [];
