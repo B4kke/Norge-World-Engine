@@ -22,7 +22,7 @@ jobs:
       - name: Install compiler dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Resolve official Atom entry for every 1 km runtime tile
+      - name: Resolve official Atom source set for every 1 km runtime tile
         run: |
           python - <<'PY'
           import hashlib
@@ -32,7 +32,7 @@ jobs:
           from nwe_compiler.sources.dtm1_atom import (
               parse_feed,
               retrieval_identity,
-              select_dataset_entry,
+              select_dataset_sources,
               select_service_dataset,
           )
           from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
@@ -56,35 +56,43 @@ jobs:
           entries = parse_feed(dataset_bytes)
 
           rows = []
+          unique = {}
           for tile in square_tile_grid(radius=1):
-              selected, href, target_wgs84_bounds, extent = select_dataset_entry(entries, target=tile.bounds)
-              identity = retrieval_identity(SERVICE_URL, dataset_url, selected, extent)
+              plan = select_dataset_sources(entries, target=tile.bounds)
+              sources = []
+              for source in plan.sources:
+                  identity = retrieval_identity(SERVICE_URL, dataset_url, source.entry, source.extent)
+                  source_row = {
+                      'dataset_entry_id': source.entry.id,
+                      'dataset_entry_href': source.href,
+                      'dataset_entry_updated': source.entry.updated,
+                      'declared_geometry_type': source.extent.geometry_type,
+                      'canonical_spatial_hash': identity['spatial']['canonical_spatial_hash'],
+                  }
+                  sources.append(source_row)
+                  unique.setdefault(source.href, set()).add(tile.tile_id)
               rows.append({
                   'tile_id': tile.tile_id,
                   'bounds_epsg25832': list(tile.bounds),
-                  'target_wgs84_bounds': list(target_wgs84_bounds),
-                  'dataset_entry_id': selected.id,
-                  'dataset_entry_href': href,
-                  'dataset_entry_updated': selected.updated,
-                  'declared_geometry_type': extent.geometry_type,
-                  'canonical_spatial_hash': identity['spatial']['canonical_spatial_hash'],
+                  'target_wgs84_bounds': list(plan.target_wgs84_bounds),
+                  'mosaic_required': plan.mosaic_required,
+                  'source_count': len(sources),
+                  'sources': sources,
               })
 
-          unique = {}
-          for row in rows:
-              unique.setdefault(row['dataset_entry_href'], []).append(row['tile_id'])
-
           result = {
-              'schema': 'nwe.dtm1-multitile-source-plan-proof/0.1',
+              'schema': 'nwe.dtm1-multitile-source-plan-proof/0.2',
               'status': 'PASS',
               'service_feed_url': SERVICE_URL,
               'service_feed_sha256': service_sha,
               'dataset_feed_url': dataset_url,
               'dataset_feed_sha256': dataset_sha,
+              'dataset_entry_count': len(entries),
               'runtime_tile_count': len(rows),
+              'mosaic_runtime_tile_count': sum(1 for row in rows if row['mosaic_required']),
               'unique_source_count': len(unique),
               'sources': [
-                  {'dataset_entry_href': href, 'runtime_tile_ids': tile_ids}
+                  {'dataset_entry_href': href, 'runtime_tile_ids': sorted(tile_ids)}
                   for href, tile_ids in sorted(unique.items())
               ],
               'tiles': rows,
