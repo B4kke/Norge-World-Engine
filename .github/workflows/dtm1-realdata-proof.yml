@@ -3,7 +3,7 @@ name: dtm1-realdata-proof
 on:
   push:
     branches:
-      - agent/dtm1-terrain-vertical
+      - main
     paths:
       - 'engine/compiler/**'
       - 'engine/streaming/**'
