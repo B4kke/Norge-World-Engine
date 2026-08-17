@@ -1,0 +1,78 @@
+name: dtm1-realdata-proof
+
+on:
+  push:
+    branches:
+      - agent/dtm1-terrain-vertical
+    paths:
+      - 'engine/compiler/**'
+      - '.github/workflows/dtm1-realdata-proof.yml'
+  workflow_dispatch:
+
+jobs:
+  terrain-source-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Probe authoritative DTM1 Atom service and dataset feed
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.request import Request, urlopen
+
+          from nwe_compiler.sources.dtm1_atom import (
+              category_crs,
+              parse_feed,
+              relation_href,
+              select_dataset_entry,
+              select_service_dataset,
+              spatial_provenance,
+          )
+
+          SERVICE_URL = 'https://nedlasting.geonorge.no/geonorge/ATOM/hoydedata/Hoydedata_ServiceFeed.atom'
+          headers = {'User-Agent': 'NorgeWorldEngine/0.1 DTM1 source probe', 'Accept': 'application/atom+xml, application/xml;q=0.9'}
+
+          def fetch(url):
+              with urlopen(Request(url, headers=headers), timeout=60) as response:
+                  body = response.read()
+                  print(json.dumps({'url': url, 'status': response.status, 'content_type': response.headers.get('Content-Type'), 'bytes': len(body)}))
+                  return body
+
+          service_bytes = fetch(SERVICE_URL)
+          service_entries = parse_feed(service_bytes)
+          service_entry, dataset_url = select_service_dataset(service_entries, 'DTM1')
+          print(json.dumps({
+              'service_entry_id': service_entry.id,
+              'service_entry_title': service_entry.title,
+              'dataset_feed_url': dataset_url,
+              'service_entry_count': len(service_entries),
+          }, indent=2, ensure_ascii=False))
+
+          dataset_bytes = fetch(dataset_url)
+          dataset_entries = parse_feed(dataset_bytes)
+          selected, href, target_bbox, extent = select_dataset_entry(dataset_entries)
+          print(json.dumps({
+              'dataset_entry_count': len(dataset_entries),
+              'selected_id': selected.id,
+              'selected_title': selected.title,
+              'selected_updated': selected.updated,
+              'selected_crs': category_crs(selected),
+              'selected_href': href,
+              'selected_href_rel_type': [
+                  {'rel': link['rel'], 'type': link['type'], 'href': link['href']}
+                  for link in selected.links if link['href'] == href
+              ],
+              'target_wgs84_bbox': target_bbox,
+              'declared_spatial': spatial_provenance(extent),
+          }, indent=2, ensure_ascii=False))
+          PY
