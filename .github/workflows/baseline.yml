@@ -15,6 +15,9 @@ jobs:
           python-version: '3.13'
           cache: pip
 
+      - name: Validate repo-local Agent Skills
+        run: python scripts/validate_agent_skills.py
+
       - name: Install Python verification dependencies
         run: python -m pip install -r requirements-dev.txt
 
