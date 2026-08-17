@@ -6,7 +6,7 @@ import os
 import struct
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import numpy as np
 import rasterio
@@ -19,6 +19,8 @@ from nwe_compiler.tiles import NANNESTAD_TILE, TileSpec
 Canonicalizer = Callable[[object], bytes]
 MAGIC = b"NWEHGT01"
 MEDIA_TYPE = "application/vnd.nwe.terrain-height-grid"
+SINGLE_TRANSFORM = "explicit-reproject-fixed-grid"
+MOSAIC_TRANSFORM = "explicit-source-mosaic-reproject-fixed-grid"
 
 
 class TerrainArtifactError(RuntimeError):
@@ -68,7 +70,31 @@ def _tile_grid_shape(tile: TileSpec) -> tuple[int, int]:
     return int(width), int(height)
 
 
-def _validate_normalized_raster(path: Path, tile: TileSpec) -> tuple[dict, np.ndarray]:
+def _normalize_sources(
+    acquired: AcquiredTerrainSource | Iterable[AcquiredTerrainSource],
+) -> tuple[AcquiredTerrainSource, ...]:
+    if isinstance(acquired, AcquiredTerrainSource):
+        sources = (acquired,)
+    else:
+        sources = tuple(acquired)
+    if not sources:
+        raise TerrainArtifactError("terrain compilation requires at least one acquired source")
+    if any(not isinstance(source, AcquiredTerrainSource) for source in sources):
+        raise TerrainArtifactError("terrain source set contains an invalid source object")
+    hrefs = [str(source.retrieval_identity.get("dataset_entry_href") or "") for source in sources]
+    if any(not href for href in hrefs):
+        raise TerrainArtifactError("terrain source retrieval identity lacks dataset entry href")
+    if len(set(hrefs)) != len(hrefs):
+        raise TerrainArtifactError("terrain source set contains duplicate dataset entry hrefs")
+    return tuple(sorted(sources, key=lambda source: (source.retrieval_identity["dataset_entry_href"], source.raw_sha256)))
+
+
+def _validate_normalized_raster(
+    path: Path,
+    tile: TileSpec,
+    *,
+    expected_source_count: int,
+) -> tuple[dict, np.ndarray]:
     metadata = inspect_raster(path)
     expected_width, expected_height = _tile_grid_shape(tile)
     if metadata.crs != tile.horizontal_crs:
@@ -89,8 +115,31 @@ def _validate_normalized_raster(path: Path, tile: TileSpec) -> tuple[dict, np.nd
     with rasterio.open(path) as dataset:
         data = dataset.read(1, out_dtype="float32")
         tags = dataset.tags()
-    if tags.get("NWE_TRANSFORM") != "explicit-reproject-fixed-grid":
-        raise TerrainArtifactError("normalized DTM lacks explicit reprojection transform tag")
+    transform = tags.get("NWE_TRANSFORM")
+    if expected_source_count == 1:
+        if transform != SINGLE_TRANSFORM:
+            raise TerrainArtifactError("single-source normalized DTM lacks proven reprojection transform tag")
+        mosaic_source_count = 1
+        mosaic_overlap_policy = None
+        mosaic_overlap_tolerance_m = None
+    else:
+        if transform != MOSAIC_TRANSFORM:
+            raise TerrainArtifactError("multi-source normalized DTM lacks explicit source-mosaic transform tag")
+        try:
+            mosaic_source_count = int(tags.get("NWE_MOSAIC_SOURCE_COUNT", ""))
+        except ValueError as exc:
+            raise TerrainArtifactError("multi-source normalized DTM has invalid mosaic source count") from exc
+        if mosaic_source_count != expected_source_count:
+            raise TerrainArtifactError(
+                f"normalized DTM mosaic source count mismatch: {mosaic_source_count} != {expected_source_count}"
+            )
+        mosaic_overlap_policy = tags.get("NWE_MOSAIC_OVERLAP_POLICY")
+        if mosaic_overlap_policy != "require-match-before-reproject":
+            raise TerrainArtifactError("normalized DTM mosaic overlap policy is not fail-closed")
+        mosaic_overlap_tolerance_m = tags.get("NWE_MOSAIC_OVERLAP_TOLERANCE_M")
+        if mosaic_overlap_tolerance_m is None:
+            raise TerrainArtifactError("normalized DTM mosaic overlap tolerance is missing")
+
     if tags.get("NWE_RESAMPLING") != "bilinear":
         raise TerrainArtifactError("normalized DTM resampling policy mismatch")
     if tags.get("NWE_VERTICAL_DATUM") != "NN2000":
@@ -106,13 +155,16 @@ def _validate_normalized_raster(path: Path, tile: TileSpec) -> tuple[dict, np.nd
         "height": metadata.height,
         "nodata": float(metadata.nodata),
         "dtype": metadata.dtype,
-        "transform": tags.get("NWE_TRANSFORM"),
+        "transform": transform,
         "resampling": tags.get("NWE_RESAMPLING"),
+        "mosaic_source_count": mosaic_source_count,
+        "mosaic_overlap_policy": mosaic_overlap_policy,
+        "mosaic_overlap_tolerance_m": mosaic_overlap_tolerance_m,
     }, data
 
 
 def _build_bundle(
-    acquired: AcquiredTerrainSource,
+    acquired_sources: tuple[AcquiredTerrainSource, ...],
     normalized_bytes: bytes,
     normalized_meta: dict,
     artifact_bytes: bytes,
@@ -120,16 +172,42 @@ def _build_bundle(
     canonicalizer: Canonicalizer,
     tile: TileSpec,
 ) -> dict:
-    source = terrain_source_snapshot(acquired)
-    source_hash = _hash_object(source, canonicalizer)
+    source_pairs = []
+    for acquired in acquired_sources:
+        source = terrain_source_snapshot(acquired)
+        source_pairs.append((_hash_object(source, canonicalizer), source))
+    source_pairs.sort(key=lambda item: item[0])
+    source_hashes = [item[0] for item in source_pairs]
+    if len(set(source_hashes)) != len(source_hashes):
+        raise TerrainArtifactError("terrain source set contains duplicate SourceSnapshot identity")
+    source_snapshots = [item[1] for item in source_pairs]
+    mosaic = len(source_hashes) > 1
+
     transform = {
         "schema": "nwe.transform-contract/0.1",
-        "source_snapshot_hash": source_hash,
-        "operation": "dtm1-epsg25833-reproject-bilinear-fixed-grid-epsg25832",
+        **(
+            {"source_snapshot_hash": source_hashes[0]}
+            if not mosaic
+            else {"source_snapshot_hashes": source_hashes}
+        ),
+        "operation": (
+            "dtm1-epsg25833-reproject-bilinear-fixed-grid-epsg25832"
+            if not mosaic
+            else "dtm1-source-mosaic-reproject-bilinear-fixed-grid-epsg25832"
+        ),
         "source_crs": "EPSG:25833",
         "horizontal_crs": tile.horizontal_crs,
         "vertical_datum": "NN2000",
         "vertical_operation": "identity-NN2000",
+        **(
+            {}
+            if not mosaic
+            else {
+                "mosaic_source_count": len(source_hashes),
+                "mosaic_overlap_policy": normalized_meta["mosaic_overlap_policy"],
+                "mosaic_overlap_tolerance_m": normalized_meta["mosaic_overlap_tolerance_m"],
+            }
+        ),
         "resampling": "bilinear",
         "bounds_epsg25832": [str(int(round(value))) for value in tile.bounds],
         "pixel_size_m": "1",
@@ -141,7 +219,11 @@ def _build_bundle(
 
     normalized_snapshot = {
         "schema": "nwe.normalized-snapshot/0.1",
-        "source_snapshot_hash": source_hash,
+        **(
+            {"source_snapshot_hash": source_hashes[0]}
+            if not mosaic
+            else {"source_snapshot_hashes": source_hashes}
+        ),
         "transform_contract_hash": transform_hash,
         "sha256": _sha(normalized_bytes),
         "byte_size": len(normalized_bytes),
@@ -166,7 +248,7 @@ def _build_bundle(
         "schema": "nwe.compile-lineage/0.1",
         "tile_id": tile.tile_id,
         "artifact_role": "terrain-height-grid",
-        "source_snapshot_hashes": [source_hash],
+        "source_snapshot_hashes": source_hashes,
         "normalized_snapshot_hashes": [normalized_hash],
         "compiler_config_hash": compiler_config_hash,
     }
@@ -208,8 +290,8 @@ def _build_bundle(
         "bundle_schema": "nwe.runtime-verification-bundle/0.1",
         "canonicalization_id": "urn:ietf:rfc:8785",
         "hash_algorithm": "sha-256",
-        "source_snapshots": [source],
-        "source_snapshot_hashes": [source_hash],
+        "source_snapshots": source_snapshots,
+        "source_snapshot_hashes": source_hashes,
         "transform_contracts": [transform],
         "transform_contract_hashes": [transform_hash],
         "normalized_snapshots": [normalized_snapshot],
@@ -226,20 +308,27 @@ def _build_bundle(
 
 
 def compile_terrain_artifact(
-    acquired: AcquiredTerrainSource,
+    acquired: AcquiredTerrainSource | Iterable[AcquiredTerrainSource],
     normalized_raster: str | Path,
     *,
     canonicalizer: Canonicalizer | None = None,
     tile: TileSpec = NANNESTAD_TILE,
 ) -> CompiledTerrainArtifact:
     canonicalizer = canonicalizer or _canonicalizer
+    acquired_sources = _normalize_sources(acquired)
     normalized_path = Path(normalized_raster)
     normalized_bytes = normalized_path.read_bytes()
-    metadata, data = _validate_normalized_raster(normalized_path, tile)
+    metadata, data = _validate_normalized_raster(
+        normalized_path,
+        tile,
+        expected_source_count=len(acquired_sources),
+    )
 
     valid = data[data != metadata["nodata"]]
     if valid.size == 0:
         raise TerrainArtifactError("canonical DTM contains no valid elevation samples")
+    if valid.size != data.size:
+        raise TerrainArtifactError("canonical DTM contains nodata samples and cannot be promoted")
     header = {
         "schema": "nwe.terrain-height-grid-artifact/0.1",
         "tile_id": tile.tile_id,
@@ -265,7 +354,15 @@ def compile_terrain_artifact(
     if artifact_bytes != artifact_again:
         raise TerrainArtifactError("terrain height-grid compilation is not byte deterministic")
 
-    bundle = _build_bundle(acquired, normalized_bytes, metadata, artifact_bytes, header, canonicalizer, tile)
+    bundle = _build_bundle(
+        acquired_sources,
+        normalized_bytes,
+        metadata,
+        artifact_bytes,
+        header,
+        canonicalizer,
+        tile,
+    )
     return CompiledTerrainArtifact(
         role="terrain-height-grid",
         artifact_bytes=artifact_bytes,
