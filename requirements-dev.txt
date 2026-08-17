@@ -1,1 +1,2 @@
-pyproj>=3.7,<4
+-e ./engine/compiler
+pytest==9.1.1
