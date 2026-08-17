@@ -29,6 +29,9 @@ jobs:
           import json
           from urllib.request import Request, urlopen
 
+          from pyproj import Transformer
+          from shapely.ops import transform as shapely_transform
+
           from nwe_compiler.sources.dtm1_atom import (
               parse_feed,
               retrieval_identity,
@@ -37,6 +40,8 @@ jobs:
           )
           from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
           from nwe_compiler.tiles import square_tile_grid
+
+          to_source_crs = Transformer.from_crs('EPSG:4326', 'EPSG:25833', always_xy=True)
 
           def get(url):
               req = Request(url, headers={
@@ -62,15 +67,23 @@ jobs:
               sources = []
               for source in plan.sources:
                   identity = retrieval_identity(SERVICE_URL, dataset_url, source.entry, source.extent)
+                  source_geometry_25833 = shapely_transform(to_source_crs.transform, source.extent.geometry)
                   source_row = {
                       'dataset_entry_id': source.entry.id,
                       'dataset_entry_href': source.href,
                       'dataset_entry_updated': source.entry.updated,
                       'declared_geometry_type': source.extent.geometry_type,
+                      'declared_extent_wgs84_bounds_lon_lat': list(source.extent.geometry.bounds),
+                      'declared_extent_epsg25833_bounds': list(source_geometry_25833.bounds),
+                      'declared_extent_epsg25833_width_m': source_geometry_25833.bounds[2] - source_geometry_25833.bounds[0],
+                      'declared_extent_epsg25833_height_m': source_geometry_25833.bounds[3] - source_geometry_25833.bounds[1],
                       'canonical_spatial_hash': identity['spatial']['canonical_spatial_hash'],
                   }
                   sources.append(source_row)
-                  unique.setdefault(source.href, set()).add(tile.tile_id)
+                  unique.setdefault(source.href, {
+                      'runtime_tile_ids': set(),
+                      'source': source_row,
+                  })['runtime_tile_ids'].add(tile.tile_id)
               rows.append({
                   'tile_id': tile.tile_id,
                   'bounds_epsg25832': list(tile.bounds),
@@ -81,7 +94,7 @@ jobs:
               })
 
           result = {
-              'schema': 'nwe.dtm1-multitile-source-plan-proof/0.2',
+              'schema': 'nwe.dtm1-multitile-source-plan-proof/0.3',
               'status': 'PASS',
               'service_feed_url': SERVICE_URL,
               'service_feed_sha256': service_sha,
@@ -92,8 +105,11 @@ jobs:
               'mosaic_runtime_tile_count': sum(1 for row in rows if row['mosaic_required']),
               'unique_source_count': len(unique),
               'sources': [
-                  {'dataset_entry_href': href, 'runtime_tile_ids': sorted(tile_ids)}
-                  for href, tile_ids in sorted(unique.items())
+                  {
+                      **record['source'],
+                      'runtime_tile_ids': sorted(record['runtime_tile_ids']),
+                  }
+                  for href, record in sorted(unique.items())
               ],
               'tiles': rows,
           }
