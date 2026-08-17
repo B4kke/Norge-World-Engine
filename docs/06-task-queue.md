@@ -5,11 +5,12 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## P0 — Critical
 
 ### P0-PROVENANCE-02 — Runtime-verifiable lineage
-**Status:** FOUNDATION IMPLEMENTED / VEKTOR RECONSTRUCTION OPEN  
+**Status:** IMPLEMENTED / DEPENDENCY-BACKED EXECUTION VALIDATION BLOCKED BY CI  
 **Owner area:** `engine/schemas`, `engine/streaming`  
-**Done now:** standard RFC 8785/JCS implementations are pinned for Python/Node and share a known canonical/SHA-256 regression vector. Ad-hoc Python `sort_keys` canonicalization is no longer the production direction.  
-**Next concrete result:** version the complete RuntimeVerificationBundle schema in-repo and reconstruct SourceSnapshot -> TransformContract -> NormalizedSnapshot -> CompilerConfig -> CompileLineage -> ArtifactRef -> PromotionRecord in runtime. Add forged-lineage and clip-mutation negative regressions.  
-**Acceptance:** forged self-consistent supplied hash strings are rejected unless reconstructed object hashes/edges match.
+**Done now:** standard RFC 8785/JCS implementations are pinned for Python/Node; `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot -> TransformContract -> NormalizedSnapshot -> CompilerConfig -> CompileLineage -> immutable ArtifactRef -> PromotionRecord, checks reference edges and promotion gates, and verifies artifact bytes before READY. Regressions cover forged self-reported lineage, 1 m clip mutation, raw-source transport and tampered bytes.  
+**Evidence:** runtime/test modules pass local `node --check`; full test execution is wired into baseline CI but the available GitHub hosted job currently fails before step 1, and the isolated local environment cannot install the `canonicalize` dependency.  
+**Next concrete result:** execute `node engine/streaming/test_runtime_verifier.mjs` in a dependency-capable runner and then port the 02.7 object definitions into complete versioned repo schemas.  
+**Acceptance:** dependency-backed run proves forged self-consistent supplied hash strings are rejected unless reconstructed object hashes/edges match. Do not close solely from syntax/static review.
 
 ### P0-ATOM-INDEX-01 — Exact spatial source selection
 **Status:** IMPLEMENTED + LOCAL REGRESSION PASS / PRODUCTION FIELD VALIDATION OPEN  
@@ -46,8 +47,8 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
-**Status:** PREVIOUSLY BLOCKED BY ACCOUNT/BILLING  
-Baseline workflow now also validates repo-local skills, compiler regressions, the JS JCS vector and Cesium benchmark build. Re-check the new PR run; do not call these checks PASS if the hosted runner executes zero steps.
+**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 RUN #44  
+The baseline job exists but reports no executed steps; the Actions API exposes an empty step list and no downloadable job log. Treat this as runner/account infrastructure failure before repository commands execute. Baseline is configured to validate skills, Python compiler regressions, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
 
 ## Explicitly deprioritized until P0 evidence exists
 
