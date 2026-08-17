@@ -60,8 +60,8 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
-**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 RUN #44  
-The baseline job exists but reports no executed steps; the Actions API exposes an empty step list and no downloadable job log. Treat this as runner/account infrastructure failure before repository commands execute. Baseline is configured to validate skills, Python compiler regressions, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
+**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 RUN #44 AND PR #4 RUN #67  
+Both baseline runs create the job and then fail before a repository command executes. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline is configured to validate skills, Python compiler regressions including the new vector suite, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
 
 ## Explicitly deprioritized until P0 evidence exists
 
