@@ -3,7 +3,7 @@ name: vector-realdata-proof
 on:
   push:
     branches:
-      - agent/nvdb-osm-compiler-adapters
+      - main
     paths:
       - 'engine/compiler/**'
       - 'engine/streaming/**'
