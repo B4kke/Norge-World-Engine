@@ -4,7 +4,8 @@ on:
   pull_request:
     paths:
       - 'tools/geo/dtm1_seam_diagnostic.py'
-      - 'engine/compiler/**'
+      - 'engine/compiler/src/nwe_compiler/seam_diagnostic.py'
+      - 'engine/compiler/tests/test_dtm1_seam_diagnostic.py'
       - '.github/workflows/dtm1-seam-diagnostic.yml'
   workflow_dispatch:
 
@@ -112,6 +113,7 @@ jobs:
           from nwe_compiler.raster import warp_dtm_to_canonical_grid
 
           WCS_BASE = 'https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25832'
+          EXPECTED_COVERAGE = 'nhm_dtm_topo_25832'
           BOUNDS = (611000.0, 6676000.0, 612000.0, 6677000.0)
           proof = Path('/tmp/nwe-seam-proof')
           paths = json.loads((proof / 'source-paths.json').read_text(encoding='utf-8'))
@@ -141,9 +143,9 @@ jobs:
                   if child.tag.split('}')[-1] == 'name' and child.text and child.text.strip():
                       names.append(child.text.strip())
           names = sorted(set(names))
-          if len(names) != 1:
-              raise SystemExit(f'expected exactly one WCS coverage, got {names}')
-          coverage = names[0]
+          if EXPECTED_COVERAGE not in names:
+              raise SystemExit(f'expected terrain WCS coverage {EXPECTED_COVERAGE!r}, advertised={names!r}')
+          coverage = EXPECTED_COVERAGE
 
           describe_url = WCS_BASE + '?' + urllib.parse.urlencode({
               'SERVICE': 'WCS',
@@ -205,6 +207,7 @@ jobs:
               'schema': 'nwe.dtm1-wcs-seam-reference/0.1',
               'role': 'independent_qa_sensor_not_promotion_source',
               'endpoint': WCS_BASE,
+              'advertised_coverages': names,
               'coverage': coverage,
               'capabilities_sha256': hashlib.sha256(caps).hexdigest(),
               'describe_coverage_sha256': hashlib.sha256(describe).hexdigest(),
