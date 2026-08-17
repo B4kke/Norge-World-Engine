@@ -7,7 +7,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlencode
+from urllib.error import HTTPError
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from pyproj import Transformer
@@ -17,6 +18,7 @@ TILE_BOUNDS = (611000.0, 6677000.0, 612000.0, 6678000.0)
 NVDB_ENDPOINT = "https://nvdbapiles.atlas.vegvesen.no/vegnett/api/v4/veglenkesekvenser/segmentert"
 OSM_ENDPOINT = "https://api.openstreetmap.org/api/0.6/map.json"
 USER_AGENT = "NorgeWorldEngine/0.1 prototype-world-compiler"
+NVDB_X_CLIENT = "NorgeWorldEngine-Compiler"
 
 
 class AcquisitionError(RuntimeError):
@@ -114,16 +116,40 @@ def osm_contract(bounds: tuple[float, float, float, float] = TILE_BOUNDS) -> Sou
     )
 
 
+def _request_headers(url: str) -> dict[str, str]:
+    headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
+    if urlparse(url).hostname == "nvdbapiles.atlas.vegvesen.no":
+        # NVDB API Les V4 requires callers to identify the client application.
+        headers["X-Client"] = NVDB_X_CLIENT
+    return headers
+
+
+def _http_error_detail(exc: HTTPError) -> str:
+    request_id = exc.headers.get("X-REQUEST-ID") or exc.headers.get("X-Request-ID") or "missing"
+    try:
+        body = exc.read(2048).decode("utf-8", errors="replace").strip()
+    except Exception:  # pragma: no cover - defensive diagnostic path
+        body = ""
+    body = " ".join(body.split())[:1200]
+    suffix = f"; x-request-id={request_id}"
+    if body:
+        suffix += f"; body={body}"
+    return suffix
+
+
 def _default_fetch(url: str, timeout: float) -> bytes:
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
-    with urlopen(request, timeout=timeout) as response:
-        data = response.read()
-        content_type = response.headers.get("Content-Type", "")
-        if response.status != 200:
-            raise AcquisitionError(f"source HTTP {response.status}: {url}")
-        if "json" not in content_type.lower() and not data.lstrip().startswith((b"{", b"[")):
-            raise AcquisitionError(f"source did not return JSON: {content_type}")
-        return data
+    request = Request(url, headers=_request_headers(url))
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            data = response.read()
+            content_type = response.headers.get("Content-Type", "")
+            if response.status != 200:
+                raise AcquisitionError(f"source HTTP {response.status}: {url}")
+            if "json" not in content_type.lower() and not data.lstrip().startswith((b"{", b"[")):
+                raise AcquisitionError(f"source did not return JSON: {content_type}")
+            return data
+    except HTTPError as exc:
+        raise AcquisitionError(f"source HTTP {exc.code}: {url}{_http_error_detail(exc)}") from exc
 
 
 def _validate_and_count(contract: SourceContract, raw_bytes: bytes) -> tuple[int, int]:
