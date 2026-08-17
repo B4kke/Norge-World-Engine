@@ -1,0 +1,5 @@
+{
+  "input": {"z":"Norway","a":[3,2,1],"nested":{"b":null,"a":true}},
+  "canonical": "{\"a\":[3,2,1],\"nested\":{\"a\":true,\"b\":null},\"z\":\"Norway\"}",
+  "sha256": "c07d22a67375e5c21919a32cf4f0bdead461e135dbd18bf60139dd79ba57e96d"
+}
