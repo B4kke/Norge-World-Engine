@@ -5,6 +5,7 @@ import pytest
 from nwe_compiler.tiles import (
     NANNESTAD_TILE,
     TileContractError,
+    TileSpec,
     prototype_tile,
     square_tile_grid,
 )
@@ -47,6 +48,8 @@ def test_square_grid_is_unique_contiguous_and_deterministic():
 def test_prototype_tile_fails_closed_on_non_integer_grid_identity():
     with pytest.raises(TileContractError, match="whole metres"):
         prototype_tile(611000.5, 6677000)
+    with pytest.raises(TileContractError, match="whole metres"):
+        TileSpec("fractional", (611000.25, 6677000.0, 612000.25, 6678000.0))
     with pytest.raises(TileContractError, match="positive"):
         prototype_tile(611000, 6677000, 0)
     with pytest.raises(TileContractError, match="radius"):
