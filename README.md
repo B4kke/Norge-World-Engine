@@ -15,23 +15,23 @@ The project deliberately separates geographic correctness from photorealism, sou
 ## Repository map
 
 ```text
-.agents/skills/          Repo-local AI-agent operating skills
-apps/                    User-facing/runtime applications
-engine/                  Production-direction modules
-  compiler/              Raw -> normalized -> compiled world artifacts
-  geo/                    CRS, coordinates, tiling and spatial rules
-  schemas/                Versioned interchange/runtime contracts
-  streaming/              Tile loading, cache, LOD and observability
-  simulation/             Future deterministic simulation foundation
-tools/                    Data verification and runtime packaging tools
-prototypes/nannestad/     Historical Nannestad experiments
-prototypes/cesium-baseline/  3D Tiles/Cesium benchmark only
-tests/fixtures/           Small deterministic proof fixtures
-docs/                     Decisions, roadmap, worklog and queue
-data/                     README only; raw/generated data stays untracked
+.agents/skills/             Repo-local AI-agent operating skills
+apps/                       User-facing/runtime applications
+engine/                     Production-direction modules
+  compiler/                 Raw -> normalized -> compiled world artifacts
+  geo/                      CRS, coordinates, tiling and spatial rules
+  schemas/                  Versioned interchange/runtime contracts
+  streaming/                Provenance gate, tile loading/cache/LOD/observability
+  simulation/               Future deterministic simulation foundation
+tools/                      Data verification and runtime packaging tools
+prototypes/nannestad/       Historical Nannestad experiments
+prototypes/cesium-baseline/ 3D Tiles/Cesium benchmark only
+tests/fixtures/             Small deterministic proof fixtures
+docs/                       Decisions, roadmap, worklog and queue
+data/                       README only; raw/generated data stays untracked
 ```
 
-## Compiler foundation
+## Compiler and runtime foundation
 
 NWE reuses mature generic libraries instead of maintaining custom replacements:
 
@@ -42,7 +42,7 @@ NWE reuses mature generic libraries instead of maintaining custom replacements:
 - glTF-Transform/meshoptimizer for render-asset optimization;
 - CesiumGS 3D Tiles validator/tools for the runtime-format spike.
 
-Exact versions are pinned in `engine/compiler/pyproject.toml` and Node workspace `package.json` files. 3D Tiles/CesiumJS remains an experiment, not a selected runtime architecture.
+Exact versions are pinned in `engine/compiler/pyproject.toml` and Node workspace `package.json` files. `engine/streaming/runtime_verifier.mjs` reconstructs the versioned provenance chain and verifies compiled artifact bytes before runtime use. 3D Tiles/CesiumJS remains an experiment, not a selected runtime architecture.
 
 ## Repo-local Agent Skills
 
@@ -63,14 +63,15 @@ pytest -q engine/compiler/tests
 # Node workspaces require package install/network access.
 npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
 npm run test:schemas
+node engine/streaming/test_runtime_verifier.mjs
 npm run build:cesium-baseline
 ```
 
-Legacy SMIA/VEKTOR files remain under `prototypes/` where their known historical defects can be reproduced. Corrected production-direction GeoRSS geometry is under `engine/compiler`; full runtime lineage reconstruction remains open.
+Legacy SMIA/VEKTOR files remain under `prototypes/` where their known historical defects can be reproduced. Production-direction GeoRSS geometry is under `engine/compiler`; runtime lineage reconstruction is under `engine/streaming`. Full package-installed CI remains blocked by the hosted runner, so the task queue keeps that execution gate explicit.
 
 ## Highest-value next work
 
-1. Complete VEKTOR RFC 8785/SHA-256 lineage reconstruction and forged-lineage rejection.
+1. Execute the complete dependency-installed baseline when a runner is available.
 2. Materialize the production DTM1 Nannestad source: raw 15 km GeoTIFF -> hash/metadata -> deterministic 1 km normalized clip -> persisted lineage-bound compiled artifact/cache.
 3. Only after the same compiled render artifact exists, validate/package it and compare the CesiumJS 3D Tiles baseline against the custom viewer on the same device/data.
 
