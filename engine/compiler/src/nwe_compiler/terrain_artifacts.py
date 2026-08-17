@@ -12,9 +12,9 @@ import numpy as np
 import rasterio
 
 from nwe_compiler import __version__
-from nwe_compiler.acquisition import TILE_BOUNDS, TILE_ID
 from nwe_compiler.raster import inspect_raster
 from nwe_compiler.terrain_acquisition import AcquiredTerrainSource, terrain_source_snapshot
+from nwe_compiler.tiles import NANNESTAD_TILE, TileSpec
 
 Canonicalizer = Callable[[object], bytes]
 MAGIC = b"NWEHGT01"
@@ -57,15 +57,29 @@ def _artifact_identity_payload(artifact_ref: dict) -> dict:
     return {key: value for key, value in artifact_ref.items() if key not in {"transport", "transport_mutable", "reference"}}
 
 
-def _validate_normalized_raster(path: Path) -> tuple[dict, np.ndarray]:
+def _tile_grid_shape(tile: TileSpec) -> tuple[int, int]:
+    left, bottom, right, top = tile.bounds
+    width_f = right - left
+    height_f = top - bottom
+    width = round(width_f)
+    height = round(height_f)
+    if width <= 0 or height <= 0 or abs(width_f - width) > 1e-9 or abs(height_f - height) > 1e-9:
+        raise TerrainArtifactError("terrain tile bounds must resolve to a positive whole-metre 1 m grid")
+    return int(width), int(height)
+
+
+def _validate_normalized_raster(path: Path, tile: TileSpec) -> tuple[dict, np.ndarray]:
     metadata = inspect_raster(path)
-    if metadata.crs != "EPSG:25832":
-        raise TerrainArtifactError(f"expected canonical EPSG:25832, got {metadata.crs}")
-    if metadata.width != 1000 or metadata.height != 1000:
-        raise TerrainArtifactError(f"expected 1000x1000 canonical tile, got {metadata.width}x{metadata.height}")
+    expected_width, expected_height = _tile_grid_shape(tile)
+    if metadata.crs != tile.horizontal_crs:
+        raise TerrainArtifactError(f"expected canonical {tile.horizontal_crs}, got {metadata.crs}")
+    if metadata.width != expected_width or metadata.height != expected_height:
+        raise TerrainArtifactError(
+            f"expected {expected_width}x{expected_height} canonical tile, got {metadata.width}x{metadata.height}"
+        )
     if metadata.pixel_size != (1.0, 1.0):
         raise TerrainArtifactError(f"expected 1 m canonical grid, got {metadata.pixel_size}")
-    if any(abs(a - b) > 1e-7 for a, b in zip(metadata.bounds, TILE_BOUNDS, strict=True)):
+    if any(abs(a - b) > 1e-7 for a, b in zip(metadata.bounds, tile.bounds, strict=True)):
         raise TerrainArtifactError(f"canonical tile bounds mismatch: {metadata.bounds}")
     if metadata.count != 1:
         raise TerrainArtifactError("terrain artifact requires one elevation band")
@@ -79,6 +93,10 @@ def _validate_normalized_raster(path: Path) -> tuple[dict, np.ndarray]:
         raise TerrainArtifactError("normalized DTM lacks explicit reprojection transform tag")
     if tags.get("NWE_RESAMPLING") != "bilinear":
         raise TerrainArtifactError("normalized DTM resampling policy mismatch")
+    if tags.get("NWE_VERTICAL_DATUM") != "NN2000":
+        raise TerrainArtifactError("normalized DTM vertical datum must be explicit NN2000")
+    if tags.get("NWE_TARGET_CRS") != tile.horizontal_crs:
+        raise TerrainArtifactError("normalized DTM target CRS tag does not match tile CRS")
     return {
         "crs": metadata.crs,
         "vertical_datum": tags.get("NWE_VERTICAL_DATUM"),
@@ -100,6 +118,7 @@ def _build_bundle(
     artifact_bytes: bytes,
     artifact_header: dict,
     canonicalizer: Canonicalizer,
+    tile: TileSpec,
 ) -> dict:
     source = terrain_source_snapshot(acquired)
     source_hash = _hash_object(source, canonicalizer)
@@ -108,14 +127,14 @@ def _build_bundle(
         "source_snapshot_hash": source_hash,
         "operation": "dtm1-epsg25833-reproject-bilinear-fixed-grid-epsg25832",
         "source_crs": "EPSG:25833",
-        "horizontal_crs": "EPSG:25832",
+        "horizontal_crs": tile.horizontal_crs,
         "vertical_datum": "NN2000",
         "vertical_operation": "identity-NN2000",
         "resampling": "bilinear",
-        "bounds_epsg25832": [str(int(value)) for value in TILE_BOUNDS],
+        "bounds_epsg25832": [str(int(round(value))) for value in tile.bounds],
         "pixel_size_m": "1",
-        "width": 1000,
-        "height": 1000,
+        "width": normalized_meta["width"],
+        "height": normalized_meta["height"],
         "num_threads": 1,
     }
     transform_hash = _hash_object(transform, canonicalizer)
@@ -145,7 +164,7 @@ def _build_bundle(
 
     lineage = {
         "schema": "nwe.compile-lineage/0.1",
-        "tile_id": TILE_ID,
+        "tile_id": tile.tile_id,
         "artifact_role": "terrain-height-grid",
         "source_snapshot_hashes": [source_hash],
         "normalized_snapshot_hashes": [normalized_hash],
@@ -157,13 +176,13 @@ def _build_bundle(
     artifact_ref = {
         "schema": "nwe.artifact-ref/0.1",
         "artifact_role": "terrain-height-grid",
-        "tile_id": TILE_ID,
+        "tile_id": tile.tile_id,
         "sha256": artifact_sha,
         "byte_size": len(artifact_bytes),
         "media_type": MEDIA_TYPE,
         "lineage_hash": lineage_hash,
         "artifact_status": "REAL_COMPILED",
-        "transport": {"reference": f"cache://compiled/{TILE_ID}/terrain-height-grid/{artifact_sha}.nwehgt"},
+        "transport": {"reference": f"cache://compiled/{tile.tile_id}/terrain-height-grid/{artifact_sha}.nwehgt"},
     }
     artifact_ref_hash = _hash_object(_artifact_identity_payload(artifact_ref), canonicalizer)
 
@@ -211,23 +230,24 @@ def compile_terrain_artifact(
     normalized_raster: str | Path,
     *,
     canonicalizer: Canonicalizer | None = None,
+    tile: TileSpec = NANNESTAD_TILE,
 ) -> CompiledTerrainArtifact:
     canonicalizer = canonicalizer or _canonicalizer
     normalized_path = Path(normalized_raster)
     normalized_bytes = normalized_path.read_bytes()
-    metadata, data = _validate_normalized_raster(normalized_path)
+    metadata, data = _validate_normalized_raster(normalized_path, tile)
 
     valid = data[data != metadata["nodata"]]
     if valid.size == 0:
         raise TerrainArtifactError("canonical DTM contains no valid elevation samples")
     header = {
         "schema": "nwe.terrain-height-grid-artifact/0.1",
-        "tile_id": TILE_ID,
-        "horizontal_crs": "EPSG:25832",
+        "tile_id": tile.tile_id,
+        "horizontal_crs": tile.horizontal_crs,
         "vertical_datum": "NN2000",
-        "bounds": list(TILE_BOUNDS),
-        "width": 1000,
-        "height": 1000,
+        "bounds": list(tile.bounds),
+        "width": metadata["width"],
+        "height": metadata["height"],
         "pixel_size_m": 1.0,
         "nodata": metadata["nodata"],
         "storage": "float32-le-row-major-north-to-south",
@@ -245,7 +265,7 @@ def compile_terrain_artifact(
     if artifact_bytes != artifact_again:
         raise TerrainArtifactError("terrain height-grid compilation is not byte deterministic")
 
-    bundle = _build_bundle(acquired, normalized_bytes, metadata, artifact_bytes, header, canonicalizer)
+    bundle = _build_bundle(acquired, normalized_bytes, metadata, artifact_bytes, header, canonicalizer, tile)
     return CompiledTerrainArtifact(
         role="terrain-height-grid",
         artifact_bytes=artifact_bytes,
@@ -283,17 +303,27 @@ def persist_terrain_artifact(
     if _sha(normalized_bytes) != result.normalized_sha256:
         raise TerrainArtifactError("normalized raster changed before persistence")
 
-    normalized_path = root / "normalized" / TILE_ID / result.role / f"{result.normalized_sha256}.tif"
-    artifact_path = root / "compiled" / TILE_ID / result.role / f"{result.artifact_sha256}.nwehgt"
-    bundle_path = root / "compiled" / TILE_ID / result.role / f"{result.artifact_sha256}.bundle.json"
+    try:
+        tile_id = str(result.artifact_header["tile_id"])
+        if not tile_id or result.bundle["compile_lineage"]["tile_id"] != tile_id:
+            raise TerrainArtifactError("terrain artifact tile identity is internally inconsistent")
+        if result.bundle["artifact_ref"]["tile_id"] != tile_id:
+            raise TerrainArtifactError("terrain ArtifactRef tile identity mismatch")
+    except (KeyError, TypeError) as exc:
+        raise TerrainArtifactError("terrain artifact lacks complete tile identity") from exc
+
+    normalized_path = root / "normalized" / tile_id / result.role / f"{result.normalized_sha256}.tif"
+    artifact_path = root / "compiled" / tile_id / result.role / f"{result.artifact_sha256}.nwehgt"
+    bundle_path = root / "compiled" / tile_id / result.role / f"{result.artifact_sha256}.bundle.json"
     _write_exact(normalized_path, normalized_bytes)
     _write_exact(artifact_path, result.artifact_bytes)
     _write_exact(bundle_path, canonicalizer(result.bundle))
 
-    latest = root / "compiled" / TILE_ID / result.role / "latest.json"
+    latest = root / "compiled" / tile_id / result.role / "latest.json"
     latest.parent.mkdir(parents=True, exist_ok=True)
     pointer = {
         "schema": "nwe.compiled-cache-pointer/0.1",
+        "tile_id": tile_id,
         "artifact_sha256": result.artifact_sha256,
         "artifact_path": str(artifact_path),
         "bundle_path": str(bundle_path),
