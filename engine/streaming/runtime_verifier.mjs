@@ -57,6 +57,31 @@ function equalStringArrays(actual, expected) {
   return actual.every((value, index) => value === expected[index]);
 }
 
+function sortedUniqueStrings(values, code) {
+  if (!Array.isArray(values) || values.length === 0 || values.some((value) => typeof value !== "string" || !value)) {
+    throw new Error(`${code}:source references must be a non-empty string array`);
+  }
+  const sorted = [...new Set(values)].sort();
+  if (sorted.length !== values.length || !equalStringArrays(values, sorted)) {
+    throw new Error(`${code}:source references must be unique and sorted`);
+  }
+  return sorted;
+}
+
+function sourceRefs(object, code) {
+  const singular = object?.source_snapshot_hash;
+  const plural = object?.source_snapshot_hashes;
+  if (singular != null && plural != null) {
+    throw new Error(`${code}:singular and plural source references are mutually exclusive`);
+  }
+  if (singular != null) {
+    if (typeof singular !== "string" || !singular) throw new Error(`${code}:invalid singular source reference`);
+    return [singular];
+  }
+  if (plural != null) return sortedUniqueStrings(plural, code);
+  throw new Error(`${code}:source reference missing`);
+}
+
 function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -83,15 +108,22 @@ export function verifyRuntimeBundle(bundle, artifactBytes) {
 
     const sourceMap = uniqueMap(bundle.source_snapshots, "nwe.source-snapshot/0.3", "source_snapshot");
     const expectedSourceHashes = [...sourceMap.keys()].sort();
+    if (!expectedSourceHashes.length) return fail("SOURCE_SET_EMPTY", "bundle contains no source snapshots");
     if (!equalStringArrays(bundle.source_snapshot_hashes, expectedSourceHashes)) {
       return fail("SOURCE_HASH_SET_MISMATCH", "bundle source_snapshot_hashes do not match reconstructed hashes");
     }
 
     const transformMap = uniqueMap(bundle.transform_contracts, "nwe.transform-contract/0.1", "transform_contract");
-    for (const transform of transformMap.values()) {
-      if (!sourceMap.has(transform.source_snapshot_hash)) {
-        return fail("TRANSFORM_SOURCE_REF_MISSING", transform.source_snapshot_hash);
+    if (!transformMap.size) return fail("TRANSFORM_SET_EMPTY", "bundle contains no transform contracts");
+    const transformSourceRefs = new Map();
+    const referencedSourceHashes = new Set();
+    for (const [transformHash, transform] of transformMap.entries()) {
+      const refs = sourceRefs(transform, "TRANSFORM_SOURCE_REF");
+      for (const sourceHash of refs) {
+        if (!sourceMap.has(sourceHash)) return fail("TRANSFORM_SOURCE_REF_MISSING", sourceHash);
+        referencedSourceHashes.add(sourceHash);
       }
+      transformSourceRefs.set(transformHash, refs);
     }
     const expectedTransformHashes = [...transformMap.keys()].sort();
     if (!equalStringArrays(bundle.transform_contract_hashes, expectedTransformHashes)) {
@@ -103,17 +135,38 @@ export function verifyRuntimeBundle(bundle, artifactBytes) {
       "nwe.normalized-snapshot/0.1",
       "normalized_snapshot",
     );
+    if (!normalizedMap.size) return fail("NORMALIZED_SET_EMPTY", "bundle contains no normalized snapshots");
+    const referencedTransformHashes = new Set();
     for (const normalized of normalizedMap.values()) {
-      if (!sourceMap.has(normalized.source_snapshot_hash)) {
-        return fail("NORMALIZED_SOURCE_REF_MISSING", normalized.source_snapshot_hash);
+      const refs = sourceRefs(normalized, "NORMALIZED_SOURCE_REF");
+      for (const sourceHash of refs) {
+        if (!sourceMap.has(sourceHash)) return fail("NORMALIZED_SOURCE_REF_MISSING", sourceHash);
       }
       if (!transformMap.has(normalized.transform_contract_hash)) {
         return fail("NORMALIZED_TRANSFORM_REF_MISSING", normalized.transform_contract_hash);
       }
+      const transformRefs = transformSourceRefs.get(normalized.transform_contract_hash);
+      if (!equalStringArrays(refs, transformRefs)) {
+        return fail(
+          "NORMALIZED_SOURCE_SET_MISMATCH",
+          "normalized source set must exactly match its transform source set",
+        );
+      }
+      referencedTransformHashes.add(normalized.transform_contract_hash);
     }
     const expectedNormalizedHashes = [...normalizedMap.keys()].sort();
     if (!equalStringArrays(bundle.normalized_snapshot_hashes, expectedNormalizedHashes)) {
       return fail("NORMALIZED_HASH_SET_MISMATCH", "bundle normalized_snapshot_hashes do not match reconstructed hashes");
+    }
+
+    if (referencedTransformHashes.size !== transformMap.size) {
+      const unused = expectedTransformHashes.filter((hash) => !referencedTransformHashes.has(hash));
+      return fail("UNUSED_TRANSFORM_CONTRACT", unused.join(","));
+    }
+    const usedSourceHashes = [...referencedSourceHashes].sort();
+    if (!equalStringArrays(usedSourceHashes, expectedSourceHashes)) {
+      const unused = expectedSourceHashes.filter((hash) => !referencedSourceHashes.has(hash));
+      return fail("UNUSED_SOURCE_SNAPSHOT", unused.join(","));
     }
 
     ensureSchema(bundle.compiler_config, "nwe.compiler-config/0.1", "COMPILER_CONFIG_SCHEMA");
