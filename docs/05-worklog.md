@@ -151,3 +151,30 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Android: test Forsøk 15 and record artifact SHA PASS, raw source request counter = 0, visual alignment, draw calls and source-debug behavior.
 - Engine: execute `P0-REALDATA-01` DTM1 authoritative terrain vertical; this is now the highest unresolved world-foundation gate.
 - Then package the same terrain+vector inputs for custom viewer and Cesium baseline and compare measured runtime behavior before any renderer/format decision.
+
+## 2026-08-17 — Authoritative DTM1 terrain vertical
+
+**Gjort**
+- Continued from merged `main` on `agent/dtm1-terrain-vertical`; corrected `vector-realdata-proof.yml` so future vector real-data proof follows `main` rather than the historical adapter branch.
+- Probed the live official Kartverket/Geonorge DTM1 Atom service instead of relying on the old source assumptions. Updated production DTM1 parsing to model the live contract: source entries are EPSG:25833; the GeoTIFF file is exposed as `rel=section`, `type=application/geotiff`; actual GeoRSS polygon geometry is authoritative.
+- Added streamed DTM1 acquisition/cache so the ~1.1 GB raw GeoTIFF is SHA-256-bound while streaming to ignored content-addressed storage rather than being loaded into RAM for provenance. Offline reuse rechecks raw size/SHA and raster metadata and performs zero source requests.
+- Kept the existing pixel-aligned/no-resampling DTM normalizer strict. Added a separate explicit Rasterio/GDAL warp from EPSG:25833 to a fixed 1000 × 1000, 1 m EPSG:25832 Nannestad grid with NN2000 preserved and bilinear resampling recorded in the transform contract.
+- Added deterministic `nwe.terrain-height-grid-artifact/0.1`: canonical header + 1,000,000 little-endian float32 elevations, engine-independent and persisted with RuntimeVerificationBundle.
+- Added live DTM1 real-data workflow, source/warp/cache/artifact regressions, proof document, and a parallel viewer-performance Issue #5 that is intentionally isolated from compiler/terrain semantics.
+
+**Bevist**
+- Live official DTM1 dataset feed contained 2033 polygon entries; exactly one declared polygon covers the Nannestad target: `33-125-117.tif`.
+- Raw source: 1,096,856,487 B, EPSG:25833, 1 m float32, 15010 × 15010, nodata -32767, SHA `f1c0f18378cc438d7e4b8f8a2114c4e5aa000216a4fd42965518df9a0bb97708`.
+- Normalized fixed-grid terrain: 1000 × 1000, 1 m EPSG:25832 + NN2000, 1,000,000 valid samples / 0 nodata, min 168.9711 m, max 197.6241 m, mean 189.7122 m, SHA `95c8fcf6f93c8fbb0533d6a82d68416b773f9a146970e1ae85676d3ba41c2adf`.
+- Compiled terrain artifact: 4,000,382 B, SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`.
+- Cold and offline runs produce identical raw, normalized and compiled artifact hashes; offline source requests = 0.
+- Exact compiled terrain bytes pass `runtime_verifier.mjs`: `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.
+- Hosted baseline on the same terrain branch is PASS.
+
+**Endret**
+- Added `terrain_acquisition.py`, `terrain_artifacts.py`, explicit terrain warp support and focused regressions.
+- Added D-007 for the proven Prototype-0 DTM1 transform/runtime artifact; final whole-Norway terrain/LOD format remains explicitly open.
+- Added `docs/proofs/2026-08-17-nannestad-dtm1-realdata.md` and updated the P0 queue to close the source/index/terrain artifact gates.
+
+**Neste**
+- Feed the exact verified terrain artifact into the artifact-only Android/world-viewer together with the 246 road paths + 135 building footprints, use the DTM for ground Z, and measure terrain decode/mesh/upload/first-visible/frame-time/draw calls. In parallel, another agent can work Issue #5 on viewer batching/performance without touching compiler/geodata contracts.
