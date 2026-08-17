@@ -1,0 +1,35 @@
+{
+  "schema": "nwe.mobile-source-capture-manifest/0.1",
+  "tile_id": "epsg25832_611000_6677000_1000m",
+  "capture_exported_at": "2026-08-17T19:25:58.347Z",
+  "capture_file_sha256": "e1dd82bba35c1843a29231078e923de18e18d74c69d7e9b73b2cd60dad51bea9",
+  "verification": {
+    "base64_decoded": true,
+    "declared_sizes_match_decoded_bytes": true,
+    "declared_sha256_match_decoded_bytes": true
+  },
+  "sources": {
+    "nvdb": {
+      "source_id": "statens-vegvesen:nvdb-v4:segmentert-vegnett",
+      "source_crs": "EPSG:25833",
+      "source_vertical_datum": "NN2000",
+      "license_profile": "NLOD-1.0",
+      "captured_at": "2026-08-17T19:25:31.422Z",
+      "byte_size": 722013,
+      "sha256": "789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30",
+      "raw_count": 471,
+      "selected_count": 471
+    },
+    "osm": {
+      "source_id": "openstreetmap:api-0.6:map",
+      "source_crs": "EPSG:4326",
+      "source_vertical_datum": null,
+      "license_profile": "ODbL-1.0",
+      "captured_at": "2026-08-17T19:25:31.684Z",
+      "byte_size": 1053121,
+      "sha256": "dcc09b16ce0a09aa0ec8a632e87d23e17f3977b7d1583871b46b2cabf2a48f6c",
+      "raw_count": 5704,
+      "selected_count": 141
+    }
+  }
+}
