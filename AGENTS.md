@@ -45,9 +45,11 @@ Never make Drive the only copy of new implementation code. Do not commit raw geo
 
 Experiments and historical implementations belong in `prototypes/`. Production-direction code belongs in `engine/` only when its contract and regressions are satisfied.
 
-The corrected GeoRSS polygon predicate is now implemented in `engine/compiler/src/nwe_compiler/`. The legacy v0.2 copy under `prototypes/` remains historical and must not be promoted.
+The corrected GeoRSS polygon predicate is implemented in `engine/compiler/src/nwe_compiler/`; the legacy v0.2 copy under `prototypes/` remains historical.
 
-`02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` in Drive remains the semantic authority for full lineage reconstruction until a complete versioned repo schema/implementation replaces it. The legacy VEKTOR v0.3 runtime gate still trusts supplied lineage and remains a prototype.
+Full RuntimeVerificationBundle reconstruction is implemented in `engine/streaming/runtime_verifier.mjs` against the `02.7` semantic contract: runtime recalculates object hashes/edges, treats transport locators as mutable, requires REAL_COMPILED + promotion gates, and verifies artifact bytes before READY_FOR_RUNTIME. Keep the legacy VEKTOR v0.3 gate under `prototypes/` for historical regression only.
+
+`02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` in Drive remains the semantic authority until the complete contract is represented as versioned repo schemas. Do not weaken the engine verifier to match legacy prototype envelopes.
 
 ## End every task with
 
