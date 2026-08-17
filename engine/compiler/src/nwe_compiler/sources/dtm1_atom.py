@@ -4,7 +4,10 @@ import hashlib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import combinations
 from typing import Optional
+
+from shapely.ops import unary_union
 
 CANONICALIZATION_ID = "urn:ietf:rfc:8785"
 HASH_ALGORITHM = "sha-256"
@@ -75,6 +78,23 @@ class Entry:
     links: list
     categories: list
     declared_extent: Optional[DeclaredExtent]
+
+
+@dataclass(frozen=True)
+class DatasetSourceSelection:
+    entry: Entry
+    href: str
+    extent: DeclaredExtent
+
+
+@dataclass(frozen=True)
+class DatasetSourcePlan:
+    target_wgs84_bounds: tuple[float, float, float, float]
+    sources: tuple[DatasetSourceSelection, ...]
+
+    @property
+    def mosaic_required(self) -> bool:
+        return len(self.sources) > 1
 
 
 def _declared_extent(node) -> Optional[DeclaredExtent]:
@@ -159,36 +179,108 @@ def category_crs(entry: Entry) -> list[str]:
     return sorted(set(values))
 
 
-def select_dataset_entry(
-    entries: list[Entry],
-    target: tuple[float, float, float, float] = TARGET_EPSG25832,
-    required_crs: str = DTM1_SOURCE_CRS,
-):
-    target_polygon = target_wgs84_polygon(target)
-    matches: list[Entry] = []
+def _crs_spatial_entries(entries: list[Entry], required_crs: str) -> tuple[list[Entry], list[Entry]]:
+    resolved: list[Entry] = []
     unresolved: list[Entry] = []
     for entry in entries:
         if required_crs not in category_crs(entry):
             continue
         if entry.declared_extent is None:
             unresolved.append(entry)
-            continue
-        if declared_extent_covers_target(entry.declared_extent, target_polygon):
-            matches.append(entry)
+        else:
+            resolved.append(entry)
+    return resolved, unresolved
 
-    if len(matches) == 1:
-        selected = matches[0]
-        href = geotiff_href(selected)
-        return selected, href, target_polygon.bounds, selected.declared_extent
-    if len(matches) > 1:
-        raise UnresolvedSpatialIndex(f"multiple GeoRSS entries contain target: {len(matches)}")
+
+def select_dataset_sources(
+    entries: list[Entry],
+    target: tuple[float, float, float, float] = TARGET_EPSG25832,
+    required_crs: str = DTM1_SOURCE_CRS,
+) -> DatasetSourcePlan:
+    """Resolve the smallest unambiguous official source set covering a target.
+
+    A runtime/world tile may cross one or more source-tile boundaries because the
+    source and canonical runtime grids use different CRSs. Selection therefore
+    operates on actual declared GeoRSS geometry. A single covering source is
+    preferred. Otherwise the smallest unique combination of intersecting source
+    extents whose geometric union covers the full target is returned. Ambiguous
+    minimal source sets fail closed rather than relying on filename or list order.
+    """
+
+    target_polygon = target_wgs84_polygon(target)
+    resolved, unresolved = _crs_spatial_entries(entries, required_crs)
+
+    singles = [entry for entry in resolved if declared_extent_covers_target(entry.declared_extent, target_polygon)]
+    if len(singles) == 1:
+        selected = singles[0]
+        assert selected.declared_extent is not None
+        return DatasetSourcePlan(
+            target_wgs84_bounds=tuple(target_polygon.bounds),
+            sources=(DatasetSourceSelection(selected, geotiff_href(selected), selected.declared_extent),),
+        )
+    if len(singles) > 1:
+        raise UnresolvedSpatialIndex(f"multiple GeoRSS entries contain target: {len(singles)}")
+
+    intersecting = []
+    for entry in resolved:
+        extent = entry.declared_extent
+        assert extent is not None
+        intersection = extent.geometry.intersection(target_polygon)
+        if not intersection.is_empty and intersection.area > 0:
+            intersecting.append(entry)
+
+    # A 1 km target should only intersect a very small number of 15 km source
+    # extents. A large candidate count indicates malformed/overly broad spatial
+    # metadata and is safer to reject than to run combinatorial selection.
+    if len(intersecting) > 12:
+        raise UnresolvedSpatialIndex(
+            f"too many intersecting GeoRSS entries for deterministic source-set resolution: {len(intersecting)}"
+        )
+
+    for count in range(2, len(intersecting) + 1):
+        covering: list[tuple[Entry, ...]] = []
+        for candidate_set in combinations(intersecting, count):
+            union = unary_union([entry.declared_extent.geometry for entry in candidate_set if entry.declared_extent])
+            if union.covers(target_polygon):
+                covering.append(candidate_set)
+        if not covering:
+            continue
+        if len(covering) != 1:
+            raise UnresolvedSpatialIndex(
+                f"multiple minimal GeoRSS source sets cover target: {len(covering)} sets of {count}"
+            )
+        chosen = tuple(sorted(covering[0], key=lambda item: (geotiff_href(item), item.id)))
+        return DatasetSourcePlan(
+            target_wgs84_bounds=tuple(target_polygon.bounds),
+            sources=tuple(
+                DatasetSourceSelection(entry, geotiff_href(entry), entry.declared_extent)
+                for entry in chosen
+                if entry.declared_extent is not None
+            ),
+        )
+
     if unresolved:
         raise UnresolvedSpatialIndex(
             "UNRESOLVED_SPATIAL_INDEX: "
             f"{len(unresolved)} CRS-compatible entries lack official GeoRSS spatial metadata; "
             "filename/id/title inference forbidden"
         )
-    raise FeedError("no CRS-compatible dataset entry geometry covers target")
+    raise FeedError("no CRS-compatible dataset source set geometry covers target")
+
+
+def select_dataset_entry(
+    entries: list[Entry],
+    target: tuple[float, float, float, float] = TARGET_EPSG25832,
+    required_crs: str = DTM1_SOURCE_CRS,
+):
+    """Backward-compatible single-source selection used by the proven 1 km path."""
+    plan = select_dataset_sources(entries, target=target, required_crs=required_crs)
+    if plan.mosaic_required:
+        raise FeedError(
+            f"target requires {len(plan.sources)} DTM1 sources; use multi-source planning/mosaic path"
+        )
+    selected = plan.sources[0]
+    return selected.entry, selected.href, plan.target_wgs84_bounds, selected.extent
 
 
 def canonical_decimal(value: float) -> str:
