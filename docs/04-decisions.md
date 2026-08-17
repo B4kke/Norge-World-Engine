@@ -23,10 +23,11 @@ Only decisions with evidence belong here. Open questions remain explicitly open.
 
 ## D-004 — Runtime-verifiable provenance
 
-**Status:** Contract accepted; implementation partial.  
+**Status:** Contract accepted; production-direction reconstruction implemented; dependency-backed execution validation pending.  
 **Decision:** provenance objects use versioned schemas, RFC 8785/JCS canonicalization and SHA-256; runtime reconstructs the hash chain rather than trusting supplied lineage strings or PASS flags.  
-**Implementation note:** Python now uses the pinned `rfc8785` package and the JS schema workspace uses `canonicalize`; the complete VEKTOR lineage reconstruction is still open.  
-**Source authority:** Drive `02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` until ported to complete versioned repo schemas/tests.
+**Implementation:** Python uses pinned `rfc8785`; JS uses pinned `canonicalize`. `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot, TransformContract, NormalizedSnapshot, CompilerConfig, CompileLineage, immutable ArtifactRef and PromotionRecord identities, verifies reference edges/promotion gates and finally validates artifact byte size/SHA-256 before `READY_FOR_RUNTIME`. Transport relocation is excluded from immutable ArtifactRef identity.  
+**Validation state:** syntax is locally verified and the forged-lineage/clip-mutation/raw-source/tampered-byte regressions are committed and wired into CI. The dependency-backed Node test has not executed because the available hosted runner currently fails before step 1; do not mark P0-PROVENANCE-02 closed until the regression actually runs.  
+**Source authority:** Drive `02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` until represented by complete versioned repo schemas.
 
 ## D-005 — GeoRSS polygon selection
 
