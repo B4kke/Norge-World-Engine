@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 nwe-normalize-dtm = "nwe_compiler.cli:main"
+nwe-compile-vectors = "nwe_compiler.vector_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

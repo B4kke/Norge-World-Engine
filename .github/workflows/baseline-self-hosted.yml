@@ -1,12 +1,12 @@
-name: baseline
+name: baseline-self-hosted
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   contracts-and-compiler-regressions:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -29,7 +29,7 @@ jobs:
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
 
       - name: Source contract verifier
-        run: python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
+        run: python tools/geo/verify_nannestad_source_contracts.py --output nwe-source-proof.json
 
       - name: Production-direction compiler regressions
         run: pytest -q engine/compiler/tests
@@ -54,7 +54,7 @@ jobs:
           node --check engine/streaming/test_runtime_verifier.mjs
           node engine/streaming/test_runtime_verifier.mjs
 
-      - name: Viewer compiled-artifact boundary regression
+      - name: Compiled-artifact consumer boundary regression
         run: |
           node --check apps/world-viewer/artifact_consumer.mjs
           node --check apps/world-viewer/test_artifact_consumer.mjs

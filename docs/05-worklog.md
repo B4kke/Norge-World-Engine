@@ -40,7 +40,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Final version verification corrected an initial bad Rasterio 1.5.1 pin: upstream marks 1.5.1 as TBD; 1.5.0 is the released stable version and is now pinned.
 - Local runtime versions: Rasterio 1.5.0, pyproj 3.7.2 and Shapely 2.1.2.
 - Local geospatial regressions PASS: 4 tests covering Shapely box/polygon containment, SENTINEL triangle rejection and byte-repeatable Rasterio clip (`4 passed`).
-- The Node JCS known-vector and runtime lineage regression were executed locally against the exact `canonicalize` v3.0.0 implementation from upstream tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
+- The Node JCS known-vector and runtime lineage regression were executed locally against the exact upstream `canonicalize` v3.0.0 source from tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
 - Local Node syntax checks PASS for the schema helper, runtime verifier/regression and Cesium benchmark source.
 - PR #3 is mergeable against `main`.
 - Latest GitHub Actions run #63 for the PR still fails before repository commands execute: the hosted job exposes an empty step list. This is runner/account infrastructure failure, not evidence of a failed repository test.
@@ -53,3 +53,101 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Use a dependency-capable runner to execute the complete baseline, then materialize the authoritative DTM1 raw → normalized Nannestad artifact. Once a compiled GLB/tileset exists, run the Cesium/custom-viewer comparison instead of adding more viewer features.
+
+## 2026-08-17 — NVDB/OSM vector compiler adapters
+
+**Gjort**
+- Continued on a stacked branch from the latest unmerged `agent/core-geospatial-tooling` state rather than rebuilding from `main` or from historical Drive HTML prototypes.
+- Added `nwe_compiler.roads`: deterministic duplicate suppression, 0.25 m endpoint snapping and graph collapse through degree-2 nodes while preserving NVDB sequence IDs as provenance. This targets the Forsøk 14 observation `443 raw -> 443 paths` where browser logic failed to merge source segmentation.
+- Added `nwe_compiler.sources.nvdb`: segmented road WKT ingestion, explicit EPSG:25833 -> EPSG:25832 reprojection with `always_xy=True`, NN2000 Z preservation, sentinel/invalid Z -> null and Shapely-based 1 km tile clipping. Z at new clip vertices is reconstructed from the original source segment instead of trusting GEOS Z behavior.
+- Added `nwe_compiler.sources.osm_buildings`: OSM Main API/Overpass way ingestion, WGS84 -> EPSG:25832, Shapely polygon validity/area/tile gates, explicit `height` and `building:levels` provenance and unresolved height rather than an authoritative heuristic.
+- Added six vector regressions covering road merge, junction boundaries, NVDB reprojection/Z policy, clip-boundary Z interpolation, OSM building normalization and invalid bow-tie rejection.
+- Opened draft stacked PR #4 against `agent/core-geospatial-tooling`; no merge performed.
+
+**Bevist**
+- Android Forsøk 14 supplied 443 NVDB raw segments and 133 OSM building footprints; source acquisition is feasible, while its browser road graph did not reduce raw segmentation.
+- Local focused vector suite: `6 passed in 0.15s`.
+- The first custom line-clipping implementation was rejected during self-review because repo policy prefers pinned Shapely for generic geometry. It was replaced before handoff and a boundary-Z regression was added.
+- PR #4 is mergeable into the stacked core branch.
+- PR #4 baseline run #67 reproduced the infrastructure failure: one job, `steps: []`, `runner_id: 0`, failure before repository commands execute.
+
+**Endret**
+- Branch: `agent/nvdb-osm-compiler-adapters`, stacked on the current core geospatial tooling branch. No merge to `main`.
+- Compiler now has production-direction vector normalization primitives beside the existing DTM/raster/provenance foundation.
+
+**Neste**
+- Persist real Nannestad NVDB/OSM responses outside Git as raw cache, bind SourceSnapshot/retrieval/license identity, run these adapters over the real 443/133 sample and emit deterministic normalized/compiled vector artifacts with RFC 8785 hashes. Viewer/runtime must then consume artifacts with zero raw NVDB/OSM contact.
+
+## 2026-08-17 — Persisted vector-artifact vertical
+
+**Gjort**
+- Synced PR #4 onto the latest `agent/core-geospatial-tooling` head and preserved the corrected Rasterio 1.5.0/provenance state. Removed an unrelated README drift found during stacked-PR QA.
+- Recovered the exact working NVDB/OSM source requests from Drive `Forsøk 14` and revalidated the live endpoints. The compiler now derives its own source envelopes from all four EPSG:25832 tile corners rather than copying the browser's two-corner OSM bbox.
+- Added `nwe_compiler.acquisition`: source contracts, live fetch boundary, JSON validation, SHA-256 content-addressed raw cache, cache integrity checks, `--offline` fail-closed behavior and SourceSnapshot metadata/licensing.
+- Added `nwe_compiler.vector_artifacts`: deterministic normalized road/building JSON, compiled runtime artifacts, CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle compatible with `engine/streaming/runtime_verifier.mjs`.
+- Added `nwe-compile-vectors --refresh|--offline` CLI with raw/normalized/compiled counts, bytes, hashes, cache state and phase timings.
+- Added dependency-free `apps/world-viewer/artifact_consumer.mjs`: bundle + compiled-artifact only, WebCrypto SHA-256/size verification and fail-before-fetch rejection of NVDB/OSM/raw-source transports.
+- Documented Prototype-0 NVDB NLOD and OSM ODbL contracts in `docs/data-licenses/vector-sources.md`; no whole-Norway acquisition decision was made.
+
+**Bevist**
+- Exact code copied to the branch was exercised in an isolated repo mirror: existing vector tests + acquisition/cache/artifact structural regressions = `12 passed` (0.19–0.20 s across repeated run).
+- Viewer artifact-boundary regression PASS: 2 cases, happy path performs exactly two requests (bundle + compiled artifact), malicious NVDB transport is rejected before a second request; reported raw source calls = 0.
+- Cold/warm raw-cache fixture proves a second identical acquisition uses cached bytes and performs zero fetcher calls; offline cache miss fails closed.
+- Live NVDB V4 returned segmented `LINESTRING Z` data for the Nannestad query and live OSM API v0.6 returned ODbL-attributed map elements/building ways, confirming the current source shapes remain available.
+
+**Ikke bevist / blokkert**
+- The execution container has no outbound DNS, so the actual live response bytes cannot be persisted into its ignored `data/raw` workspace. GitHub Actions is still zero-step blocked. Therefore no new production raw SHA-256, actual compiler `raw -> normalized -> compiled` count, artifact SHA or cold/warm timing from the live 443/133-class source set is claimed here.
+- Python `rfc8785` remains unavailable in this isolated container. Structural artifact tests inject a deterministic test serializer; production code defaults to the pinned RFC 8785 implementation and full JCS execution remains a dependency-capable-runner gate.
+
+**Endret**
+- PR #4 now carries the acquisition/cache/artifact/viewer boundary rather than browser-local source compilation. Raw geodata remains outside Git by construction.
+
+**Neste**
+- In the first network + dependency-capable execution, run `nwe-compile-vectors --cache-root data --refresh`, record the real NVDB/OSM hashes/counts/artifact metrics, then immediately run `nwe-compile-vectors --cache-root data --offline` and prove identical artifact hashes with zero source requests. Only then wire those persisted artifacts into the visual Nannestad viewer.
+
+## 2026-08-17 — Mobile source bridge + self-hosted CI fallback
+
+**Gjort**
+- Confirmed the repository is private and the authenticated owner has admin permission. Hosted Actions still creates the job but never assigns a runner; the latest inspected job has no steps, no runner id/name and no downloadable log.
+- GitHub integration access to personal billing and repository Actions-permission endpoints returns 403, so quota/budget/payment state cannot be proven programmatically from the connector.
+- Added `.github/workflows/baseline-self-hosted.yml`, manual `workflow_dispatch` on `runs-on: self-hosted`, mirroring the full compiler/JCS/runtime/viewer/Cesium baseline. This gives a private-PC runner path that does not rely on GitHub-hosted minutes.
+- Added `prototypes/nannestad/mobile_source_capture.html`: exact compiler NVDB/OSM URLs, SHA-256, JSON/source-shape validation, IndexedDB raw-byte cache, cold/warm zero-fetch gate and one-file base64-preserving capture export.
+- Produced the same mobile capture HTML as a direct test artifact for Android; JavaScript passes `node --check`.
+- Updated the task queue so mobile acquisition is a diagnostic bridge only: raw bytes may be captured on Android, but production normalization/compilation remains in World Compiler.
+
+**Bevist**
+- GitHub repository metadata: private repo; owner/admin access is present. Workflow YAML is parsed far enough to create the named job, but hosted execution still has `steps: []` / no runner assignment, so this is not evidence of failing compiler code.
+- Current GitHub documentation confirms private repositories consume hosted Actions allowance while self-hosted runners do not consume hosted-runner minutes; exhausted budgets/allowances can block further hosted use.
+- Mobile bridge syntax and exact request contracts are locally validated; actual Android CORS/IndexedDB/download behavior intentionally remains a device test.
+
+**Neste**
+- User: check personal GitHub `Settings -> Billing & Licensing -> Overview / Budgets and alerts` for Actions quota/budget/payment blocking. If not immediately resolved, register the PC at repository `Settings -> Actions -> Runners -> New self-hosted runner` and trigger `baseline-self-hosted`.
+- Android: run COLD CAPTURE online; then enable airplane mode without closing the tab and run WARM/OFFLINE. Export the capture JSON and return it. Decode/verify those exact raw bytes and feed them into the production offline compiler path; do not reimplement normalization in the browser.
+
+## 2026-08-17 — Hosted real-data vector proof + artifact-only runtime handoff
+
+**Gjort**
+- Repository visibility was changed to public by the owner; GitHub-hosted Actions immediately resumed normal runner assignment. A full baseline then completed checkout, dependency installation, Python compiler regressions, cross-language RFC8785/JCS, runtime provenance regression, artifact-consumer regression, Cesium baseline build and migrated VEKTOR checks successfully.
+- Decoded the supplied Android mobile-capture JSON and verified source byte sizes and SHA-256 values before using its metadata as proof input. Raw bytes remain outside Git; only a small verified manifest is committed.
+- First hosted cold compiler attempt exposed NVDB `HTTP 400`. Root cause: server-side NVDB API Les V4 requires `X-Client`; `nwe_compiler.acquisition` now sends `X-Client: NorgeWorldEngine-Compiler` only to the NVDB host, reports response body/request-id on HTTP failure, and has regression coverage for the header boundary.
+- Added `vector-realdata-proof.yml`: cold live acquisition/compile, warm network-free compile, cold/warm determinism checks, mobile-capture comparison, runtime bundle verification, attribution and short-retention compiled proof artifact upload with raw cache excluded.
+- Added `docs/proofs/2026-08-17-nannestad-vector-realdata.md` with exact execution evidence.
+- Generated a one-file Android Forsøk 15 artifact-only viewer from the successful Actions proof package. It embeds the verified road/building artifacts, browser-SHA-verifies the exact bytes, hard-blocks NVDB/OSM/Overpass networking, renders source-debug information and keeps unresolved building heights visually distinct from source-backed heights. Terrain remains explicitly historical reference data pending DTM1.
+
+**Bevist**
+- Mobile capture: NVDB 722,013 B / 471 objects / SHA `789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30`; OSM 1,053,121 B / 5,704 elements / 141 candidates. Android NVDB bytes are exactly identical to later runner acquisition.
+- Hosted real-data roads: `471 raw -> 407 normalized -> 246 compiled paths`; artifact 171,732 B, SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`. Cold total 2168.958 ms; warm/offline 148.363 ms.
+- Hosted real-data buildings: `5,704 raw / 141 candidates -> 135 validated+compiled footprints`; artifact 80,846 B, SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms.
+- Cold and warm runs yield identical per-source raw/artifact hashes and counts; warm reports raw-cache hits.
+- `runtime_verifier.mjs` returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS` for both exact compiled artifact byte streams.
+- OSM runner response had the same byte size and 5,704/141 counts as the earlier Android capture but a different raw SHA. The pipeline correctly represents it as a distinct SourceSnapshot instead of silently equating source revisions.
+
+**Endret**
+- PR #4 remains draft/unmerged and now contains the live proof workflow, NVDB request fix, mobile-capture manifest, proof documentation and updated P0 queue.
+- `INFRA-CI-01` is resolved; hosted runners are no longer a blocker.
+- `P0-VECTOR-ARTIFACT-01` has real cold/warm + runtime verification evidence rather than fixture-only evidence.
+
+**Neste**
+- Android: test Forsøk 15 and record artifact SHA PASS, raw source request counter = 0, visual alignment, draw calls and source-debug behavior.
+- Engine: execute `P0-REALDATA-01` DTM1 authoritative terrain vertical; this is now the highest unresolved world-foundation gate.
+- Then package the same terrain+vector inputs for custom viewer and Cesium baseline and compare measured runtime behavior before any renderer/format decision.
