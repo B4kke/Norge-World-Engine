@@ -26,42 +26,45 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Acceptance:** second identical run proves cache hits and deterministic output; runtime loads compiled artifact via manifest/bundle only, with no source API contact.
 
 ### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
-**Status:** TOOLING + CESIUM BASELINE HARNESS READY / COMPILED ARTIFACT BLOCKED  
+**Status:** TOOLING + CESIUM BASELINE HARNESS READY / COMPILED RENDER ARTIFACT BLOCKED  
 **Owner area:** `tools/runtime-packaging`, `prototypes/cesium-baseline`  
 **Done now:** pinned glTF-Transform/meshoptimizer, 3D Tiles validator/tools and CesiumJS baseline with load/churn/initial-visible metrics.  
-**Next:** once the same Nannestad compiled GLB/tileset exists, validate it and compare CesiumJS against the custom viewer on the same device/data.  
+**Next:** once the same Nannestad compiled render GLB/tileset exists, validate it and compare CesiumJS against the custom viewer on the same device/data.  
 **Acceptance:** compare cold/warm load, transferred bytes, RAM, first-visible latency, frame time, draw calls and tile churn before proposing a runtime-format decision.
 
 ### P0-NVDB-01 — Road adapter
-**Status:** NORMALIZATION + GRAPH CORE IMPLEMENTED ON STACKED BRANCH / REAL SOURCE SNAPSHOT + ARTIFACT OPEN  
+**Status:** ACQUISITION + NORMALIZATION + GRAPH + ARTIFACT CODE IMPLEMENTED / LIVE SNAPSHOT EXECUTION OPEN  
 **Owner area:** `engine/compiler`  
-**Done now:** `nwe_compiler.sources.nvdb` parses line WKT, explicitly transforms EPSG:25833 -> EPSG:25832, preserves valid NN2000 Z, maps sentinel/invalid Z to null, clips with Shapely and reconstructs Z at clip-boundary vertices. `nwe_compiler.roads` removes duplicate geometry and collapses compatible degree-2 endpoint chains without treating source sequence IDs as renderer-path boundaries.  
-**Evidence:** focused local vector suite passes six regressions total; road-specific cases cover cross-sequence merge, junction stop, CRS/Z semantics and boundary Z interpolation.  
-**Next:** persist an actual Nannestad NVDB response outside Git, create SourceSnapshot/retrieval identity, compile the observed 443-segment sample, report `raw segments -> normalized segments -> road paths`, canonical artifact hash/bytes and cold/warm cache behavior.
+**Done now:** compiler derives the Nannestad source envelope, builds the NVDB V4 `srid=5973` request, validates/hashes/caches raw JSON outside Git, reprojects EPSG:25833 -> EPSG:25832, preserves valid NN2000 Z, clips with Shapely, reconstructs clip-boundary Z and collapses compatible degree-2 road chains. Road output is wrapped in normalized snapshot + RuntimeVerificationBundle lineage.  
+**Evidence:** live endpoint/source shape revalidated; focused local vector + acquisition/artifact fixture suite passes. Historical Forsøk 14 observed 443 raw segments, but the new compiler has not yet been allowed to persist/recompile that live response in this execution environment.  
+**Next:** run `nwe-compile-vectors --cache-root data --refresh --source roads` in a network/dependency-capable environment, record raw SHA/bytes, `raw -> normalized -> paths`, artifact SHA/bytes and timings, then repeat with `--offline` and prove identical artifact hash/no source call.
 
 ### P0-BUILDINGS-01 — Building volumes
-**Status:** OSM FALLBACK NORMALIZER IMPLEMENTED ON STACKED BRANCH / REAL SOURCE SNAPSHOT + HEIGHT ENRICHMENT OPEN  
+**Status:** OSM ACQUISITION + FALLBACK NORMALIZER + ARTIFACT CODE IMPLEMENTED / LIVE SNAPSHOT + HEIGHT ENRICHMENT OPEN  
 **Owner area:** `engine/compiler`  
-**Done now:** `nwe_compiler.sources.osm_buildings` accepts OSM Main API node/way JSON or Overpass geometry, transforms WGS84 -> EPSG:25832, validates/clips footprints with Shapely and rejects invalid/self-crossing polygons. `height` and `building:levels` are provenance-distinct; missing height remains unresolved rather than becoming authoritative heuristic data.  
-**Evidence:** local rectangle/levels normalization and invalid bow-tie rejection regressions pass. Android Forsøk 14 observed 133 building footprints from OSM Main API.  
-**Still open:** OSM multipolygon relation support, persisted source snapshot/license identity, actual 133-feature deterministic compile, and DOM-DTM height enrichment as a separate provenance-bearing transform. FKB remains capability-gated and must not block P0 terrain.
+**Done now:** compiler derives the WGS84 envelope from all four tile corners, validates/hashes/caches OSM API v0.6 raw bytes, transforms building ways to EPSG:25832, validates/clips footprints with Shapely and emits lineage-bound building-footprint artifacts. `height` and `building:levels` remain provenance-distinct; unresolved height is not silently promoted.  
+**Evidence:** live OSM endpoint/source shape revalidated; local building/artifact regressions pass. Historical Forsøk 14 observed 133 building footprints.  
+**Still open:** actual live compiler count/hash, OSM multipolygon relations and DOM-DTM height enrichment as a separate provenance-bearing transform. FKB remains capability-gated and must not block terrain.
 
 ### P0-VECTOR-ARTIFACT-01 — Persisted road/building runtime artifacts
-**Status:** NEW / NEXT FOR THE FORSØK-14 VECTOR PATH  
+**Status:** PIPELINE IMPLEMENTED + LOCAL STRUCTURAL/DETERMINISM PASS / LIVE RAW->ARTIFACT RUN BLOCKED BY EXECUTION NETWORK  
 **Owner area:** `engine/compiler`, `engine/schemas`, viewer consumer  
-**Next concrete result:** persisted raw NVDB + OSM snapshots -> normalized EPSG:25832 structures -> RFC 8785 hashes -> compiled road/building artifact(s) + TransformContract/lineage/ArtifactRef. Runtime/viewer must load only those artifacts.  
-**Acceptance:** two identical compiles produce byte-identical artifact hashes; Android viewer reports the same path/building counts and verified hashes with **zero NVDB/OSM source requests**.
+**Done now:** `nwe_compiler.acquisition` adds SHA-addressed raw cache and offline mode; `nwe_compiler.vector_artifacts` emits normalized bytes, compiled bytes, SourceSnapshot/TransformContract/NormalizedSnapshot/CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle; `nwe-compile-vectors` reports cache/count/hash/byte/timing metrics.  
+**Evidence:** combined existing vector + new acquisition/artifact structural suite = `12 passed`; cold/warm fixture proves second acquisition performs zero network fetches; artifact fixtures are byte deterministic under the injected test serializer. Production defaults to RFC 8785/JCS, whose Python package execution remains a dependency-runner gate.  
+**Block:** this container has no outbound DNS and GitHub Actions is zero-step blocked, so no live raw SHA/artifact SHA or real cold/warm timing is claimed.  
+**Acceptance:** network-capable `--refresh` followed by network-forbidden `--offline` yields identical road/building artifact hashes; runtime verifier accepts bundles; viewer consumes the same artifacts with zero NVDB/OSM calls.
 
 ### P0-VIEWER-01 — Measurable compiled-artifact viewer
-**Status:** CONTRACT/HARNESSES EXIST / REAL TERRAIN + VECTOR ARTIFACTS PENDING  
-**Done now:** one-file Android experiments exposed CRS/imagery/source errors; repo now also has an isolated CesiumJS baseline that loads only compiled 3D Tiles. No renderer is selected.  
-**Next:** after persisted Nannestad artifacts exist, measure manifest load, artifact fetch, SHA verify, decode, local-origin rebase, GPU upload, first visible frame, steady CPU/GPU frame time, draw calls, triangles and RAM/VRAM in the custom viewer and Cesium baseline on the same data/device.
+**Status:** COMPILED-ARTIFACT CONSUMER BOUNDARY IMPLEMENTED / VISUAL INTEGRATION WAITS ON LIVE ARTIFACTS  
+**Done now:** `apps/world-viewer/artifact_consumer.mjs` fetches bundle + compiled JSON artifact only, rejects raw-source transports before the second request, verifies byte size/SHA-256 with Web Crypto and parses only verified bytes. The Cesium baseline remains separate and no renderer is selected.  
+**Evidence:** local consumer regression PASS: happy path = exactly 2 requests, raw source calls = 0; malicious NVDB transport is rejected before a source request.  
+**Next:** after live road/building artifacts are materialized, expose their bundles/artifacts to the Nannestad visual harness and measure fetch/hash/decode/rebase/upload/first-visible/frame-time/draw calls/memory with source networking disabled.
 
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
 **Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 AND PR #4  
-The baseline jobs are created and then fail before repository commands execute. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline is configured to validate skills, Python compiler regressions including the vector suite, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
+The baseline jobs are created and then fail before repository commands execute. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline now also includes the viewer compiled-artifact boundary regression and will validate Python compiler/JCS/runtime/consumer/Cesium checks once a runner becomes available.
 
 ## Explicitly deprioritized until P0 evidence exists
 
