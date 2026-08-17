@@ -1,0 +1,286 @@
+name: dtm1-seam-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'tools/geo/dtm1_seam_diagnostic.py'
+      - 'engine/compiler/**'
+      - '.github/workflows/dtm1-seam-diagnostic.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose-nannestad-source-seam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Acquire exact DTM1 seam sources and measure raw overlap
+        run: |
+          mkdir -p /tmp/nwe-seam-data /tmp/nwe-seam-proof
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from nwe_compiler.dtm1_source_pool import (
+              acquire_dtm1_source_objects,
+              fetch_dtm1_catalog,
+              plan_dtm1_tiles,
+              unique_source_selections,
+          )
+          from nwe_compiler.tiles import prototype_tile
+
+          cache = Path('/tmp/nwe-seam-data')
+          proof = Path('/tmp/nwe-seam-proof')
+          tile = prototype_tile(611000, 6676000)
+          catalog = fetch_dtm1_catalog(timeout=120)
+          plans = plan_dtm1_tiles(catalog, [tile])
+          selections = unique_source_selections(plans)
+          if len(selections) != 2:
+              raise SystemExit(f'expected two source objects at known seam tile, got {len(selections)}')
+          suffixes = {Path(selection.href).name for selection in selections}
+          if suffixes != {'33-125-116.tif', '33-125-117.tif'}:
+              raise SystemExit(f'live seam source set changed: {sorted(suffixes)}')
+
+          sources = acquire_dtm1_source_objects(
+              cache,
+              catalog,
+              selections,
+              refresh=True,
+              timeout=900,
+          )
+          by_name = {Path(source.retrieval_identity['dataset_entry_href']).name: source for source in sources.values()}
+          snapshot = {
+              'schema': 'nwe.dtm1-seam-source-snapshot/0.1',
+              'diagnostic_tile_id': tile.tile_id,
+              'diagnostic_bounds_epsg25832': list(tile.bounds),
+              'catalog': {
+                  'service_feed_url': catalog.service_url,
+                  'service_feed_sha256': catalog.service_sha256,
+                  'dataset_feed_url': catalog.dataset_url,
+                  'dataset_feed_sha256': catalog.dataset_sha256,
+                  'dataset_entry_count': len(catalog.entries),
+              },
+              'sources': [],
+          }
+          for selection in selections:
+              source = sources[selection.href]
+              snapshot['sources'].append({
+                  'dataset_entry_id': selection.entry.id,
+                  'dataset_entry_href': selection.href,
+                  'dataset_entry_updated': selection.entry.updated,
+                  'raw_sha256': source.raw_sha256,
+                  'raw_byte_size': source.raw_byte_size,
+                  'raster_metadata': source.raster_metadata,
+              })
+          snapshot['sources'].sort(key=lambda item: item['dataset_entry_href'])
+          (proof / 'source-snapshot.json').write_text(json.dumps(snapshot, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          (proof / 'source-paths.json').write_text(json.dumps({
+              '116': by_name['33-125-116.tif'].raw_path,
+              '117': by_name['33-125-117.tif'].raw_path,
+          }, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(snapshot, indent=2, sort_keys=True))
+          PY
+
+          SOURCE_116=$(python -c "import json; print(json.load(open('/tmp/nwe-seam-proof/source-paths.json'))['116'])")
+          SOURCE_117=$(python -c "import json; print(json.load(open('/tmp/nwe-seam-proof/source-paths.json'))['117'])")
+          python tools/geo/dtm1_seam_diagnostic.py \
+            --source-a "$SOURCE_116" \
+            --source-b "$SOURCE_117" \
+            --output /tmp/nwe-seam-proof/raw-overlap.json
+
+      - name: Fetch current Kartverket 1 m DTM WCS reference and normalize comparison grids
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import urllib.parse
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          import rasterio
+
+          from nwe_compiler.raster import warp_dtm_to_canonical_grid
+
+          WCS_BASE = 'https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25832'
+          BOUNDS = (611000.0, 6676000.0, 612000.0, 6677000.0)
+          proof = Path('/tmp/nwe-seam-proof')
+          paths = json.loads((proof / 'source-paths.json').read_text(encoding='utf-8'))
+
+          def fetch(url, *, accept='application/xml,text/xml;q=0.9,*/*;q=0.1'):
+              req = urllib.request.Request(url, headers={
+                  'User-Agent': 'NorgeWorldEngine/0.1 terrain-seam-diagnostic',
+                  'Accept': accept,
+              })
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return response.status, response.headers.get('Content-Type'), response.read()
+
+          caps_url = WCS_BASE + '?' + urllib.parse.urlencode({
+              'SERVICE': 'WCS',
+              'VERSION': '1.0.0',
+              'REQUEST': 'GetCapabilities',
+          })
+          status, caps_type, caps = fetch(caps_url)
+          if status != 200:
+              raise SystemExit(f'WCS GetCapabilities HTTP {status}')
+          root = ET.fromstring(caps)
+          names = []
+          for element in root.iter():
+              if element.tag.split('}')[-1] != 'CoverageOfferingBrief':
+                  continue
+              for child in list(element):
+                  if child.tag.split('}')[-1] == 'name' and child.text and child.text.strip():
+                      names.append(child.text.strip())
+          names = sorted(set(names))
+          if len(names) != 1:
+              raise SystemExit(f'expected exactly one WCS coverage, got {names}')
+          coverage = names[0]
+
+          describe_url = WCS_BASE + '?' + urllib.parse.urlencode({
+              'SERVICE': 'WCS',
+              'VERSION': '1.0.0',
+              'REQUEST': 'DescribeCoverage',
+              'COVERAGE': coverage,
+          })
+          d_status, describe_type, describe = fetch(describe_url)
+          if d_status != 200:
+              raise SystemExit(f'WCS DescribeCoverage HTTP {d_status}')
+
+          coverage_url = WCS_BASE + '?' + urllib.parse.urlencode({
+              'SERVICE': 'WCS',
+              'VERSION': '1.0.0',
+              'REQUEST': 'GetCoverage',
+              'COVERAGE': coverage,
+              'CRS': 'EPSG:25832',
+              'RESPONSE_CRS': 'EPSG:25832',
+              'BBOX': ','.join(str(int(value)) for value in BOUNDS),
+              'WIDTH': '1000',
+              'HEIGHT': '1000',
+              'FORMAT': 'GeoTIFF',
+          })
+          c_status, coverage_type, coverage_bytes = fetch(
+              coverage_url,
+              accept='image/tiff,application/geotiff,application/octet-stream;q=0.9,*/*;q=0.1',
+          )
+          if c_status != 200:
+              raise SystemExit(f'WCS GetCoverage HTTP {c_status}')
+          if coverage_bytes[:4] not in (b'II*\x00', b'MM\x00*'):
+              text = coverage_bytes[:1000].decode('utf-8', errors='replace')
+              raise SystemExit(f'WCS GetCoverage did not return TIFF: type={coverage_type!r} head={text!r}')
+          wcs_raw = proof / 'wcs-reference-raw.tif'
+          wcs_raw.write_bytes(coverage_bytes)
+
+          normalized_116 = proof / '116-normalized.tif'
+          normalized_117 = proof / '117-normalized.tif'
+          normalized_wcs = proof / 'wcs-normalized.tif'
+          warp_dtm_to_canonical_grid(paths['116'], normalized_116, BOUNDS)
+          warp_dtm_to_canonical_grid(paths['117'], normalized_117, BOUNDS)
+          warp_dtm_to_canonical_grid(
+              wcs_raw,
+              normalized_wcs,
+              BOUNDS,
+              expected_source_crs='EPSG:25832',
+              target_crs='EPSG:25832',
+          )
+
+          with rasterio.open(normalized_wcs) as dataset:
+              wcs_meta = {
+                  'crs': dataset.crs.to_string() if dataset.crs else None,
+                  'bounds': list(dataset.bounds),
+                  'width': dataset.width,
+                  'height': dataset.height,
+                  'dtype': dataset.dtypes[0],
+                  'nodata': dataset.nodata,
+              }
+          metadata = {
+              'schema': 'nwe.dtm1-wcs-seam-reference/0.1',
+              'role': 'independent_qa_sensor_not_promotion_source',
+              'endpoint': WCS_BASE,
+              'coverage': coverage,
+              'capabilities_sha256': hashlib.sha256(caps).hexdigest(),
+              'describe_coverage_sha256': hashlib.sha256(describe).hexdigest(),
+              'getcoverage_sha256': hashlib.sha256(coverage_bytes).hexdigest(),
+              'getcoverage_byte_size': len(coverage_bytes),
+              'content_types': {
+                  'capabilities': caps_type,
+                  'describe_coverage': describe_type,
+                  'getcoverage': coverage_type,
+              },
+              'requested_bounds_epsg25832': list(BOUNDS),
+              'requested_width': 1000,
+              'requested_height': 1000,
+              'normalized_reference': wcs_meta,
+          }
+          (proof / 'wcs-reference.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(metadata, indent=2, sort_keys=True))
+          PY
+
+          SOURCE_116=$(python -c "import json; print(json.load(open('/tmp/nwe-seam-proof/source-paths.json'))['116'])")
+          SOURCE_117=$(python -c "import json; print(json.load(open('/tmp/nwe-seam-proof/source-paths.json'))['117'])")
+          python tools/geo/dtm1_seam_diagnostic.py \
+            --source-a "$SOURCE_116" \
+            --source-b "$SOURCE_117" \
+            --normalized-a /tmp/nwe-seam-proof/116-normalized.tif \
+            --normalized-b /tmp/nwe-seam-proof/117-normalized.tif \
+            --reference /tmp/nwe-seam-proof/wcs-normalized.tif \
+            --output /tmp/nwe-seam-proof/seam-diagnostic.json
+
+      - name: Persist evidence only, never raw terrain objects
+        run: |
+          rm -f /tmp/nwe-seam-proof/source-paths.json
+          rm -f /tmp/nwe-seam-proof/*.tif
+          if find /tmp/nwe-seam-proof -type f \( -name '*.tif' -o -name '*.tiff' \) | grep -q .; then
+            echo 'raw/diagnostic TIFF unexpectedly remains in proof directory' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          proof = Path('/tmp/nwe-seam-proof')
+          seam = json.loads((proof / 'seam-diagnostic.json').read_text(encoding='utf-8'))
+          raw = seam['raw_overlap']
+          comparison = seam['reference_comparison']
+          summary = {
+              'raw_valid_overlap_pixels': raw['valid_overlap_pixels'],
+              'raw_differing_pixels': raw['differing_pixels'],
+              'raw_differing_fraction': raw['differing_fraction'],
+              'raw_max_abs_delta_m': raw['absolute_delta_m']['max'],
+              'raw_p99_abs_delta_m': raw['absolute_delta_m']['p99'],
+              'wcs_closer_source': comparison['closer_source'],
+              'wcs_rmse_source_a_m': comparison['reference_vs_source_a']['rmse_m'],
+              'wcs_rmse_source_b_m': comparison['reference_vs_source_b']['rmse_m'],
+              'wcs_position_between_sources': comparison['reference_position_between_raw_surfaces'],
+          }
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          (proof / 'summary.json').write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+      - name: Attribution and boundary
+        run: |
+          cat > /tmp/nwe-seam-proof/ATTRIBUTION.txt <<'EOF'
+          Norge World Engine · Nannestad DTM1 seam diagnostic
+
+          DTM1 source objects and the current 1 m terrain WCS are Kartverket / Geonorge data.
+          DTM1 source data is distributed under CC BY 4.0.
+
+          The WCS response is used only as an independent diagnostic/control surface. It is not
+          admitted as SourceSnapshot authority and cannot promote a runtime artifact. Full raw
+          DTM1 GeoTIFFs and the temporary WCS TIFF are deliberately excluded from uploaded evidence.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-dtm1-seam-diagnostic-${{ github.sha }}
+          path: /tmp/nwe-seam-proof
+          if-no-files-found: error
+          retention-days: 7
