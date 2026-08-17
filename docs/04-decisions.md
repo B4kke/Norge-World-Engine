@@ -23,10 +23,10 @@ Only decisions with evidence belong here. Open questions remain explicitly open.
 
 ## D-004 — Runtime-verifiable provenance
 
-**Status:** Contract accepted; production-direction reconstruction implemented; dependency-backed execution validation pending.  
+**Status:** Contract accepted; production-direction reconstruction implemented and locally adversarial-tested; complete installed baseline remains CI-blocked.  
 **Decision:** provenance objects use versioned schemas, RFC 8785/JCS canonicalization and SHA-256; runtime reconstructs the hash chain rather than trusting supplied lineage strings or PASS flags.  
 **Implementation:** Python uses pinned `rfc8785`; JS uses pinned `canonicalize`. `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot, TransformContract, NormalizedSnapshot, CompilerConfig, CompileLineage, immutable ArtifactRef and PromotionRecord identities, verifies reference edges/promotion gates and finally validates artifact byte size/SHA-256 before `READY_FOR_RUNTIME`. Transport relocation is excluded from immutable ArtifactRef identity.  
-**Validation state:** syntax is locally verified and the forged-lineage/clip-mutation/raw-source/tampered-byte regressions are committed and wired into CI. The dependency-backed Node test has not executed because the available hosted runner currently fails before step 1; do not mark P0-PROVENANCE-02 closed until the regression actually runs.  
+**Validation state:** Node JCS vector and runtime reconstruction ran locally against exact upstream `canonicalize` v3.0.0 source: valid bundle/transport relocation PASS; forged lineage, 1 m clip mutation, raw-source locator and wrong bytes are rejected. Python `rfc8785` package execution and normal npm/Vite installation still require a dependency-capable runner. Hosted Actions currently fails before step 1.  
 **Source authority:** Drive `02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` until represented by complete versioned repo schemas.
 
 ## D-005 — GeoRSS polygon selection

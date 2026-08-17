@@ -5,12 +5,12 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## P0 — Critical
 
 ### P0-PROVENANCE-02 — Runtime-verifiable lineage
-**Status:** IMPLEMENTED / DEPENDENCY-BACKED EXECUTION VALIDATION BLOCKED BY CI  
+**Status:** IMPLEMENTED + LOCAL ADVERSARIAL PASS / FULL DEPENDENCY-INSTALL BASELINE BLOCKED BY CI  
 **Owner area:** `engine/schemas`, `engine/streaming`  
 **Done now:** standard RFC 8785/JCS implementations are pinned for Python/Node; `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot -> TransformContract -> NormalizedSnapshot -> CompilerConfig -> CompileLineage -> immutable ArtifactRef -> PromotionRecord, checks reference edges and promotion gates, and verifies artifact bytes before READY. Regressions cover forged self-reported lineage, 1 m clip mutation, raw-source transport and tampered bytes.  
-**Evidence:** runtime/test modules pass local `node --check`; full test execution is wired into baseline CI but the available GitHub hosted job currently fails before step 1, and the isolated local environment cannot install the `canonicalize` dependency.  
-**Next concrete result:** execute `node engine/streaming/test_runtime_verifier.mjs` in a dependency-capable runner and then port the 02.7 object definitions into complete versioned repo schemas.  
-**Acceptance:** dependency-backed run proves forged self-consistent supplied hash strings are rejected unless reconstructed object hashes/edges match. Do not close solely from syntax/static review.
+**Evidence:** runtime/test modules pass local syntax checks. The JCS known-vector and runtime lineage harness also ran locally against the exact upstream `canonicalize` v3.0.0 source: valid bundle/transport relocation PASS; forged lineage rejected as `LINEAGE_HASH_MISMATCH`; clip mutation/raw source/wrong bytes rejected. Full workspace install plus Python `rfc8785` execution still needs a dependency-capable runner.  
+**Next concrete result:** execute the complete baseline using normal package installation and then port the 02.7 object definitions into complete versioned repo schemas.  
+**Acceptance:** normal dependency-installed run reproduces the adversarial PASS; do not close solely from syntax/static review or temporary-source staging.
 
 ### P0-ATOM-INDEX-01 — Exact spatial source selection
 **Status:** IMPLEMENTED + LOCAL REGRESSION PASS / PRODUCTION FIELD VALIDATION OPEN  
@@ -21,7 +21,7 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ### P0-REALDATA-01 — Authoritative DTM1 terrain vertical
 **Status:** BLOCKED / TOOLCHAIN READY, REAL SOURCE NOT YET PROVEN  
 **Owner area:** `engine/compiler`, `tools`  
-**Done now:** Rasterio normalizer can validate/hash and deterministically clip a pixel-aligned EPSG:25832 DTM without hidden reprojection/resampling; repeated synthetic outputs produced identical SHA-256 locally.  
+**Done now:** Rasterio 1.5.0 normalizer can validate/hash and deterministically clip a pixel-aligned EPSG:25832 DTM without hidden reprojection/resampling; repeated synthetic outputs produced identical SHA-256 locally.  
 **Next concrete result:** production service+dataset feed -> unambiguous Nannestad entry -> full raw GeoTIFF -> SHA-256/size/raster metadata -> deterministic 1 km clip -> normalized snapshot -> compiled terrain artifact -> promotion record -> persisted raw/normalized/compiled cache.  
 **Acceptance:** second identical run proves cache hits and deterministic output; runtime loads compiled artifact via manifest/bundle only, with no source API contact.
 
@@ -60,8 +60,8 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
-**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 RUN #44 AND PR #4 RUN #67  
-Both baseline runs create the job and then fail before a repository command executes. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline is configured to validate skills, Python compiler regressions including the new vector suite, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
+**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 AND PR #4  
+The baseline jobs are created and then fail before repository commands execute. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline is configured to validate skills, Python compiler regressions including the vector suite, cross-language JCS, runtime forged-lineage reconstruction and Cesium build once a runner becomes available.
 
 ## Explicitly deprioritized until P0 evidence exists
 

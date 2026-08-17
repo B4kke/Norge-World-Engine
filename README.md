@@ -63,15 +63,16 @@ pytest -q engine/compiler/tests
 # Node workspaces require package install/network access.
 npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
 npm run test:schemas
+node engine/streaming/test_runtime_verifier.mjs
 npm run build:cesium-baseline
 ```
 
-Legacy SMIA/VEKTOR files remain under `prototypes/` where their known historical defects can be reproduced. Corrected production-direction GeoRSS geometry is under `engine/compiler`; full runtime lineage reconstruction remains open.
+Legacy SMIA/VEKTOR files remain under `prototypes/` where their known historical defects can be reproduced. Corrected production-direction GeoRSS geometry is under `engine/compiler`. Production-direction runtime lineage reconstruction is implemented in `engine/streaming/runtime_verifier.mjs`; complete installed-workspace validation remains blocked by the hosted-runner issue documented in the task queue.
 
 ## Highest-value next work
 
-1. Complete VEKTOR RFC 8785/SHA-256 lineage reconstruction and forged-lineage rejection.
-2. Materialize the production DTM1 Nannestad source: raw 15 km GeoTIFF -> hash/metadata -> deterministic 1 km normalized clip -> persisted lineage-bound compiled artifact/cache.
+1. Materialize authoritative Nannestad source snapshots and compile deterministic terrain, road and building artifacts with lineage.
+2. Prove cold/warm cache determinism and runtime consumption with no source API contact.
 3. Only after the same compiled render artifact exists, validate/package it and compare the CesiumJS 3D Tiles baseline against the custom viewer on the same device/data.
 
 See [`docs/06-task-queue.md`](docs/06-task-queue.md).
