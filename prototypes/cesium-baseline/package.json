@@ -1,0 +1,16 @@
+{
+  "name": "@nwe/cesium-baseline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cesium": "1.143.0"
+  },
+  "devDependencies": {
+    "vite": "8.2.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  }
+}
