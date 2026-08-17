@@ -4,75 +4,67 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 
 ## P0 — Critical
 
-### P0-PROVENANCE-02 — Runtime-verifiable lineage
-**Status:** IMPLEMENTED + LOCAL ADVERSARIAL PASS / FULL DEPENDENCY-INSTALL BASELINE BLOCKED BY CI  
-**Owner area:** `engine/schemas`, `engine/streaming`  
-**Done now:** standard RFC 8785/JCS implementations are pinned for Python/Node; `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot -> TransformContract -> NormalizedSnapshot -> CompilerConfig -> CompileLineage -> immutable ArtifactRef -> PromotionRecord, checks reference edges and promotion gates, and verifies artifact bytes before READY. Regressions cover forged self-reported lineage, 1 m clip mutation, raw-source transport and tampered bytes.  
-**Evidence:** runtime/test modules pass local syntax checks. The JCS known-vector and runtime lineage harness also ran locally against the exact upstream `canonicalize` v3.0.0 source: valid bundle/transport relocation PASS; forged lineage rejected as `LINEAGE_HASH_MISMATCH`; clip mutation/raw source/wrong bytes rejected. Full workspace install plus Python `rfc8785` execution still needs a dependency-capable runner.  
-**Next concrete result:** execute the complete baseline using normal package installation and then port the 02.7 object definitions into complete versioned repo schemas.  
-**Acceptance:** normal dependency-installed run reproduces the adversarial PASS; do not close solely from syntax/static review or temporary-source staging.
+### P0-REALDATA-01 — Authoritative DTM1 terrain vertical
+**Status:** HIGHEST OPEN P0 / TOOLCHAIN READY, AUTHORITATIVE SOURCE VERTICAL NOT YET PROVEN  
+**Owner area:** `engine/compiler`, `tools`  
+**Done now:** Rasterio 1.5.0 normalizer validates/hashes and deterministically clips a pixel-aligned EPSG:25832 DTM without hidden reprojection/resampling; synthetic repeatability regressions pass on hosted CI.  
+**Next concrete result:** production service+dataset feed -> unambiguous Nannestad DTM1 entry -> full raw GeoTIFF -> SHA-256/size/raster metadata -> deterministic 1 km clip -> normalized snapshot -> compiled terrain artifact -> promotion record -> persisted raw/normalized/compiled cache.  
+**Acceptance:** second identical run proves cache hit + identical artifact hash; runtime loads compiled terrain via manifest/bundle only and has zero source-service contact.
 
 ### P0-ATOM-INDEX-01 — Exact spatial source selection
-**Status:** IMPLEMENTED + LOCAL REGRESSION PASS / PRODUCTION FIELD VALIDATION OPEN  
+**Status:** IMPLEMENTED + REGRESSION PASS / PRODUCTION DTM1 FIELD VALIDATION OPEN  
 **Owner area:** `engine/compiler`  
-**Done now:** `engine/compiler` parses GeoRSS lat/lon, normalizes to lon/lat, uses bbox only as prefilter and uses actual Shapely `covers` as authority. SENTINEL's adversarial triangle regression passes locally.  
-**Still open:** materialize the live DTM1 dataset feed and confirm which file-specific spatial field is actually present in production before source promotion.
+**Done now:** GeoRSS lat/lon is normalized to lon/lat; bbox is only a prefilter and actual Shapely `covers` is authoritative. SENTINEL adversarial triangle regression passes in hosted baseline.  
+**Next:** materialize the live DTM1 dataset feed and prove which file-specific spatial field identifies the Nannestad raw file before promotion.
 
-### P0-REALDATA-01 — Authoritative DTM1 terrain vertical
-**Status:** BLOCKED / TOOLCHAIN READY, REAL SOURCE NOT YET PROVEN  
-**Owner area:** `engine/compiler`, `tools`  
-**Done now:** Rasterio 1.5.0 normalizer can validate/hash and deterministically clip a pixel-aligned EPSG:25832 DTM without hidden reprojection/resampling; repeated synthetic outputs produced identical SHA-256 locally.  
-**Next concrete result:** production service+dataset feed -> unambiguous Nannestad entry -> full raw GeoTIFF -> SHA-256/size/raster metadata -> deterministic 1 km clip -> normalized snapshot -> compiled terrain artifact -> promotion record -> persisted raw/normalized/compiled cache.  
-**Acceptance:** second identical run proves cache hits and deterministic output; runtime loads compiled artifact via manifest/bundle only, with no source API contact.
-
-### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
-**Status:** TOOLING + CESIUM BASELINE HARNESS READY / COMPILED RENDER ARTIFACT BLOCKED  
-**Owner area:** `tools/runtime-packaging`, `prototypes/cesium-baseline`  
-**Done now:** pinned glTF-Transform/meshoptimizer, 3D Tiles validator/tools and CesiumJS baseline with load/churn/initial-visible metrics.  
-**Next:** once the same Nannestad compiled render GLB/tileset exists, validate it and compare CesiumJS against the custom viewer on the same device/data.  
-**Acceptance:** compare cold/warm load, transferred bytes, RAM, first-visible latency, frame time, draw calls and tile churn before proposing a runtime-format decision.
+### P0-PROVENANCE-02 — Runtime-verifiable lineage
+**Status:** IMPLEMENTED + HOSTED BASELINE PASS + REAL VECTOR ARTIFACT PASS  
+**Owner area:** `engine/schemas`, `engine/streaming`  
+**Evidence:** public hosted baseline installs Python `rfc8785` and Node `canonicalize`, executes cross-language JCS and adversarial runtime regressions, and passes. Real Nannestad road/building bundles from `vector-realdata-proof` are reconstructed against their exact artifact bytes and return `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.  
+**Open:** complete/version the remaining 02.7 schema definitions as repository schemas; provenance implementation is no longer an execution blocker.
 
 ### P0-NVDB-01 — Road adapter
-**Status:** ACQUISITION + NORMALIZATION + GRAPH + ARTIFACT CODE IMPLEMENTED / LIVE SNAPSHOT EXECUTION OPEN  
+**Status:** REAL-DATA VERTICAL PASS / WIDTH + SEMANTIC ENRICHMENT OPEN  
 **Owner area:** `engine/compiler`  
-**Done now:** compiler derives the Nannestad source envelope, builds the NVDB V4 `srid=5973` request, validates/hashes/caches raw JSON outside Git, reprojects EPSG:25833 -> EPSG:25832, preserves valid NN2000 Z, clips with Shapely, reconstructs clip-boundary Z and collapses compatible degree-2 road chains. Road output is wrapped in normalized snapshot + RuntimeVerificationBundle lineage.  
-**Evidence:** live endpoint/source shape revalidated; focused local vector + acquisition/artifact fixture suite passes. Historical Forsøk 14 observed 443 raw segments, but the new compiler has not yet been allowed to persist/recompile that live response in this execution environment.  
-**Next:** obtain the exact raw response either from a network/dependency-capable compiler run or from the mobile source-capture bridge, then run the production compiler and record raw SHA/bytes, `raw -> normalized -> paths`, artifact SHA/bytes and timings; immediately repeat offline and prove identical artifact hash/no source call.
+**Done/evidence:** NVDB V4 acquisition now sends the required `X-Client: NorgeWorldEngine-Compiler`; raw JSON is validated/hashed/cached outside Git, EPSG:25833 -> EPSG:25832 is explicit, valid NN2000 Z is preserved, Shapely clips the 1 km tile and compatible degree-2 chains are collapsed. Hosted real-data proof: **471 raw -> 407 normalized segments -> 246 road paths**, raw SHA `789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30`, artifact SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`. Cold total 2168.958 ms; warm/offline 148.363 ms with identical artifact SHA.  
+**Next:** separate topology from physical surface width/lane semantics; do not infer authoritative asphalt width solely from `typeVeg`.
 
 ### P0-BUILDINGS-01 — Building volumes
-**Status:** OSM ACQUISITION + FALLBACK NORMALIZER + ARTIFACT CODE IMPLEMENTED / LIVE SNAPSHOT + HEIGHT ENRICHMENT OPEN  
+**Status:** REAL FOOTPRINT ARTIFACT PASS / HEIGHT + RELATION ENRICHMENT OPEN  
 **Owner area:** `engine/compiler`  
-**Done now:** compiler derives the WGS84 envelope from all four tile corners, validates/hashes/caches OSM API v0.6 raw bytes, transforms building ways to EPSG:25832, validates/clips footprints with Shapely and emits lineage-bound building-footprint artifacts. `height` and `building:levels` remain provenance-distinct; unresolved height is not silently promoted.  
-**Evidence:** live OSM endpoint/source shape revalidated; local building/artifact regressions pass. Historical Forsøk 14 observed 133 building footprints.  
-**Still open:** actual live compiler count/hash, OSM multipolygon relations and DOM-DTM height enrichment as a separate provenance-bearing transform. FKB remains capability-gated and must not block terrain.
+**Done/evidence:** OSM API 0.6 source is hashed/cached, WGS84 -> EPSG:25832 is explicit, Shapely validates/clips polygons, and explicit `height` / `building:levels` provenance is preserved without silent authoritative fallback. Hosted real-data proof: **5,704 raw elements / 141 building candidates -> 135 validated+compiled footprints**, artifact SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms with identical artifact SHA.  
+**Still open:** OSM multipolygon relations, DOM-DTM height enrichment as a separate provenance-bearing transform, and capability-gated FKB evaluation. Unresolved height must remain unresolved in authoritative data.
 
 ### P0-VECTOR-ARTIFACT-01 — Persisted road/building runtime artifacts
-**Status:** PIPELINE IMPLEMENTED + LOCAL STRUCTURAL/DETERMINISM PASS + MOBILE RAW-CAPTURE BRIDGE READY / PRODUCTION LIVE COMPILE OPEN  
+**Status:** REAL-DATA COLD/WARM + RUNTIME VERIFICATION PASS  
 **Owner area:** `engine/compiler`, `engine/schemas`, viewer consumer  
-**Done now:** `nwe_compiler.acquisition` adds SHA-addressed raw cache and offline mode; `nwe_compiler.vector_artifacts` emits normalized bytes, compiled bytes, SourceSnapshot/TransformContract/NormalizedSnapshot/CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle; `nwe-compile-vectors` reports cache/count/hash/byte/timing metrics. `prototypes/nannestad/mobile_source_capture.html` can fetch the exact compiler NVDB/OSM contracts on Android, SHA-256 the raw bytes, store them in IndexedDB, prove a zero-fetch warm/offline read and export one base64-preserving capture JSON for compiler ingestion.  
-**Evidence:** combined existing vector + acquisition/artifact structural suite = `12 passed`; cold/warm fixture proves second acquisition performs zero network fetches; artifact fixtures are byte deterministic under the injected test serializer. Production defaults to RFC 8785/JCS, whose Python package execution remains a dependency-runner gate. Mobile bridge JavaScript syntax is locally checked; live mobile CORS/IndexedDB behavior is the next device gate.  
-**Block:** the isolated execution container cannot perform the compiler's live HTTP acquisition and GitHub-hosted Actions has no assigned runner. Mobile capture now provides a concrete path to obtain the exact raw bytes without moving compilation back into the browser.  
-**Acceptance:** exact live raw bytes -> production `--offline` compile -> road/building artifact hashes; repeated compile yields identical hashes; runtime verifier accepts bundles; viewer consumes the same artifacts with zero NVDB/OSM calls.
+**Done/evidence:** `nwe_compiler.acquisition` provides SHA-addressed raw cache/offline fail-closed mode; `nwe_compiler.vector_artifacts` emits normalized bytes, compiled bytes and the complete SourceSnapshot -> TransformContract -> NormalizedSnapshot -> CompilerConfig -> CompileLineage -> ArtifactRef -> PromotionRecord -> RuntimeVerificationBundle chain. `vector-realdata-proof` on hosted runner proves cold live acquisition followed by network-free warm compile with identical raw/artifact hashes. `runtime_verifier.mjs` accepts both exact artifacts.  
+**Mobile corroboration:** Android capture NVDB raw bytes are byte-identical to the later runner acquisition. OSM capture and runner acquisition retain identical 5,704/141 counts but different raw SHA, correctly creating distinct SourceSnapshot identity.  
+**Proof:** `docs/proofs/2026-08-17-nannestad-vector-realdata.md`.  
+**Next:** visual runtime integration from compiled artifact inputs only; no raw NVDB/OSM contact.
 
 ### P0-VIEWER-01 — Measurable compiled-artifact viewer
-**Status:** COMPILED-ARTIFACT CONSUMER BOUNDARY IMPLEMENTED / VISUAL INTEGRATION WAITS ON LIVE ARTIFACTS  
-**Done now:** `apps/world-viewer/artifact_consumer.mjs` fetches bundle + compiled JSON artifact only, rejects raw-source transports before the second request, verifies byte size/SHA-256 with Web Crypto and parses only verified bytes. The Cesium baseline remains separate and no renderer is selected.  
-**Evidence:** local consumer regression PASS: happy path = exactly 2 requests, raw source calls = 0; malicious NVDB transport is rejected before a source request.  
-**Next:** after live road/building artifacts are materialized, expose their bundles/artifacts to the Nannestad visual harness and measure fetch/hash/decode/rebase/upload/first-visible/frame-time/draw calls/memory with source networking disabled.
+**Status:** ARTIFACT BOUNDARY PASS / FIRST REAL ARTIFACT-ONLY MOBILE HARNESS READY FOR DEVICE TEST  
+**Done now:** `apps/world-viewer/artifact_consumer.mjs` rejects raw-source transports before fetch and verifies compiled bytes. A generated one-file Forsøk 15 mobile harness embeds the two passing compiled Nannestad artifacts, SHA-verifies them in-browser, hard-blocks NVDB/OSM/Overpass network use, renders 246 road paths + 135 footprints, keeps unresolved building height visibly diagnostic, and retains World Imagery only as a visual sensor layer. Terrain is still the historical reference raster and is explicitly not promoted.  
+**Next device evidence:** Android load/first-visible, artifact SHA pass, raw-source call counter = 0, draw calls/frame behavior, alignment screenshot, and source-debug inspection. Then convert the one-file experiment into a repeatable repo-side packaging/benchmark path rather than keeping generated HTML as architecture.
+
+### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
+**Status:** TOOLING + CESIUM BASELINE BUILD PASS / SHARED TERRAIN+VECTOR RENDER ARTIFACT OPEN  
+**Owner area:** `tools/runtime-packaging`, `prototypes/cesium-baseline`  
+**Done:** pinned glTF-Transform/meshoptimizer/3D Tiles tools and CesiumJS baseline; hosted baseline successfully builds the Cesium harness.  
+**Next:** once the Nannestad terrain + vector render GLB/tileset exists, validate it and compare CesiumJS vs custom viewer on the same device/data: cold/warm bytes, RAM, first-visible, frame time, draw calls and tile churn. No renderer decision before that evidence.
 
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
-**Status:** ZERO-STEP FAILURE CONFIRMED; PRIVATE-REPO BILLING/BUDGET IS LEADING HYPOTHESIS; SELF-HOSTED FALLBACK ADDED  
-The repository is private and PR #3/#4 hosted jobs are created but fail before repository commands execute. Latest inspected PR #4 job has `steps: []`, `runner_id: 0`, no runner name and no downloadable job log. The GitHub integration cannot read personal billing/Actions-permission endpoints (403), so quota/budget/payment status cannot be proven from the connector. GitHub documentation states that private repositories consume the account's hosted-runner allowance and usage can be blocked when included quota/budget/payment conditions prevent additional Actions use.  
-**User check:** GitHub personal `Settings -> Billing & Licensing -> Overview / Budgets and alerts`, inspect Actions usage and any `Stop usage when budget limit is reached` rule; also verify repository `Settings -> Actions -> General`.  
-**Fallback implemented:** `.github/workflows/baseline-self-hosted.yml` is `workflow_dispatch` + `runs-on: self-hosted`, so a registered private-repo PC runner can execute the full baseline without GitHub-hosted minutes. Do not expose a self-hosted runner to untrusted public PR code.
+**Status:** RESOLVED  
+The repository is now public and GitHub-hosted runners execute normally. Baseline run after the visibility change completed checkout, Python dependency installation, compiler regressions, RFC8785/JCS tests, runtime provenance regression, viewer boundary test, Cesium build and VEKTOR baseline successfully. The old `steps: [] / runner_id: 0` condition is no longer an active blocker. `baseline-self-hosted.yml` may remain as an optional controlled fallback, but is not required for current P0 work.
 
 ## Explicitly deprioritized until P0 evidence exists
 
-- renderer polish and photorealism;
+- renderer polish and photorealism beyond what is necessary for QA;
 - AI/dialog/media systems;
 - broad Unreal integration;
 - full-Norway prebuild;
-- FKB work that blocks terrain progress;
+- FKB work that blocks the terrain vertical;
 - production imagery dependency before redistribution/cache rights are documented.
