@@ -1,0 +1,103 @@
+name: dtm1-multitile-source-plan
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/**'
+      - '.github/workflows/dtm1-multitile-source-plan.yml'
+  workflow_dispatch:
+
+jobs:
+  resolve-live-source-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Resolve official Atom entry for every 1 km runtime tile
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from urllib.request import Request, urlopen
+
+          from nwe_compiler.sources.dtm1_atom import (
+              parse_feed,
+              retrieval_identity,
+              select_dataset_entry,
+              select_service_dataset,
+          )
+          from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
+          from nwe_compiler.tiles import square_tile_grid
+
+          def get(url):
+              req = Request(url, headers={
+                  'User-Agent': USER_AGENT,
+                  'Accept': 'application/atom+xml, application/xml;q=0.9',
+              })
+              with urlopen(req, timeout=60) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.read()
+
+          service_bytes = get(SERVICE_URL)
+          service_sha = hashlib.sha256(service_bytes).hexdigest()
+          _, dataset_url = select_service_dataset(parse_feed(service_bytes), 'DTM1')
+          dataset_bytes = get(dataset_url)
+          dataset_sha = hashlib.sha256(dataset_bytes).hexdigest()
+          entries = parse_feed(dataset_bytes)
+
+          rows = []
+          for tile in square_tile_grid(radius=1):
+              selected, href, target_wgs84_bounds, extent = select_dataset_entry(entries, target=tile.bounds)
+              identity = retrieval_identity(SERVICE_URL, dataset_url, selected, extent)
+              rows.append({
+                  'tile_id': tile.tile_id,
+                  'bounds_epsg25832': list(tile.bounds),
+                  'target_wgs84_bounds': list(target_wgs84_bounds),
+                  'dataset_entry_id': selected.id,
+                  'dataset_entry_href': href,
+                  'dataset_entry_updated': selected.updated,
+                  'declared_geometry_type': extent.geometry_type,
+                  'canonical_spatial_hash': identity['spatial']['canonical_spatial_hash'],
+              })
+
+          unique = {}
+          for row in rows:
+              unique.setdefault(row['dataset_entry_href'], []).append(row['tile_id'])
+
+          result = {
+              'schema': 'nwe.dtm1-multitile-source-plan-proof/0.1',
+              'status': 'PASS',
+              'service_feed_url': SERVICE_URL,
+              'service_feed_sha256': service_sha,
+              'dataset_feed_url': dataset_url,
+              'dataset_feed_sha256': dataset_sha,
+              'runtime_tile_count': len(rows),
+              'unique_source_count': len(unique),
+              'sources': [
+                  {'dataset_entry_href': href, 'runtime_tile_ids': tile_ids}
+                  for href, tile_ids in sorted(unique.items())
+              ],
+              'tiles': rows,
+          }
+          print(json.dumps(result, indent=2, sort_keys=True))
+          with open('/tmp/dtm1-multitile-source-plan.json', 'w', encoding='utf-8') as fh:
+              json.dump(result, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-multitile-source-plan-${{ github.sha }}
+          path: /tmp/dtm1-multitile-source-plan.json
+          if-no-files-found: error
+          retention-days: 7
