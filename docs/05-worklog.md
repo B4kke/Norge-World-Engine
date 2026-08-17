@@ -25,7 +25,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 ## 2026-08-17 — Core geospatial/reuse tooling
 
 **Gjort**
-- Added a production-direction Python World Compiler package with pinned Rasterio 1.5.1, pyproj 3.7.2, Shapely 2.1.2 and `rfc8785` 0.1.4.
+- Added a production-direction Python World Compiler package with pinned Rasterio 1.5.0, pyproj 3.7.2, Shapely 2.1.2 and `rfc8785` 0.1.4.
 - Replaced the known polygon-as-bbox authority with Shapely actual geometry in `engine/compiler`; legacy v0.2 remains only under `prototypes/`.
 - Added a pixel-aligned Rasterio DTM normalizer that refuses implicit reprojection/resampling and emits source/normalized metadata + hashes.
 - Added RFC 8785 canonicalization helpers for Python and Node plus a shared expected SHA-256 vector.
@@ -37,16 +37,19 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Opened draft PR #3 as the integrated replacement for the two separate bootstrap PRs.
 
 **Bevist**
-- Local Python syntax checks PASS for the new compiler code.
+- Final version verification corrected an initial bad Rasterio 1.5.1 pin: upstream marks 1.5.1 as TBD; 1.5.0 is the released stable version and is now pinned.
+- Local runtime versions: Rasterio 1.5.0, pyproj 3.7.2 and Shapely 2.1.2.
 - Local geospatial regressions PASS: 4 tests covering Shapely box/polygon containment, SENTINEL triangle rejection and byte-repeatable Rasterio clip (`4 passed`).
+- The Node JCS known-vector and runtime lineage regression were executed locally against the exact `canonicalize` v3.0.0 implementation from upstream tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
 - Local Node syntax checks PASS for the schema helper, runtime verifier/regression and Cesium benchmark source.
 - PR #3 is mergeable against `main`.
-- GitHub Actions run #44 created for PR #3 but the sole hosted job failed with zero executed steps; the Actions API returns an empty step list and no downloadable job log. This is an infrastructure/runner failure before repository commands execute, not evidence of a failed code test.
-- Package/API versions and documented usage were verified against PyPI/npm/official Cesium/glTF sources before pinning.
+- Latest GitHub Actions run #63 for the PR still fails before repository commands execute: the hosted job exposes an empty step list. This is runner/account infrastructure failure, not evidence of a failed repository test.
+- Package/API versions and documented usage were verified against current PyPI/npm/upstream sources before final pinning.
 
 **Ikke bevist / blokkert**
-- The isolated container could not download `rfc8785`/npm packages, so the actual cross-language JCS test, full runtime verifier execution and Cesium Vite build were not executed locally. They are wired into CI and must not be reported PASS until a dependency-capable runner executes them.
+- Python `rfc8785` could not be installed from PyPI in the isolated container, so its repo test remains CI/dependency-runner validation rather than a local execution proof.
+- The Cesium Vite build and installed npm workspace resolution are not locally proven because package download is blocked; the JCS/runtime test used the exact upstream `canonicalize` v3.0.0 source staged only in the temporary test workspace.
 - P0-REALDATA-01 remains open: this change provides the normalizer/toolchain but does not materialize the production DTM1 15 km GeoTIFF.
 
 **Neste**
-- Run the dependency-backed provenance regressions once CI/runner access works, then use a network-capable compiler execution to materialize the authoritative DTM1 raw → normalized Nannestad artifact. Once a compiled GLB/tileset exists, run the Cesium/custom-viewer comparison instead of adding more viewer features.
+- Use a dependency-capable runner to execute the complete baseline, then materialize the authoritative DTM1 raw → normalized Nannestad artifact. Once a compiled GLB/tileset exists, run the Cesium/custom-viewer comparison instead of adding more viewer features.
