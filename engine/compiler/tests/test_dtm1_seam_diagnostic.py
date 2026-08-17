@@ -6,7 +6,7 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 
-from tools.geo.dtm1_seam_diagnostic import analyze_raw_overlap, compare_normalized_sources_to_reference
+from nwe_compiler.seam_diagnostic import analyze_raw_overlap, compare_normalized_sources_to_reference
 
 
 def _raster(path: Path, data: np.ndarray, *, left: float, top: float, crs: str = "EPSG:25833", nodata=-32767.0):
