@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  terrain-source-probe:
+  terrain-realdata:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -24,96 +24,135 @@ jobs:
       - name: Install compiler dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Probe authoritative DTM1 Atom service and dataset feed
+      - name: Cold live DTM1 acquisition and canonical warp
         run: |
+          mkdir -p /tmp/nwe-data /tmp/nwe-proof
           python - <<'PY'
           import json
-          from collections import Counter
-          from urllib.request import Request, urlopen
+          import time
+          from pathlib import Path
 
-          from nwe_compiler.sources.dtm1_atom import (
-              category_crs,
-              parse_feed,
-              relation_href,
-              select_dataset_entry,
-              select_service_dataset,
-              spatial_provenance,
-          )
-          from nwe_compiler.spatial import target_wgs84_polygon
+          import numpy as np
+          import rasterio
 
-          SERVICE_URL = 'https://nedlasting.geonorge.no/geonorge/ATOM/hoydedata/Hoydedata_ServiceFeed.atom'
-          headers = {'User-Agent': 'NorgeWorldEngine/0.1 DTM1 source probe', 'Accept': 'application/atom+xml, application/xml;q=0.9'}
+          from nwe_compiler.acquisition import TILE_BOUNDS, TILE_ID
+          from nwe_compiler.raster import warp_dtm_to_canonical_grid
+          from nwe_compiler.terrain_acquisition import acquire_dtm1, terrain_source_snapshot
 
-          def fetch(url):
-              with urlopen(Request(url, headers=headers), timeout=60) as response:
-                  body = response.read()
-                  print(json.dumps({'url': url, 'status': response.status, 'content_type': response.headers.get('Content-Type'), 'bytes': len(body)}))
-                  return body
+          cache = Path('/tmp/nwe-data')
+          proof = Path('/tmp/nwe-proof')
 
-          service_bytes = fetch(SERVICE_URL)
-          service_entries = parse_feed(service_bytes)
-          service_entry, dataset_url = select_service_dataset(service_entries, 'DTM1')
-          print(json.dumps({
-              'service_entry_id': service_entry.id,
-              'service_entry_title': service_entry.title,
-              'dataset_feed_url': dataset_url,
-              'service_entry_count': len(service_entries),
-          }, indent=2, ensure_ascii=False))
+          t0 = time.perf_counter()
+          cold = acquire_dtm1(cache, refresh=True, timeout=600)
+          t1 = time.perf_counter()
+          cold_tif = proof / 'nannestad-dtm1-epsg25832-cold.tif'
+          cold_meta = warp_dtm_to_canonical_grid(cold.raw_path, cold_tif, TILE_BOUNDS)
+          t2 = time.perf_counter()
 
-          dataset_bytes = fetch(dataset_url)
-          dataset_entries = parse_feed(dataset_bytes)
-          target = target_wgs84_polygon()
+          warm = acquire_dtm1(cache, offline=True)
+          t3 = time.perf_counter()
+          warm_tif = proof / 'nannestad-dtm1-epsg25832-warm.tif'
+          warm_meta = warp_dtm_to_canonical_grid(warm.raw_path, warm_tif, TILE_BOUNDS)
+          t4 = time.perf_counter()
 
-          category_terms = Counter()
-          crs_counts = Counter()
-          extent_counts = Counter()
-          overlaps = []
-          for entry in dataset_entries:
-              crs = tuple(category_crs(entry)) or ('UNRESOLVED',)
-              crs_counts[crs] += 1
-              for category in entry.categories:
-                  category_terms[(category.get('term'), category.get('label'), category.get('scheme'))] += 1
-              if entry.declared_extent is None:
-                  extent_counts['none'] += 1
-                  continue
-              extent_counts[entry.declared_extent.geometry_type] += 1
-              if entry.declared_extent.geometry.intersects(target):
-                  overlaps.append({
-                      'id': entry.id,
-                      'title': entry.title,
-                      'updated': entry.updated,
-                      'category_crs_parser': list(crs),
-                      'categories': entry.categories,
-                      'extent_type': entry.declared_extent.geometry_type,
-                      'extent_bounds_lon_lat': list(entry.declared_extent.geometry.bounds),
-                      'covers_target': entry.declared_extent.geometry.covers(target),
-                      'links': entry.links,
-                  })
+          if cold.raw_sha256 != warm.raw_sha256:
+              raise SystemExit('raw DTM1 SHA changed cold->offline')
+          if cold_meta.sha256 != warm_meta.sha256:
+              raise SystemExit('canonical warped DTM SHA changed cold->offline')
+          if not warm.cache_hit:
+              raise SystemExit('offline DTM1 acquisition did not use raw cache')
 
-          print(json.dumps({
-              'dataset_entry_count': len(dataset_entries),
-              'extent_counts': dict(extent_counts),
-              'category_crs_parser_counts': {str(key): value for key, value in crs_counts.items()},
-              'top_raw_categories': [
-                  {'term': key[0], 'label': key[1], 'scheme': key[2], 'count': count}
-                  for key, count in category_terms.most_common(20)
-              ],
-              'target_wgs84_bbox': list(target.bounds),
-              'spatial_overlap_count_without_crs_filter': len(overlaps),
-              'spatial_overlaps': overlaps[:20],
-          }, indent=2, ensure_ascii=False))
+          with rasterio.open(cold_tif) as dataset:
+              values = dataset.read(1)
+              valid = values[values != dataset.nodata]
+              if valid.size == 0:
+                  raise SystemExit('warped DTM contains no valid samples')
+              elevation = {
+                  'valid_samples': int(valid.size),
+                  'nodata_samples': int(values.size - valid.size),
+                  'min_m': float(np.min(valid)),
+                  'max_m': float(np.max(valid)),
+                  'mean_m': float(np.mean(valid)),
+              }
+              tags = dataset.tags()
 
-          # The real acceptance call remains strict. If it fails, the diagnostics
-          # above show which source field must be modelled instead of guessed.
-          selected, href, target_bbox, extent = select_dataset_entry(dataset_entries)
-          print(json.dumps({
+          source_snapshot = terrain_source_snapshot(cold)
+          result = {
+              'schema': 'nwe.dtm1-realdata-proof/0.1',
               'status': 'PASS',
-              'selected_id': selected.id,
-              'selected_title': selected.title,
-              'selected_updated': selected.updated,
-              'selected_crs': category_crs(selected),
-              'selected_href': href,
-              'target_wgs84_bbox': target_bbox,
-              'declared_spatial': spatial_provenance(extent),
-          }, indent=2, ensure_ascii=False))
+              'tile_id': TILE_ID,
+              'source': {
+                  'retrieval_identity': cold.retrieval_identity,
+                  'raw_path_basename': Path(cold.raw_path).name,
+                  'raw_sha256': cold.raw_sha256,
+                  'raw_byte_size': cold.raw_byte_size,
+                  'raster_metadata': cold.raster_metadata,
+                  'service_feed_sha256': cold.service_feed_sha256,
+                  'dataset_feed_sha256': cold.dataset_feed_sha256,
+                  'source_snapshot': source_snapshot,
+              },
+              'canonical_warp': {
+                  'transform': 'EPSG:25833 -> EPSG:25832 fixed 1 m grid',
+                  'resampling': 'bilinear',
+                  'bounds_epsg25832': list(TILE_BOUNDS),
+                  'cold_sha256': cold_meta.sha256,
+                  'warm_sha256': warm_meta.sha256,
+                  'byte_size': cold_meta.byte_size,
+                  'width': cold_meta.width,
+                  'height': cold_meta.height,
+                  'pixel_size': list(cold_meta.pixel_size),
+                  'nodata': cold_meta.nodata,
+                  'tags': tags,
+                  'elevation': elevation,
+              },
+              'timings_ms': {
+                  'cold_acquire': round((t1 - t0) * 1000, 3),
+                  'cold_warp': round((t2 - t1) * 1000, 3),
+                  'offline_cache_verify': round((t3 - t2) * 1000, 3),
+                  'offline_warp': round((t4 - t3) * 1000, 3),
+              },
+              'offline': {
+                  'cache_hit': warm.cache_hit,
+                  'raw_sha_equal': cold.raw_sha256 == warm.raw_sha256,
+                  'warp_sha_equal': cold_meta.sha256 == warm_meta.sha256,
+                  'source_requests': 0,
+              },
+          }
+          (proof / 'dtm1-realdata-proof.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps({
+              'status': result['status'],
+              'source_entry': cold.retrieval_identity['dataset_entry_id'],
+              'source_href': cold.retrieval_identity['dataset_entry_href'],
+              'raw_sha256': cold.raw_sha256,
+              'raw_bytes': cold.raw_byte_size,
+              'source_raster': cold.raster_metadata,
+              'warp_sha256': cold_meta.sha256,
+              'warp_bytes': cold_meta.byte_size,
+              'elevation': elevation,
+              'timings_ms': result['timings_ms'],
+              'offline': result['offline'],
+          }, indent=2))
           PY
+
+      - name: Attribution notice
+        run: |
+          cat > /tmp/nwe-proof/ATTRIBUTION.txt <<'EOF'
+          Norge World Engine · Nannestad Prototype 0 terrain proof
+
+          DTM1 height data: Kartverket / Geonorge. CC BY 4.0.
+          Source selected from the official DTM1 Atom service using declared EPSG category and GeoRSS polygon.
+
+          The full 15 km raw GeoTIFF is intentionally not uploaded by this workflow.
+          EOF
+
+      - name: Remove duplicate warm raster before proof upload
+        run: rm -f /tmp/nwe-proof/nannestad-dtm1-epsg25832-warm.tif
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-dtm1-proof-${{ github.sha }}
+          path: /tmp/nwe-proof
+          if-no-files-found: error
+          retention-days: 7
