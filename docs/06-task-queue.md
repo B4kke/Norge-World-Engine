@@ -33,16 +33,29 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Acceptance:** compare cold/warm load, transferred bytes, RAM, first-visible latency, frame time, draw calls and tile churn before proposing a runtime-format decision.
 
 ### P0-NVDB-01 — Road adapter
-**Status:** SOURCE CONTRACT VERIFIED / PRODUCTION ADAPTER OPEN  
-**Next:** bbox/segment acquisition, explicit source SRID, horizontal reprojection to prototype CRS, NN2000 Z preservation/null policy, source snapshot/provenance.
+**Status:** NORMALIZATION + GRAPH CORE IMPLEMENTED ON STACKED BRANCH / REAL SOURCE SNAPSHOT + ARTIFACT OPEN  
+**Owner area:** `engine/compiler`  
+**Done now:** `nwe_compiler.sources.nvdb` parses line WKT, explicitly transforms EPSG:25833 -> EPSG:25832, preserves valid NN2000 Z, maps sentinel/invalid Z to null, clips with Shapely and reconstructs Z at clip-boundary vertices. `nwe_compiler.roads` removes duplicate geometry and collapses compatible degree-2 endpoint chains without treating source sequence IDs as renderer-path boundaries.  
+**Evidence:** focused local vector suite passes six regressions total; road-specific cases cover cross-sequence merge, junction stop, CRS/Z semantics and boundary Z interpolation.  
+**Next:** persist an actual Nannestad NVDB response outside Git, create SourceSnapshot/retrieval identity, compile the observed 443-segment sample, report `raw segments -> normalized segments -> road paths`, canonical artifact hash/bytes and cold/warm cache behavior.
 
 ### P0-BUILDINGS-01 — Building volumes
-**Status:** PARTIAL / FALLBACK DEFINED  
-**Next:** capability-gated FKB path; documented OSM footprint + DOM-DTM fallback only where license/provenance requirements are satisfied. Do not block terrain vertical on FKB access.
+**Status:** OSM FALLBACK NORMALIZER IMPLEMENTED ON STACKED BRANCH / REAL SOURCE SNAPSHOT + HEIGHT ENRICHMENT OPEN  
+**Owner area:** `engine/compiler`  
+**Done now:** `nwe_compiler.sources.osm_buildings` accepts OSM Main API node/way JSON or Overpass geometry, transforms WGS84 -> EPSG:25832, validates/clips footprints with Shapely and rejects invalid/self-crossing polygons. `height` and `building:levels` are provenance-distinct; missing height remains unresolved rather than becoming authoritative heuristic data.  
+**Evidence:** local rectangle/levels normalization and invalid bow-tie rejection regressions pass. Android Forsøk 14 observed 133 building footprints from OSM Main API.  
+**Still open:** OSM multipolygon relation support, persisted source snapshot/license identity, actual 133-feature deterministic compile, and DOM-DTM height enrichment as a separate provenance-bearing transform. FKB remains capability-gated and must not block P0 terrain.
+
+### P0-VECTOR-ARTIFACT-01 — Persisted road/building runtime artifacts
+**Status:** NEW / NEXT FOR THE FORSØK-14 VECTOR PATH  
+**Owner area:** `engine/compiler`, `engine/schemas`, viewer consumer  
+**Next concrete result:** persisted raw NVDB + OSM snapshots -> normalized EPSG:25832 structures -> RFC 8785 hashes -> compiled road/building artifact(s) + TransformContract/lineage/ArtifactRef. Runtime/viewer must load only those artifacts.  
+**Acceptance:** two identical compiles produce byte-identical artifact hashes; Android viewer reports the same path/building counts and verified hashes with **zero NVDB/OSM source requests**.
 
 ### P0-VIEWER-01 — Measurable compiled-artifact viewer
-**Status:** CONTRACT/HARNESS EXISTS / REAL TERRAIN BLOCKED  
-**Next:** after P0-REALDATA-01, measure manifest load, artifact fetch, SHA verify, decode, local-origin rebase, GPU upload, first visible frame, steady CPU/GPU frame time, draw calls, triangles and RAM/VRAM.
+**Status:** CONTRACT/HARNESSES EXIST / REAL TERRAIN + VECTOR ARTIFACTS PENDING  
+**Done now:** one-file Android experiments exposed CRS/imagery/source errors; repo now also has an isolated CesiumJS baseline that loads only compiled 3D Tiles. No renderer is selected.  
+**Next:** after persisted Nannestad artifacts exist, measure manifest load, artifact fetch, SHA verify, decode, local-origin rebase, GPU upload, first visible frame, steady CPU/GPU frame time, draw calls, triangles and RAM/VRAM in the custom viewer and Cesium baseline on the same data/device.
 
 ## Infrastructure
 
