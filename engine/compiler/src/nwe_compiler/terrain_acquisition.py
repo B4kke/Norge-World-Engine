@@ -5,15 +5,14 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 from urllib.request import Request, urlopen
 
 from nwe_compiler.acquisition import transformed_envelope
-from nwe_compiler.raster import RasterContractError, RasterMetadata, file_sha256, inspect_raster
+from nwe_compiler.raster import RasterContractError, RasterMetadata, inspect_raster
 from nwe_compiler.sources.dtm1_atom import (
     DTM1_SOURCE_CRS,
     DTM1_VERTICAL_DATUM,
-    FeedError,
     parse_feed,
     retrieval_identity,
     select_dataset_entry,
@@ -104,7 +103,7 @@ def _metadata_dict(metadata: RasterMetadata) -> dict:
     }
 
 
-def _validate_dtm1_raster(path: Path, tile: TileSpec = NANNESTAD_TILE) -> dict:
+def _inspect_dtm1_raster(path: Path) -> RasterMetadata:
     try:
         metadata = inspect_raster(path)
     except (OSError, RasterContractError) as exc:
@@ -117,33 +116,65 @@ def _validate_dtm1_raster(path: Path, tile: TileSpec = NANNESTAD_TILE) -> dict:
         raise TerrainAcquisitionError(f"expected 1 m DTM1 pixels, got {metadata.pixel_size}")
     if metadata.nodata is None:
         raise TerrainAcquisitionError("DTM1 GeoTIFF must declare nodata for deterministic warp")
+    return metadata
 
+
+def _assert_raster_covers_tile(metadata: RasterMetadata, tile: TileSpec) -> None:
     target_33 = transformed_envelope(tile.bounds, tile.horizontal_crs, DTM1_SOURCE_CRS)
     left, bottom, right, top = metadata.bounds
     t_left, t_bottom, t_right, t_top = target_33
     if not (left <= t_left and bottom <= t_bottom and right >= t_right and top >= t_top):
         raise TerrainAcquisitionError(f"selected DTM1 raster does not cover tile {tile.tile_id}")
+
+
+def _validate_dtm1_raster(path: Path, tile: TileSpec = NANNESTAD_TILE) -> dict:
+    metadata = _inspect_dtm1_raster(path)
+    _assert_raster_covers_tile(metadata, tile)
     return _metadata_dict(metadata)
 
 
-def validate_terrain_source_covers_tile(acquired: AcquiredTerrainSource, tile: TileSpec) -> dict:
-    """Re-verify exact cached source bytes and prove they cover ``tile``.
+def validate_terrain_source_covers_tiles(
+    acquired: AcquiredTerrainSource,
+    tiles: Iterable[TileSpec],
+) -> dict[str, dict]:
+    """Re-verify one exact DTM1 source and prove coverage for every requested tile.
 
-    Multi-tile compilation may reuse one authoritative 15 km DTM1 source for
-    several 1 km runtime tiles. Reuse is allowed only after byte identity and
-    raster coverage are revalidated; a warp is never allowed to silently create
-    nodata outside the acquired source extent.
+    The raw file is stat/hash/raster-inspected once. Coverage predicates then
+    reuse that verified metadata for the complete candidate set, avoiding one
+    multi-gigabyte file hash per runtime tile while preserving fail-closed byte
+    identity and source-extent checks.
     """
 
+    tile_list = tuple(tiles)
+    if not tile_list:
+        raise TerrainAcquisitionError("at least one terrain tile is required for coverage validation")
     raw_path = Path(acquired.raw_path)
     try:
         if raw_path.stat().st_size != acquired.raw_byte_size:
             raise TerrainAcquisitionError("DTM1 source byte size changed after acquisition")
     except OSError as exc:
         raise TerrainAcquisitionError("DTM1 source file is unavailable") from exc
-    if file_sha256(raw_path) != acquired.raw_sha256:
+
+    metadata = _inspect_dtm1_raster(raw_path)
+    if metadata.byte_size != acquired.raw_byte_size:
+        raise TerrainAcquisitionError("DTM1 source byte size changed after acquisition")
+    if metadata.sha256 != acquired.raw_sha256:
         raise TerrainAcquisitionError("DTM1 source SHA changed after acquisition")
-    return _validate_dtm1_raster(raw_path, tile)
+    metadata_dict = _metadata_dict(metadata)
+    if metadata_dict != acquired.raster_metadata:
+        raise TerrainAcquisitionError("DTM1 source raster metadata changed after acquisition")
+
+    result: dict[str, dict] = {}
+    for tile in tile_list:
+        if tile.tile_id in result:
+            raise TerrainAcquisitionError(f"duplicate terrain tile id: {tile.tile_id}")
+        _assert_raster_covers_tile(metadata, tile)
+        result[tile.tile_id] = metadata_dict
+    return result
+
+
+def validate_terrain_source_covers_tile(acquired: AcquiredTerrainSource, tile: TileSpec) -> dict:
+    return validate_terrain_source_covers_tiles(acquired, (tile,))[tile.tile_id]
 
 
 def _cache_dir(cache_root: str | Path, tile: TileSpec = NANNESTAD_TILE) -> Path:
@@ -161,17 +192,19 @@ def _load_cached(cache_root: str | Path, tile: TileSpec = NANNESTAD_TILE) -> Acq
         raw_path = cache_dir / f"{raw_sha}.tif"
         if not raw_path.exists():
             raise TerrainAcquisitionError("DTM1 cache pointer references missing raw file")
-        if raw_path.stat().st_size != int(pointer["raw_byte_size"]):
-            raise TerrainAcquisitionError("DTM1 cached raw byte size mismatch")
-        if file_sha256(raw_path) != raw_sha:
-            raise TerrainAcquisitionError("DTM1 cached raw SHA mismatch")
         if pointer.get("tile_id") != tile.tile_id:
             raise TerrainAcquisitionError("DTM1 cache pointer tile identity mismatch")
-        raster_metadata = _validate_dtm1_raster(raw_path, tile)
+        metadata = _inspect_dtm1_raster(raw_path)
+        if metadata.byte_size != int(pointer["raw_byte_size"]):
+            raise TerrainAcquisitionError("DTM1 cached raw byte size mismatch")
+        if metadata.sha256 != raw_sha:
+            raise TerrainAcquisitionError("DTM1 cached raw SHA mismatch")
+        _assert_raster_covers_tile(metadata, tile)
+        raster_metadata = _metadata_dict(metadata)
         return AcquiredTerrainSource(
             str(raw_path),
             raw_sha,
-            raw_path.stat().st_size,
+            metadata.byte_size,
             True,
             pointer["retrieval_identity"],
             raster_metadata,
@@ -237,13 +270,17 @@ def acquire_dtm1(
         raw_sha, raw_size = fetch_file(file_url, tmp_raw, timeout)
         if not tmp_raw.exists() or tmp_raw.stat().st_size != raw_size:
             raise TerrainAcquisitionError("streamed DTM1 byte size mismatch")
-        actual_sha = file_sha256(tmp_raw)
-        if actual_sha != raw_sha:
+        metadata = _inspect_dtm1_raster(tmp_raw)
+        if metadata.byte_size != raw_size:
+            raise TerrainAcquisitionError("streamed DTM1 byte size mismatch")
+        if metadata.sha256 != raw_sha:
             raise TerrainAcquisitionError("streamed DTM1 SHA mismatch")
-        raster_metadata = _validate_dtm1_raster(tmp_raw, tile)
+        _assert_raster_covers_tile(metadata, tile)
+        raster_metadata = _metadata_dict(metadata)
         raw_path = cache_dir / f"{raw_sha}.tif"
         if raw_path.exists():
-            if raw_path.stat().st_size != raw_size or file_sha256(raw_path) != raw_sha:
+            existing = _inspect_dtm1_raster(raw_path)
+            if existing.byte_size != raw_size or existing.sha256 != raw_sha:
                 raise TerrainAcquisitionError("content-addressed DTM1 path collision")
             tmp_raw.unlink()
         else:
