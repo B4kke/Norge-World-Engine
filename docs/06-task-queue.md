@@ -37,7 +37,7 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Owner area:** `engine/compiler`  
 **Done now:** compiler derives the Nannestad source envelope, builds the NVDB V4 `srid=5973` request, validates/hashes/caches raw JSON outside Git, reprojects EPSG:25833 -> EPSG:25832, preserves valid NN2000 Z, clips with Shapely, reconstructs clip-boundary Z and collapses compatible degree-2 road chains. Road output is wrapped in normalized snapshot + RuntimeVerificationBundle lineage.  
 **Evidence:** live endpoint/source shape revalidated; focused local vector + acquisition/artifact fixture suite passes. Historical Forsøk 14 observed 443 raw segments, but the new compiler has not yet been allowed to persist/recompile that live response in this execution environment.  
-**Next:** run `nwe-compile-vectors --cache-root data --refresh --source roads` in a network/dependency-capable environment, record raw SHA/bytes, `raw -> normalized -> paths`, artifact SHA/bytes and timings, then repeat with `--offline` and prove identical artifact hash/no source call.
+**Next:** obtain the exact raw response either from a network/dependency-capable compiler run or from the mobile source-capture bridge, then run the production compiler and record raw SHA/bytes, `raw -> normalized -> paths`, artifact SHA/bytes and timings; immediately repeat offline and prove identical artifact hash/no source call.
 
 ### P0-BUILDINGS-01 — Building volumes
 **Status:** OSM ACQUISITION + FALLBACK NORMALIZER + ARTIFACT CODE IMPLEMENTED / LIVE SNAPSHOT + HEIGHT ENRICHMENT OPEN  
@@ -47,12 +47,12 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Still open:** actual live compiler count/hash, OSM multipolygon relations and DOM-DTM height enrichment as a separate provenance-bearing transform. FKB remains capability-gated and must not block terrain.
 
 ### P0-VECTOR-ARTIFACT-01 — Persisted road/building runtime artifacts
-**Status:** PIPELINE IMPLEMENTED + LOCAL STRUCTURAL/DETERMINISM PASS / LIVE RAW->ARTIFACT RUN BLOCKED BY EXECUTION NETWORK  
+**Status:** PIPELINE IMPLEMENTED + LOCAL STRUCTURAL/DETERMINISM PASS + MOBILE RAW-CAPTURE BRIDGE READY / PRODUCTION LIVE COMPILE OPEN  
 **Owner area:** `engine/compiler`, `engine/schemas`, viewer consumer  
-**Done now:** `nwe_compiler.acquisition` adds SHA-addressed raw cache and offline mode; `nwe_compiler.vector_artifacts` emits normalized bytes, compiled bytes, SourceSnapshot/TransformContract/NormalizedSnapshot/CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle; `nwe-compile-vectors` reports cache/count/hash/byte/timing metrics.  
-**Evidence:** combined existing vector + new acquisition/artifact structural suite = `12 passed`; cold/warm fixture proves second acquisition performs zero network fetches; artifact fixtures are byte deterministic under the injected test serializer. Production defaults to RFC 8785/JCS, whose Python package execution remains a dependency-runner gate.  
-**Block:** this container has no outbound DNS and GitHub Actions is zero-step blocked, so no live raw SHA/artifact SHA or real cold/warm timing is claimed.  
-**Acceptance:** network-capable `--refresh` followed by network-forbidden `--offline` yields identical road/building artifact hashes; runtime verifier accepts bundles; viewer consumes the same artifacts with zero NVDB/OSM calls.
+**Done now:** `nwe_compiler.acquisition` adds SHA-addressed raw cache and offline mode; `nwe_compiler.vector_artifacts` emits normalized bytes, compiled bytes, SourceSnapshot/TransformContract/NormalizedSnapshot/CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle; `nwe-compile-vectors` reports cache/count/hash/byte/timing metrics. `prototypes/nannestad/mobile_source_capture.html` can fetch the exact compiler NVDB/OSM contracts on Android, SHA-256 the raw bytes, store them in IndexedDB, prove a zero-fetch warm/offline read and export one base64-preserving capture JSON for compiler ingestion.  
+**Evidence:** combined existing vector + acquisition/artifact structural suite = `12 passed`; cold/warm fixture proves second acquisition performs zero network fetches; artifact fixtures are byte deterministic under the injected test serializer. Production defaults to RFC 8785/JCS, whose Python package execution remains a dependency-runner gate. Mobile bridge JavaScript syntax is locally checked; live mobile CORS/IndexedDB behavior is the next device gate.  
+**Block:** the isolated execution container cannot perform the compiler's live HTTP acquisition and GitHub-hosted Actions has no assigned runner. Mobile capture now provides a concrete path to obtain the exact raw bytes without moving compilation back into the browser.  
+**Acceptance:** exact live raw bytes -> production `--offline` compile -> road/building artifact hashes; repeated compile yields identical hashes; runtime verifier accepts bundles; viewer consumes the same artifacts with zero NVDB/OSM calls.
 
 ### P0-VIEWER-01 — Measurable compiled-artifact viewer
 **Status:** COMPILED-ARTIFACT CONSUMER BOUNDARY IMPLEMENTED / VISUAL INTEGRATION WAITS ON LIVE ARTIFACTS  
@@ -63,8 +63,10 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## Infrastructure
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
-**Status:** CONFIRMED ZERO-STEP FAILURE ON PR #3 AND PR #4  
-The baseline jobs are created and then fail before repository commands execute. PR #4 run #67 reports `steps: []`, `runner_id: 0` and no runner name. Treat this as runner/account infrastructure failure, not a compiler regression result. Baseline now also includes the viewer compiled-artifact boundary regression and will validate Python compiler/JCS/runtime/consumer/Cesium checks once a runner becomes available.
+**Status:** ZERO-STEP FAILURE CONFIRMED; PRIVATE-REPO BILLING/BUDGET IS LEADING HYPOTHESIS; SELF-HOSTED FALLBACK ADDED  
+The repository is private and PR #3/#4 hosted jobs are created but fail before repository commands execute. Latest inspected PR #4 job has `steps: []`, `runner_id: 0`, no runner name and no downloadable job log. The GitHub integration cannot read personal billing/Actions-permission endpoints (403), so quota/budget/payment status cannot be proven from the connector. GitHub documentation states that private repositories consume the account's hosted-runner allowance and usage can be blocked when included quota/budget/payment conditions prevent additional Actions use.  
+**User check:** GitHub personal `Settings -> Billing & Licensing -> Overview / Budgets and alerts`, inspect Actions usage and any `Stop usage when budget limit is reached` rule; also verify repository `Settings -> Actions -> General`.  
+**Fallback implemented:** `.github/workflows/baseline-self-hosted.yml` is `workflow_dispatch` + `runs-on: self-hosted`, so a registered private-repo PC runner can execute the full baseline without GitHub-hosted minutes. Do not expose a self-hosted runner to untrusted public PR code.
 
 ## Explicitly deprioritized until P0 evidence exists
 
