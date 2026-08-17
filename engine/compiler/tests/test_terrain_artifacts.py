@@ -17,22 +17,28 @@ from nwe_compiler.terrain_artifacts import (
 from nwe_compiler.tiles import NANNESTAD_TILE, TileSpec, prototype_tile
 
 
-def _acquired(tmp_path: Path) -> AcquiredTerrainSource:
-    raw = tmp_path / "raw.tif"
-    raw.write_bytes(b"fixture-raw")
+def _acquired(
+    tmp_path: Path,
+    *,
+    name: str = "117",
+    raw_sha_char: str = "a",
+    spatial_sha_char: str = "b",
+) -> AcquiredTerrainSource:
+    raw = tmp_path / f"raw-{name}.tif"
+    raw.write_bytes(f"fixture-raw-{name}".encode())
     return AcquiredTerrainSource(
         raw_path=str(raw),
-        raw_sha256="a" * 64,
+        raw_sha256=raw_sha_char * 64,
         raw_byte_size=raw.stat().st_size,
         cache_hit=True,
         retrieval_identity={
             "service_feed_url": "https://example.invalid/service.atom",
             "dataset_feed_url": "https://example.invalid/DTM1.atom",
-            "dataset_entry_id": "https://example.invalid/id.tif",
-            "dataset_entry_href": "https://example.invalid/file.tif",
+            "dataset_entry_id": f"https://example.invalid/id-{name}.tif",
+            "dataset_entry_href": f"https://example.invalid/file-{name}.tif",
             "dataset_entry_updated": "2024-11-21T16:52:54",
             "dataset_entry_category_crs": ["EPSG:25833"],
-            "spatial": {"canonical_spatial_hash": "b" * 64},
+            "spatial": {"canonical_spatial_hash": spatial_sha_char * 64},
         },
         raster_metadata={
             "crs": "EPSG:25833",
@@ -50,7 +56,13 @@ def _acquired(tmp_path: Path) -> AcquiredTerrainSource:
     )
 
 
-def _normalized(path: Path, tile: TileSpec = NANNESTAD_TILE, *, vertical_datum: str = "NN2000"):
+def _normalized(
+    path: Path,
+    tile: TileSpec = NANNESTAD_TILE,
+    *,
+    vertical_datum: str = "NN2000",
+    source_count: int = 1,
+):
     size = int(tile.size_m)
     yy, xx = np.mgrid[0:size, 0:size]
     data = (180.0 + xx * 0.001 + yy * 0.002).astype("float32")
@@ -70,15 +82,28 @@ def _normalized(path: Path, tile: TileSpec = NANNESTAD_TILE, *, vertical_datum: 
         predictor=3,
     ) as dst:
         dst.write(data, 1)
-        dst.update_tags(
-            NWE_SCHEMA="nwe.normalized-dtm/0.2",
-            NWE_VERTICAL_DATUM=vertical_datum,
-            NWE_SOURCE_CRS="EPSG:25833",
-            NWE_TARGET_CRS=tile.horizontal_crs,
-            NWE_TRANSFORM="explicit-reproject-fixed-grid",
-            NWE_RESAMPLING="bilinear",
-            NWE_PIXEL_SIZE_M="1.0",
-        )
+        tags = {
+            "NWE_SCHEMA": "nwe.normalized-dtm/0.2",
+            "NWE_VERTICAL_DATUM": vertical_datum,
+            "NWE_SOURCE_CRS": "EPSG:25833",
+            "NWE_TARGET_CRS": tile.horizontal_crs,
+            "NWE_TRANSFORM": (
+                "explicit-reproject-fixed-grid"
+                if source_count == 1
+                else "explicit-source-mosaic-reproject-fixed-grid"
+            ),
+            "NWE_RESAMPLING": "bilinear",
+            "NWE_PIXEL_SIZE_M": "1.0",
+        }
+        if source_count > 1:
+            tags.update(
+                {
+                    "NWE_MOSAIC_SOURCE_COUNT": str(source_count),
+                    "NWE_MOSAIC_OVERLAP_POLICY": "require-match-before-reproject",
+                    "NWE_MOSAIC_OVERLAP_TOLERANCE_M": "0.0",
+                }
+            )
+        dst.update_tags(**tags)
 
 
 def test_terrain_height_grid_artifact_is_deterministic_and_persistable(tmp_path: Path):
@@ -97,6 +122,9 @@ def test_terrain_height_grid_artifact_is_deterministic_and_persistable(tmp_path:
     assert first.artifact_header["vertical_datum"] == "NN2000"
     assert first.bundle["artifact_ref"]["artifact_status"] == "REAL_COMPILED"
     assert first.bundle["promotion_record"]["gates"]["determinism_policy_satisfied"] == "PASS"
+    assert "source_snapshot_hash" in first.bundle["transform_contracts"][0]
+    assert "source_snapshot_hashes" not in first.bundle["transform_contracts"][0]
+    assert "source_snapshot_hash" in first.bundle["normalized_snapshots"][0]
 
     persisted = persist_terrain_artifact(first, normalized, tmp_path / "cache")
     assert NANNESTAD_TILE.tile_id in persisted.artifact_path
@@ -131,6 +159,54 @@ def test_neighbor_tiles_have_distinct_identity_lineage_and_cache_paths(tmp_path:
 
     assert results[0].bundle["lineage_hash"] != results[1].bundle["lineage_hash"]
     assert results[0].artifact_sha256 != results[1].artifact_sha256
+
+
+def test_mosaic_artifact_binds_all_source_snapshots_deterministically(tmp_path: Path):
+    tile = prototype_tile(611000, 6676000)
+    normalized = tmp_path / "mosaic-normalized.tif"
+    _normalized(normalized, tile, source_count=2)
+    source_a = _acquired(tmp_path, name="116", raw_sha_char="1", spatial_sha_char="6")
+    source_b = _acquired(tmp_path, name="117", raw_sha_char="2", spatial_sha_char="7")
+
+    first = compile_terrain_artifact([source_b, source_a], normalized, tile=tile)
+    second = compile_terrain_artifact([source_a, source_b], normalized, tile=tile)
+
+    assert first.artifact_bytes == second.artifact_bytes
+    assert first.artifact_sha256 == second.artifact_sha256
+    assert first.bundle == second.bundle
+    assert len(first.bundle["source_snapshots"]) == 2
+    source_hashes = first.bundle["source_snapshot_hashes"]
+    assert source_hashes == sorted(source_hashes)
+    assert len(set(source_hashes)) == 2
+
+    transform = first.bundle["transform_contracts"][0]
+    normalized_snapshot = first.bundle["normalized_snapshots"][0]
+    assert "source_snapshot_hash" not in transform
+    assert transform["source_snapshot_hashes"] == source_hashes
+    assert transform["mosaic_source_count"] == 2
+    assert transform["mosaic_overlap_policy"] == "require-match-before-reproject"
+    assert normalized_snapshot["source_snapshot_hashes"] == source_hashes
+    assert first.bundle["compile_lineage"]["source_snapshot_hashes"] == source_hashes
+
+
+def test_mosaic_source_count_must_match_normalized_transform(tmp_path: Path):
+    tile = prototype_tile(611000, 6676000)
+    normalized = tmp_path / "mosaic-count-mismatch.tif"
+    _normalized(normalized, tile, source_count=2)
+    source_a = _acquired(tmp_path, name="116", raw_sha_char="1", spatial_sha_char="6")
+
+    with pytest.raises(TerrainArtifactError, match="single-source normalized DTM"):
+        compile_terrain_artifact(source_a, normalized, tile=tile)
+
+
+def test_duplicate_mosaic_source_is_rejected(tmp_path: Path):
+    tile = prototype_tile(611000, 6676000)
+    normalized = tmp_path / "mosaic-duplicate.tif"
+    _normalized(normalized, tile, source_count=2)
+    source = _acquired(tmp_path, name="116", raw_sha_char="1", spatial_sha_char="6")
+
+    with pytest.raises(TerrainArtifactError, match="duplicate dataset entry hrefs"):
+        compile_terrain_artifact([source, source], normalized, tile=tile)
 
 
 def test_normalized_vertical_datum_must_be_explicit_nn2000(tmp_path: Path):
