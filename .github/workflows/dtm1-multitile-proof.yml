@@ -8,6 +8,11 @@ on:
       - 'engine/compiler/**'
       - 'engine/streaming/**'
       - '.github/workflows/dtm1-multitile-proof.yml'
+  pull_request:
+    paths:
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - '.github/workflows/dtm1-multitile-proof.yml'
   workflow_dispatch:
 
 jobs:
