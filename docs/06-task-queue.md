@@ -109,3 +109,13 @@ DTM1, vector and viewer real-data workflows have reusable main/PR/manual trigger
 - full-Norway prebuild;
 - FKB work that blocks terrain/viewer measurement;
 - production imagery dependency before redistribution/cache rights are documented.
+
+## Active LUMEN evidence gate — 2026-08-18
+
+### P0-VIEWER-DEVICE-COMPARABILITY-01 — Same-device renderer benchmark validity
+**Status:** IMPLEMENTED ON `agent/lumen-hourly` / CI + PHYSICAL ANDROID CAPTURE OPEN  
+**Owner area:** `apps/world-viewer`  
+**Problem found:** the merged device-evidence exporter required camera/device parity in prose but did not persist first-frame camera or actual render-surface/backing-buffer dimensions. That allowed two captures with different camera or pixel workload to appear comparable.  
+**Implemented:** device evidence now records first-frame yaw/pitch/distance, canvas CSS/backing dimensions and effective renderer pixel ratio. `compareDeviceEvidenceContext()` requires identical tile/artifact hashes, verification state, graphics profile, camera, render surface and device metadata before WebGL2/WebGPU timing may be compared. Focused regression accepts same-context cross-backend evidence and rejects camera/render-surface drift. Full RuntimeVerificationBundle and raw-source fail-closed gates are unchanged.  
+**Acceptance:** full viewer/CI gates PASS on exact PR head; then run WebGL2 and WebGPU on the same physical Android Chrome device and require `comparable=true` before interpreting timing deltas.  
+**Next:** obtain physical Android captures on the exact deployable preview after CI/Vercel exact-head verification; do not use hosted/headless timing as Android acceptance.
