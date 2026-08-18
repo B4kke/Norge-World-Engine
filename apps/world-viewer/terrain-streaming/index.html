@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NWE Terrain Browser Worker Benchmark</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #05090d; color: #dce9ef; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; min-height: 100vh; }
+      canvas { width: 100%; height: 100vh; display: block; background: #071018; }
+      aside { padding: 16px; border-left: 1px solid #1b2b35; overflow: auto; }
+      h1 { margin: 0 0 10px; font-size: 16px; }
+      #status { color: #7de4a6; font-weight: 800; }
+      pre { white-space: pre-wrap; font-size: 11px; line-height: 1.45; color: #9fb4bf; }
+    </style>
+    <script type="importmap">
+      {"imports":{"canonicalize":"/vendor/canonicalize.mjs"}}
+    </script>
+  </head>
+  <body>
+    <main>
+      <canvas id="gl" width="960" height="720"></canvas>
+      <aside>
+        <h1>Terrain DedicatedWorker benchmark</h1>
+        <div id="status">BOOT</div>
+        <pre id="metrics">Waiting for experiment…</pre>
+      </aside>
+    </main>
+    <script type="module" src="/terrain-streaming/benchmark.mjs"></script>
+  </body>
+</html>
