@@ -3,12 +3,19 @@ import { loadTerrainRuntimeInput } from '../terrain_runtime_input.mjs';
 import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifier_web.mjs';
 import { TerrainMeshWorkerClient } from '../../../engine/streaming/terrain_mesh_worker_client.mjs';
 import { createTerrainTileLoadFunction } from '../../../engine/streaming/terrain_tile_loader.mjs';
+import { createObservedTerrainTileLoadFunction } from '../../../engine/streaming/terrain_load_observer.mjs';
+import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
 import { browserMemorySnapshot, createFrameGapMonitor, monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
 export const DEFAULT_PREVIEW1_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
+
+const STREAMING_ACTIVE_RADIUS_M = 800;
+const STREAMING_RETAIN_RADIUS_M = 1200;
+const STREAMING_MOVEMENT_OFFSET_M = 1000;
+const STREAMING_TRACE_MAX_ENTRIES = 256;
 
 function absoluteUrl(reference: string, base: string) {
   return new URL(reference, base).href;
@@ -65,10 +72,12 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
   const center = centerFromBounds(manifest.tile.bounds);
   const descriptor = { id: manifest.tile.id, centerE: center.e, centerN: center.n };
   const workerClient = new TerrainMeshWorkerClient();
+  const traceRecorder = createStreamingTraceRecorder({ maxEntries: STREAMING_TRACE_MAX_ENTRIES });
   let payload: any = null;
   let resolverCalls = 0;
+  let latestSnapshot: any = null;
 
-  const loadTile = createTerrainTileLoadFunction({
+  const baseLoadTile = createTerrainTileLoadFunction({
     resolveRuntimeInput: async (tile: any, { signal }: any) => {
       resolverCalls += 1;
       onPhase('terrain-fetch');
@@ -92,21 +101,94 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
     }),
   });
 
+  const observedLoadTile = createObservedTerrainTileLoadFunction({
+    loadTile: baseLoadTile,
+    onObservation: traceRecorder.onLoadObservation,
+  });
+
   const scheduler = new TileStreamingScheduler({
-    loadTile,
+    loadTile: observedLoadTile,
     activateTile: async (_tile: any, nextPayload: any) => { payload = nextPayload; },
-    activeRadiusMeters: 800,
-    retainRadiusMeters: 1200,
+    activeRadiusMeters: STREAMING_ACTIVE_RADIUS_M,
+    retainRadiusMeters: STREAMING_RETAIN_RADIUS_M,
     maxConcurrentLoads: 1,
     maxResidentTiles: 1,
     maxCacheBytes: 24 * 1024 * 1024,
+    onEvent: traceRecorder.onSchedulerEvent,
   });
 
   await scheduler.update({ e: center.e, n: center.n }, [descriptor]);
-  const snapshot = await scheduler.whenIdle();
+  latestSnapshot = await scheduler.whenIdle();
+  traceRecorder.captureSnapshot(latestSnapshot, 'initial-resident');
   if (!payload || payload.verification?.code !== 'RUNTIME_VERIFICATION_PASS') throw new Error('PREVIEW_TERRAIN_NOT_READY: terrain payload failed runtime verification');
-  if (snapshot.metrics.loadsCompleted !== 1 || snapshot.metrics.loadsFailed !== 0) throw new Error(`PREVIEW_TERRAIN_SCHEDULER: ${JSON.stringify(snapshot.metrics)}`);
-  return { payload, snapshot, resolverCalls, bundleUrl: terrainBundleUrl };
+  if (latestSnapshot.metrics.loadsCompleted !== 1 || latestSnapshot.metrics.loadsFailed !== 0) throw new Error(`PREVIEW_TERRAIN_SCHEDULER: ${JSON.stringify(latestSnapshot.metrics)}`);
+
+  const runMovementProbe = async () => {
+    const startedAt = monotonicNow();
+    const resolverCallsBefore = resolverCalls;
+    const cacheHitsBefore = latestSnapshot.metrics.cacheHits;
+    const loadsStartedBefore = latestSnapshot.metrics.loadsStarted;
+    const outsideCamera = { e: center.e + STREAMING_MOVEMENT_OFFSET_M, n: center.n };
+
+    await scheduler.update(outsideCamera, [descriptor]);
+    const outsideSnapshot = await scheduler.whenIdle();
+    traceRecorder.captureSnapshot(outsideSnapshot, 'outside-active-inside-retain');
+    const outsideRecord = outsideSnapshot.records.find((record: any) => record.id === descriptor.id);
+    if (outsideRecord?.state !== 'cached') {
+      throw new Error(`PREVIEW_STREAMING_MOVEMENT_OUTSIDE_STATE: ${outsideRecord?.state ?? 'missing'}`);
+    }
+
+    await scheduler.update({ e: center.e, n: center.n }, [descriptor]);
+    latestSnapshot = await scheduler.whenIdle();
+    traceRecorder.captureSnapshot(latestSnapshot, 'returned-center');
+    const returnRecord = latestSnapshot.records.find((record: any) => record.id === descriptor.id);
+    if (returnRecord?.state !== 'resident') {
+      throw new Error(`PREVIEW_STREAMING_MOVEMENT_RETURN_STATE: ${returnRecord?.state ?? 'missing'}`);
+    }
+
+    const cacheHitsDelta = latestSnapshot.metrics.cacheHits - cacheHitsBefore;
+    const loadsStartedDelta = latestSnapshot.metrics.loadsStarted - loadsStartedBefore;
+    if (resolverCalls !== resolverCallsBefore || loadsStartedDelta !== 0 || cacheHitsDelta !== 1) {
+      throw new Error(`PREVIEW_STREAMING_MOVEMENT_REFETCH: ${JSON.stringify({ resolverCallsBefore, resolverCallsAfter: resolverCalls, loadsStartedDelta, cacheHitsDelta })}`);
+    }
+
+    return {
+      schema: 'nwe.single-tile-streaming-movement-probe/0.1',
+      status: 'PASS',
+      path: 'center->outside-active-inside-retain->center',
+      tile_id: descriptor.id,
+      movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M,
+      active_radius_m: STREAMING_ACTIVE_RADIUS_M,
+      retain_radius_m: STREAMING_RETAIN_RADIUS_M,
+      checkpoints: ['initial-resident', 'outside-active-inside-retain', 'returned-center'],
+      resolver_calls_before: resolverCallsBefore,
+      resolver_calls_after: resolverCalls,
+      loads_started_delta: loadsStartedDelta,
+      cache_hits_delta: cacheHitsDelta,
+      duration_ms: monotonicNow() - startedAt,
+      renderer_resource_lifecycle_observed: false,
+      note: 'Verified runtime/cache round-trip only. The Preview 1 renderer keeps its already-created terrain resource; GPU unload/reload is not observed by this probe.',
+    };
+  };
+
+  const exportStreamingTrace = (movementProbeEnabled: boolean) => traceRecorder.exportTrace({
+    tile_id: descriptor.id,
+    probe_id: 'preview1-single-tile-cache-roundtrip-v0.1',
+    movement_probe_enabled: movementProbeEnabled,
+    active_radius_m: STREAMING_ACTIVE_RADIUS_M,
+    retain_radius_m: STREAMING_RETAIN_RADIUS_M,
+    movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M,
+    renderer_resource_lifecycle_observed: false,
+  });
+
+  return {
+    payload,
+    bundleUrl: terrainBundleUrl,
+    getSnapshot: () => latestSnapshot,
+    getResolverCalls: () => resolverCalls,
+    runMovementProbe,
+    exportStreamingTrace,
+  };
 }
 
 export async function runPreview1({
@@ -116,6 +198,7 @@ export async function runPreview1({
   graphicsProfile = 'balanced',
   rendererPreference = 'auto',
   benchmarkFrameCount = Number(new URLSearchParams(location.search).get('previewBenchmarkFrames') || '0'),
+  streamingMovementProbe = false,
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
@@ -126,12 +209,14 @@ export async function runPreview1({
   graphicsProfile?: string;
   rendererPreference?: string;
   benchmarkFrameCount?: number;
+  streamingMovementProbe?: boolean;
   onPhase?: (phase: string) => void;
   onReady?: (result: any) => void;
   onFrame?: (frame: any) => void;
 }) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required');
+  if (typeof streamingMovementProbe !== 'boolean') throw new TypeError('streamingMovementProbe must be boolean');
   if (!Number.isInteger(benchmarkFrameCount) || benchmarkFrameCount < 0 || benchmarkFrameCount > 600) {
     throw new RangeError('benchmarkFrameCount must be an integer within [0, 600]');
   }
@@ -182,6 +267,16 @@ export async function runPreview1({
     const inputToFirstFrameReadyMs = monotonicNow() - startedAt;
     const startupRafGap = startupFrameMonitor.stop();
 
+    let movementProbe = null;
+    if (streamingMovementProbe) {
+      onPhase('streaming-movement-probe');
+      movementProbe = await terrain.runMovementProbe();
+    }
+    const streamingTrace = terrain.exportStreamingTrace(streamingMovementProbe);
+    if (streamingTrace.droppedEntries !== 0) {
+      throw new Error(`PREVIEW_STREAMING_TRACE_DROPPED: ${streamingTrace.droppedEntries}`);
+    }
+
     let rendererFrameBenchmark = null;
     if (benchmarkFrameCount > 0) {
       onPhase('renderer-benchmark');
@@ -191,6 +286,7 @@ export async function runPreview1({
       }
     }
 
+    const terrainSnapshot = terrain.getSnapshot();
     const result = {
       schema: 'nwe.world-preview-runtime/0.1',
       status: 'PASS',
@@ -208,10 +304,12 @@ export async function runPreview1({
       terrain: {
         artifact_sha256: terrain.payload.artifact.sha256,
         verification_code: terrain.payload.verification.code,
-        retained_bytes: terrain.snapshot.records.find((record: any) => record.id === manifest.tile.id)?.byteSize ?? null,
-        scheduler: terrain.snapshot.metrics,
-        resolver_calls: terrain.resolverCalls,
+        retained_bytes: terrainSnapshot.records.find((record: any) => record.id === manifest.tile.id)?.byteSize ?? null,
+        scheduler: terrainSnapshot.metrics,
+        resolver_calls: terrain.getResolverCalls(),
         timing_ms: terrain.payload.timingMs,
+        movement_probe: movementProbe,
+        streaming_trace: streamingTrace,
       },
       roads: {
         artifact_sha256: roads.artifactRef.sha256,
