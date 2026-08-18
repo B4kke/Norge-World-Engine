@@ -14,6 +14,7 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 - `terrain_mesh_worker_client.mjs` — browser-side one-job worker client with AbortSignal cancellation and typed-buffer rehydration.
 - `terrain_tile_loader.mjs` — full verified terrain runtime path: runtime-input resolve → provenance/byte verification → strict NWEHGT01 decode → mesh worker → renderer-neutral payload with phase timings.
 - `terrain_load_observer.mjs` — non-authoritative wrapper that correlates scheduler load-attempt identity with completed phase timings or failed/aborted attempts without allowing telemetry-sink failure to change tile lifecycle.
+- `streaming_trace_recorder.mjs` — bounded renderer-neutral movement trace that joins scheduler events, scheduler snapshots and terrain load observations for browser/device evidence capture.
 
 ## Scheduler contract
 
@@ -41,6 +42,12 @@ The browser client transfers ownership of the elevation `ArrayBuffer` into the w
 
 The current client uses a dedicated worker per job because cancellation can then terminate the whole worker deterministically. Worker pooling is deliberately postponed until device evidence shows whether worker creation cost matters for multi-tile streaming.
 
+## Movement evidence trace
+
+`createStreamingTraceRecorder()` accepts the scheduler `onEvent` stream, `terrain_load_observer` observations and explicit scheduler snapshots without learning anything about WebGL/WebGPU scene objects. The exported `nwe.streaming-movement-trace/0.1` trace preserves ordering with a monotonically increasing sequence, carries caller-supplied capture metadata, and has a hard `maxEntries` retention bound. When the trace fills, oldest entries are discarded and `droppedEntries` records the evidence loss instead of allowing telemetry memory to grow without bound.
+
+The trace is an observability artifact, not world truth. LUMEN may add renderer/device measurements beside it in the browser harness, but renderer-specific upload/GPU/rAF data remains outside streaming core.
+
 ## Current observables
 
 Scheduler snapshots report at least:
@@ -58,7 +65,7 @@ Scheduler snapshots report at least:
 
 Successful terrain payloads report runtime-input resolve, verification, strict decode, worker roundtrip, worker-reported CPU and total load timing. `createObservedTerrainTileLoadFunction()` can wrap the loader before it is injected into the scheduler and emits one immutable observation per attempt with `tileId`, scheduler `attempt`, completed/failed/aborted status, wrapper wall time, retained bytes/artifact hash on success, phase timings on success, and original error identity on failure. The observer callback is isolated so telemetry collection cannot convert a successful load into a runtime failure.
 
-Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement. The observer provides a stable renderer-neutral handoff for correlating those device traces with scheduler retry/cancellation events; it does not itself prove device performance.
+Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement. The trace recorder provides a stable bounded handoff for correlating those device traces with scheduler movement/retry/cancellation events; it does not itself prove device performance.
 
 ## Current non-decisions
 
@@ -68,5 +75,6 @@ Device-level main-thread hitch, worker startup/transfer cost and GPU upload stil
 - no production `maxResidentBytes`, inactive-cache size or GPU/VRAM budget selected from the synthetic stress benchmark;
 - no production retry delay or retry-attempt cap selected without real failure/device evidence;
 - no worker-pool size/persistence policy;
+- no production telemetry-retention size selected; recorder limits are caller configuration;
 - no claim that a synthetic 3×3 scheduling test equals real multi-tile streaming;
 - no claim that hosted Node mesh timing equals Android browser worker timing.
