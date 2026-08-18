@@ -55,8 +55,30 @@ Focused tests cover:
 7. affine/dimensions/bounds inconsistency rejection;
 8. non-finite affine/bounds rejection.
 
+## Exact-head evidence
+
+SENTINEL branch head: `da5bc8cb4a4227022722e5ea4a131eba829b8b95`.
+
+GitHub Actions on the stacked PR composition:
+
+- `baseline` run `32188446124` — **PASS**;
+- `dtm1-multitile-source-plan` run `32188446116` — **PASS**;
+- hardened `dtm1-raster-grid-crosscheck` run `32188446106` — **PASS**.
+
+Focused adversarial suite: **8 passed in 0.02 s**.
+
+The hardened live Rasterio/GDAL probe re-observed **263** anomalous Atom entries and the same min/median/max strata. All three remote GeoTIFFs passed the stricter affine/grid self-consistency contract and remained `RASTER_MATCHES_CATALOG_NOT_DECLARED`:
+
+- `33-161-192`: bounds `[815425, 7805995, 830435, 7821005]`, `15010 × 15010`;
+- `33-168-192`: bounds `[920425, 7805995, 935435, 7821005]`, `15010 × 15010`;
+- `33-179-198`: bounds `[1085425, 7895995, 1100435, 7911005]`, `15010 × 15010`.
+
+The proof artifact uploaded by the hardened run is 1,912 B; ZIP SHA-256 `20b11653c4c35f4d14cc5d76befff7dd563d10d54f159e26349e1d776be7db55`. The raw-geodata exclusion step passed.
+
 ## Acceptance classification
 
-Pending exact-head GitHub Actions and the live Rasterio/GDAL remote-open workflow on the stacked SENTINEL head.
+**PASS for the narrow raster-grid metadata claim after hardening.** The FORGE observation survives the adversarial affine/orientation/bounds checks and can be stated as: for the three stratified samples, the actual axis-aligned GeoTIFF raster **bounding extents** reproduce the NHM ImageServer catalog bounding extents rather than the transformed Atom GeoRSS bounding extents.
 
-Even if those checks pass, the result remains **raster-grid metadata evidence, not seam authority**. The next compiler gate remains provider-authoritative overlap/core semantics or another independently defensible deterministic transform contract before real 3×3 promotion.
+**NOT PROVEN for seam authority.** This does not establish catalog polygon equality, universal behavior across all 263 anomalies/2033 entries, a disposable ~5 m halo, an authoritative 15 km core, source priority or the valid elevation sample that wins in a 10 m overlap.
+
+The next compiler gate remains provider-authoritative overlap/core semantics or another independently defensible deterministic transform contract before real 3×3 promotion.
