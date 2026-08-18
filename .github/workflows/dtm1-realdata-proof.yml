@@ -169,8 +169,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install runtime canonicalization dependency
-        run: npm install --workspace @nwe/schemas-js --include-workspace-root=false
+      - name: Install runtime + World Viewer dependencies
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
 
       - name: Verify exact compiled terrain bytes with runtime verifier
         run: |
@@ -309,12 +309,43 @@ jobs:
             scheduler_retained_bytes: retainedByteSize,
             scheduler_metrics: snapshot.metrics,
             timing_ms: activated.timingMs,
-            worker_boundary: 'TerrainMeshWorkerClient + protocol worker shim; browser Dedicated Worker performance remains device evidence',
+            worker_boundary: 'TerrainMeshWorkerClient + protocol worker shim; browser Dedicated Worker proof follows in the same job',
             origin_qa_parameter: activated.mesh.metadata.origin,
           };
           fs.writeFileSync(path.join(proofDir, 'terrain-runtime-pipeline-realdata.json'), JSON.stringify(result, null, 2) + '\n');
           console.log(JSON.stringify(result, null, 2));
           NODE
+
+      - name: Browser environment
+        run: (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+
+      - name: Drive exact accepted terrain through Forsøk 18 Chrome module worker
+        env:
+          NWE_HEADLESS_DIRECT: '1'
+        run: |
+          ARTIFACT_FILE="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = Path('/tmp/nwe-proof')
+          report = json.loads((proof / 'dtm1-realdata-proof.json').read_text())
+          print(proof / report['compiled_artifact']['artifact_file'])
+          PY
+          )"
+          BUNDLE_FILE="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = Path('/tmp/nwe-proof')
+          report = json.loads((proof / 'dtm1-realdata-proof.json').read_text())
+          print(proof / report['compiled_artifact']['bundle_file'])
+          PY
+          )"
+          node apps/world-viewer/run_terrain_streaming_benchmark.mjs \
+            --artifact "$ARTIFACT_FILE" \
+            --bundle "$BUNDLE_FILE" \
+            --output /tmp/nwe-proof/terrain-browser-worker-realdata.json \
+            --timeout-ms 120000
+          python -m json.tool /tmp/nwe-proof/terrain-browser-worker-realdata.json > /dev/null
+          cat /tmp/nwe-proof/terrain-browser-worker-realdata.json
 
       - name: Attribution notice
         run: |
