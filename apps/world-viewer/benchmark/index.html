@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NWE P0 Viewer Batching Benchmark</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; background: #061018; color: #dcecf3; }
+    body { display: grid; grid-template-columns: minmax(0, 1fr) min(420px, 42vw); }
+    #stage { min-width: 0; position: relative; }
+    canvas { width: 100%; height: 100%; display: block; }
+    #panel { overflow: auto; padding: 14px; border-left: 1px solid #203640; background: #09151d; }
+    h1 { font: 700 15px/1.3 system-ui, sans-serif; margin: 0 0 6px; }
+    .note { font: 12px/1.5 system-ui, sans-serif; color: #9fb6c1; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.45; background: #071018; padding: 10px; border-radius: 8px; border: 1px solid #19303a; }
+    #status { color: #8ff0af; }
+    @media (max-width: 800px) { body { grid-template-columns: 1fr; grid-template-rows: 58vh 42vh; } #panel { border-left: 0; border-top: 1px solid #203640; } }
+  </style>
+</head>
+<body>
+  <main id="stage"><canvas id="gl"></canvas></main>
+  <aside id="panel">
+    <h1>Norge World Engine · P0 viewer batching benchmark</h1>
+    <p class="note">Compiled-artifact-only WebGL2 microbenchmark. Fixed full-tile camera. No raw NVDB/OSM/Kartverket networking. Geometry bytes are shared between per-object and batched modes; only draw grouping changes. Click a visible road/building for artifact/source trace metadata.</p>
+    <p id="status">starting…</p>
+    <h1>Metrics</h1><pre id="metrics">—</pre>
+    <h1>Debug trace</h1><pre id="debug">click geometry</pre>
+  </aside>
+  <script type="module" src="./benchmark.mjs"></script>
+</body>
+</html>

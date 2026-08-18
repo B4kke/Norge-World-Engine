@@ -1,0 +1,111 @@
+name: viewer-benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'apps/world-viewer/**'
+      - '.github/workflows/viewer-benchmark.yml'
+  workflow_dispatch:
+
+jobs:
+  vector-batching:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile one real vector input set
+        run: |
+          mkdir -p /tmp/nwe-viewer-data /tmp/nwe-viewer-proof
+          nwe-compile-vectors --cache-root /tmp/nwe-viewer-data --refresh > /tmp/nwe-viewer-proof/compile.json
+          cat /tmp/nwe-viewer-proof/compile.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install runtime canonicalization dependency
+        run: npm install --workspace @nwe/schemas-js --include-workspace-root=false
+
+      - name: Verify exact RuntimeVerificationBundles before browser use
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+          const report = JSON.parse(fs.readFileSync('/tmp/nwe-viewer-proof/compile.json', 'utf8'));
+          for (const item of report.results) {
+            const bundle = JSON.parse(fs.readFileSync(item.bundle_path, 'utf8'));
+            const artifact = new Uint8Array(fs.readFileSync(item.artifact_path));
+            const verification = verifyRuntimeBundle(bundle, artifact);
+            if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') {
+              throw new Error(`${item.source}: ${verification.code}: ${verification.detail}`);
+            }
+          }
+          NODE
+
+      - name: Viewer regressions
+        run: |
+          node --check apps/world-viewer/artifact_consumer.mjs
+          node --check apps/world-viewer/benchmark/geometry.mjs
+          node --check apps/world-viewer/benchmark/params.mjs
+          node --check apps/world-viewer/benchmark/benchmark.mjs
+          node --check apps/world-viewer/run_benchmark.mjs
+          node apps/world-viewer/test_artifact_consumer.mjs
+          node apps/world-viewer/test_benchmark_geometry.mjs
+          node apps/world-viewer/test_benchmark_params.mjs
+
+      - name: Browser environment
+        run: |
+          (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+
+      - name: Run same-camera per-object vs batched benchmark
+        env:
+          NWE_HEADLESS_DIRECT: '1'
+        run: |
+          node apps/world-viewer/run_benchmark.mjs \
+            --compile-report /tmp/nwe-viewer-proof/compile.json \
+            --output /tmp/nwe-viewer-proof/viewer-benchmark.json \
+            --frames 60 \
+            --timeout-ms 60000
+          cat /tmp/nwe-viewer-proof/viewer-benchmark.json
+
+      - name: Assert Issue 5 evidence gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('/tmp/nwe-viewer-proof/viewer-benchmark.json').read_text())
+          if result['status'] != 'PASS':
+              raise SystemExit('benchmark did not report PASS')
+          if result['runtime_network']['raw_source_calls'] != 0:
+              raise SystemExit('raw source networking occurred in runtime')
+          if result['baseline']['draw_calls'] != result['scene']['object_counts']['total_objects']:
+              raise SystemExit('per-object baseline no longer equals rendered object count')
+          if result['batched']['draw_calls'] >= 100:
+              raise SystemExit('batched draw calls did not get below investigative target')
+          print(json.dumps({
+              'objects': result['scene']['object_counts'],
+              'draw_calls': {'before': result['baseline']['draw_calls'], 'after': result['batched']['draw_calls']},
+              'frame_p95_ms': {'before': result['baseline']['frame_time']['p95_ms'], 'after': result['batched']['frame_time']['p95_ms']},
+              'render_sync_p95_ms': {'before': result['baseline']['render_sync_time']['p95_ms'], 'after': result['batched']['render_sync_time']['p95_ms']},
+              'frame_clock_fallbacks': result['frame_clock']['fallback_count'],
+              'raw_source_calls': result['runtime_network']['raw_source_calls'],
+          }, indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viewer-batching-${{ github.sha }}
+          path: |
+            /tmp/nwe-viewer-proof/compile.json
+            /tmp/nwe-viewer-proof/viewer-benchmark.json
+          if-no-files-found: error
+          retention-days: 7
