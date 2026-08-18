@@ -347,3 +347,37 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
+
+## 2026-08-19 — Exact-real WebGL2 terrain GPU resource lifecycle
+
+**Gjort**
+- Synced against current `main` (`6d283d498b05f3b4b5173c65a55474f85626a748`) and current parallel agent work before starting; kept the implementation isolated on `agent/lumen-gpu-resource-lifecycle` / draft PR #39.
+- Reused the existing WebGL2 terrain-streaming lab rather than adding another renderer path. Upgraded its browser proof to `nwe.browser-terrain-worker-streaming-proof/0.4` with explicit terrain GPU resource-set checkpoints and fail-closed lifecycle counts.
+- The browser contract now requires initial resident GPU presence, scheduler `deactivateTile` to destroy the GPU resource while the verified payload remains cached, and cache-hit return to recreate the GPU resource without resolving/refetching runtime input.
+- Added independent benchmark-page assertions and a `world-viewer-vite` exact-real gate that downloads only the already-published compiled Nannestad terrain RuntimeVerificationBundle/artifact, pins SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`, then drives the same Chrome lifecycle path. No new raw DTM acquisition is required by this gate.
+- Added `docs/proofs/2026-08-19-lumen-terrain-gpu-resource-lifecycle.md` and updated the task queue. `docs/04-decisions.md` remains unchanged.
+- Fresh primary-source seam review still found no Kartverket rule authorizing a 5 m disposable halo/core or raw-GeoTIFF overlap winner. A provider-backed alternative hypothesis was handed to FORGE PR #35: Geonorge's Punktsky 1.0.3 says Høydedata's point cloud is the primary FvL dataset and grids are derived automatically, while Kartverket exposes national/seamless DTM WCS services; evaluate WCS only as a separately snapshot-able source contract, not as an assumed replacement.
+
+**Bevist**
+- Code-bearing head `4d731a3a2f91339ffc34a965e53688a41d3c006e`: baseline run `32197334851` PASS, viewer-benchmark `32197334838` PASS, world-viewer-vite `32197334844` PASS, preview1-realdata-publish `32197334944` PASS.
+- Synthetic Chrome lifecycle: GPU resource checkpoints **present -> absent -> present**, renderer activations/deactivations **2 / 1**, resource-set creates/destroys **2 / 1**, peak active GPU resource sets **1**, one resolver call, one cache hit, zero raw-source calls.
+- Exact accepted Nannestad Chrome lifecycle independently reports the same contract on terrain SHA `780de19...`, full `RUNTIME_VERIFICATION_PASS`, actual module DedicatedWorker, 16,641 vertices / 32,768 triangles / 729,120 B mesh and 4,729,120 B retained CPU/runtime payload.
+- Exact-real hosted timing: loader total **149.0 ms** = 28.1 input + 7.0 full verification + 49.7 strict decode + 63.9 DedicatedWorker RTT (44.1 worker-reported); input→first-visible **230.1 ms**; cached transition **0.4 ms**; cache return **2.7 ms**; GPU apply p50 **0.5 ms**, max **0.9 ms**. These are hosted Chrome observations, not Android acceptance.
+- Exact-real lifecycle proof artifact ID `9346309316`, artifact ZIP digest `sha256:919d76660d4ce77783b252515ecc40931805243a867440c3888458ecfee7f3f0`.
+- CPU/runtime cache residency and renderer GPU residency are now measurably distinct: the 4,729,120 B verified payload remains retained while the terrain GPU resource is absent in the cached state and is reused on return without runtime-input refetch.
+
+**Ikke bevist / blokkert**
+- Canonical Preview 1 still owns static terrain GPU resources across its scheduler movement probe; its device evidence must continue to report `renderer_resource_lifecycle_observed=false` until that renderer/scheduler bridge is changed and measured.
+- WebGPU tile-level destroy/recreate and Android GPU-resource lifecycle timing remain open.
+- Real 2×2/3×3 terrain and any spatial LOD policy remain blocked by `P0-MULTITILE-TERRAIN-01`; existing 65/129/257 terrain mesh sizes are graphics-profile experiments, not distance-based LOD.
+- FORGE's 263/263 actual-raster-grid audit removes known grid-shape sampling uncertainty but still does not authorize the 10 m overlap winner. Raw-GeoTIFF mosaicking remains fail-closed; WCS remains only a candidate source-contract experiment.
+
+**Endret**
+- Draft PR #39 adds the lifecycle contract, exact-real compiled-artifact Chrome gate, proof document, worklog and P0 queue handoff. No merge performed.
+- `P0-VIEWER-01` / `P0-STREAMING-01` now distinguish exact-real WebGL2 terrain-lab GPU lifecycle PASS from still-open canonical Preview/WebGPU/Android lifecycle.
+- `P0-MULTITILE-TERRAIN-01` records FORGE's full known 263-entry raster-grid audit and the new WCS-source-contract hypothesis without admitting a new source or seam rule.
+
+**Neste**
+- LUMEN: bind scheduler activate/deactivate to terrain-resource methods in the canonical Preview renderer adapters, preserving vector/pipeline resources independently; prove WebGL2, then WebGPU, then Android device evidence before selecting GPU budgets.
+- FORGE: either prove raw-GeoTIFF seam authority or test the official seamless DTM/WCS as a fully provenance-bound, snapshot-able alternate source contract and reconcile it against D-007 center-tile truth.
+- Only after one source/seam path passes should STRØM/LUMEN execute real 2×2/3×3 movement, GPU churn, memory budgets and distance/LOD experiments.
