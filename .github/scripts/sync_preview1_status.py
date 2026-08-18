@@ -1,0 +1,100 @@
+from pathlib import Path
+import re
+
+WORKLOG_MARKER = "## 2026-08-18 — Preview 1 real Nannestad world viewer"
+
+worklog = Path("docs/05-worklog.md")
+worklog_text = worklog.read_text(encoding="utf-8")
+if WORKLOG_MARKER not in worklog_text:
+    worklog_text += r'''
+
+## 2026-08-18 — Preview 1 real Nannestad world viewer
+
+**Gjort**
+- Replaced the default synthetic Forsøk 18 product surface with a fail-closed real Preview 1 loader while preserving Forsøk 18 at `?lab=terrain` as an explicit laboratory harness.
+- Added one interactive WebGL2 Preview-1 adapter that composes the existing verified terrain worker/scheduler output with the accepted compiled NVDB road paths and OSM building footprints; WebGL2 remains a replaceable preview adapter, not a renderer decision.
+- Added reproducible Preview 1 staging: real DTM1 + NVDB + OSM are recompiled, only RuntimeVerificationBundles/content-addressed compiled artifacts are staged, and raw source transports/path traversal/hash or byte-size mismatch fail closed.
+- Added a temporary force-replaced orphan `preview-runtime` branch as a P0 transport bridge. It contains compiled runtime output + attribution only; raw DTM1/NVDB/OSM data remains outside Git.
+- Added a real Chrome composition gate against the built default Vite app and the staged real snapshot before publication.
+
+**Bevist**
+- PR #20 code head `5f0f8e86a857d05c0a17711093c55885044c2f89`: baseline `32151589583` PASS, viewer-benchmark `32151589662` PASS, world-viewer-vite `32151589639` PASS and realdata/browser run `32151589694` PASS.
+- Chrome 151 reached `REAL WORLD READY` using exactly 7 runtime-data requests and **0 raw-source runtime calls**.
+- Exact accepted terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`: `RUNTIME_VERIFICATION_PASS`, 16,641 vertices / 32,768 triangles, 4,729,120 B retained. Hosted loader total was ~117.5 ms (resolve ~40.5, verify ~5.7, decode ~31.8, worker RTT ~39.2 ms); these are hosted Chrome numbers, not Android acceptance.
+- Exact roads SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`: `RUNTIME_VERIFICATION_PASS`, 246 paths.
+- Exact buildings SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`: `RUNTIME_VERIFICATION_PASS`, 135 footprints; 15 source-backed heights and 120 explicitly unresolved 5 m preview-debug extrusions.
+- Snapshot size is 4,269,036 B and is published only after the real Chrome gate passes. Vercel PR deployment for code head `5f0f8e86…` is READY.
+
+**Endret**
+- Added `docs/proofs/2026-08-18-preview1-real-world.md` and updated `docs/06-task-queue.md` to close the exact-real single-tile browser composition gate.
+- No `docs/04-decisions.md` change: final renderer, object store/CDN, road-surface semantics, building-height model, LOD and whole-Norway tile policy remain open.
+
+**Neste**
+- Run Preview 1 on Android Chrome and capture device verification/decode/worker/GPU/rAF behavior.
+- Close `P0-MULTITILE-TERRAIN-01` with an evidence-backed deterministic DTM1 seam transform represented in GitHub code/decision state; the current canonical queue still keeps that gate open.
+- Then build Preview 2 as real 3×3 dynamic streaming through the same compiled-artifact viewer/scheduler path, before materials/vegetation/props.
+'''
+    worklog.write_text(worklog_text, encoding="utf-8")
+
+queue = Path("docs/06-task-queue.md")
+queue_text = queue.read_text(encoding="utf-8")
+viewer_block = r'''### P0-VIEWER-01 — Measurable compiled-artifact viewer
+**Status:** REAL 1×1 PREVIEW 1 CHROME PASS / VERCEL PR DEPLOYMENT READY / ANDROID + 3×3 OPEN  
+**Done/evidence:** the default deployable World Viewer now consumes the real compiled Nannestad 1×1 km snapshot instead of synthetic world truth. PR #20 realdata/browser run `32151589694` opened the built default app in Chrome 151, performed full WebCrypto/JCS verification for the exact accepted terrain/road/building artifacts and reached `REAL WORLD READY` with exactly **7 runtime-data requests and 0 raw-source runtime calls**. Terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` produced a 129×129 mesh (**16,641 vertices / 32,768 triangles**) with **4,729,120 B** retained; roads SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a` produced **246 paths**; buildings SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd` produced **135 footprints**. 15 building heights are source-backed; 120 remain explicit 5 m preview-debug extrusions. The Vercel PR deployment on code head `5f0f8e86a857d05c0a17711093c55885044c2f89` is READY. Forsøk 18 remains available only as explicit `?lab=terrain` instrumentation.  
+**Performance observation:** hosted real Preview 1 terrain loader measured ~40.5 ms input resolve, ~5.7 ms full verification, ~31.8 ms strict decode, ~39.2 ms worker roundtrip / ~31.2 ms worker-reported CPU, ~117.5 ms loader total. These are hosted Chrome measurements, not Android/GPU acceptance.  
+**Runtime distribution:** a force-replaced orphan `preview-runtime` branch carries only compiled RuntimeVerificationBundles/artifacts + attribution for P0. Raw DTM1/NVDB/OSM data is not published. This is explicitly a temporary transport bridge, not a selected final CDN/object-store architecture.  
+**Proof:** `docs/proofs/2026-08-18-preview1-real-world.md`.  
+**Open/next:** Android Chrome/device metrics remain open. Preview 2 must reuse this same viewer/runtime path, but real 3×3 terrain promotion remains gated by `P0-MULTITILE-TERRAIN-01`; do not bypass the seam decision by inventing client-side blending. Physical road width, unresolved building heights, materials and props remain later independent work.  
+**Parallel issue:** GitHub Issue #5 owns viewer batching/performance.'''
+queue_text, count = re.subn(
+    r"### P0-VIEWER-01 — Measurable compiled-artifact viewer\n.*?(?=\n### P0-STREAMING-01 —)",
+    viewer_block,
+    queue_text,
+    flags=re.S,
+)
+if count != 1:
+    raise SystemExit(f"expected one P0-VIEWER-01 block, replaced {count}")
+
+streaming_block = r'''### P0-STREAMING-01 — Verified terrain tile lifecycle
+**Status:** SINGLE REAL TILE BROWSER/WORKER/SCHEDULER PASS / ANDROID MOVEMENT + REAL MULTITILE OPEN  
+**Owner area:** `engine/streaming`  
+**Done/evidence:** `TileStreamingScheduler`, strict `NWEHGT01` decode, full runtime verification and the module `DedicatedWorker` terrain mesh path now compose on the **exact accepted real Nannestad terrain bytes** in Chrome. Preview 1 run `32151589694` retained **4,729,120 B**, completed one terrain load with zero failures and one resolver call, and composed the same real terrain with the accepted vector layers while recording zero raw-source calls. This closes the prior exact-real single-tile browser gap left by the synthetic Forsøk 18 proof.  
+**Hosted timing observation:** real Preview 1 terrain loader measured ~40.5 ms runtime-input resolve, ~5.7 ms verification, ~31.8 ms strict decode, ~39.2 ms worker roundtrip / ~31.2 ms worker CPU and ~117.5 ms total. This run is a composition/load proof; it does not replace Android rAF/GPU/movement evidence or select worker pooling/verification caching/LOD budgets.  
+**Proof:** `docs/proofs/2026-08-18-terrain-runtime-pipeline.md`, `docs/proofs/2026-08-18-world-viewer-terrain-worker.md` and `docs/proofs/2026-08-18-preview1-real-world.md`.  
+**Open:** capture the same real Preview 1 on Android Chrome with frame/rAF/GPU/movement metrics. Real 2×2/3×3 promotion remains blocked by `P0-MULTITILE-TERRAIN-01` until an evidence-backed deterministic seam transform is represented in canonical GitHub code/decision state. Hard resident/GPU budgets, worker pooling, verification caching and LOD remain unselected.  
+**Next:** Android/device measurement in parallel with closing the terrain seam gate; then drive the accepted neighboring artifacts through camera movement/cache/lifecycle for Preview 2 3×3.'''
+queue_text, count = re.subn(
+    r"### P0-STREAMING-01 — Verified terrain tile lifecycle\n.*?(?=\n### P0-ARCH-REUSE-01 —)",
+    streaming_block,
+    queue_text,
+    flags=re.S,
+)
+if count != 1:
+    raise SystemExit(f"expected one P0-STREAMING-01 block, replaced {count}")
+queue.write_text(queue_text, encoding="utf-8")
+
+proof = Path("docs/proofs/2026-08-18-preview1-real-world.md")
+proof_text = proof.read_text(encoding="utf-8")
+proof_text, count = re.subn(
+    r"## Acceptance still requiring hosted evidence\n.*?(?=\n## Next after Preview 1)",
+    r'''## Hosted acceptance evidence
+
+PR #20 code head `5f0f8e86a857d05c0a17711093c55885044c2f89` passed baseline `32151589583`, viewer-benchmark `32151589662`, world-viewer-vite `32151589639` and the real-data/browser workflow `32151589694`. The corresponding Vercel PR deployment is READY.
+
+The real-data/browser workflow staged **4,269,036 B** of compiled runtime snapshot data and then opened the built default World Viewer in **Google Chrome 151.0.7922.108**. Browser result: `nwe.world-preview-browser-proof/0.1 / PASS`, phase `REAL WORLD READY`, exactly **7 runtime-data requests**, **0 raw-source runtime calls**.
+
+Exact browser-consumed layers:
+
+- terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`, 4,000,382 B, `RUNTIME_VERIFICATION_PASS`, 16,641 vertices / 32,768 triangles, 4,729,120 B retained;
+- roads SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`, 171,732 B, `RUNTIME_VERIFICATION_PASS`, 246 paths;
+- buildings SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`, 80,846 B, `RUNTIME_VERIFICATION_PASS`, 135 footprints, 15 source-backed heights / 120 unresolved preview-debug heights.
+
+Hosted Chrome terrain-loader timing was ~40.5 ms resolve, ~5.7 ms verification, ~31.8 ms decode, ~39.2 ms worker roundtrip (~31.2 ms worker CPU) and ~117.5 ms total. These values are not Android/device acceptance.
+
+The browser proof JSON is uploaded by run `32151589694` as `preview1-browser-proof-*`; snapshot publication happens only after this Chrome gate passes. Preview 1 is therefore accepted as the first real 1×1 browser world composition. Android performance and real neighboring-tile streaming remain open.''',
+    proof_text,
+    flags=re.S,
+)
+if count != 1 and "## Hosted acceptance evidence" not in proof_text:
+    raise SystemExit(f"expected hosted-evidence placeholder, replaced {count}")
+proof.write_text(proof_text, encoding="utf-8")
