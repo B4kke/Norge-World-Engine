@@ -150,6 +150,13 @@ export function createPreview1WebGl2Renderer({
   let stopped = false;
   let lastDrawAt = 0;
   let actualPixelRatio = 1;
+  let firstFrameResolve;
+  let firstFrameReject;
+  let firstFrameSettled = false;
+  const firstFrame = new Promise((resolve, reject) => {
+    firstFrameResolve = resolve;
+    firstFrameReject = reject;
+  });
 
   function resize() {
     actualPixelRatio = Math.min(window.devicePixelRatio || 1, profile.maxDpr ?? 1.5);
@@ -182,19 +189,35 @@ export function createPreview1WebGl2Renderer({
     resize();
     if (dirty) {
       dirty = false;
-      const viewProj = cameraViewProjection(camera, canvas.width, canvas.height);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      drawMesh(terrainProgram, terrainMesh, viewProj);
-      drawMesh(flatProgram, roadMesh, viewProj, roadColor);
-      drawMesh(flatProgram, resolvedMesh, viewProj, resolvedColor);
-      drawMesh(flatProgram, fallbackMesh, viewProj, fallbackColor);
-      onFrame({
-        at: now,
-        drawGapMs: lastDrawAt ? now - lastDrawAt : null,
-        backend: 'webgl2',
-        camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
-      });
-      lastDrawAt = now;
+      try {
+        const viewProj = cameraViewProjection(camera, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        drawMesh(terrainProgram, terrainMesh, viewProj);
+        drawMesh(flatProgram, roadMesh, viewProj, roadColor);
+        drawMesh(flatProgram, resolvedMesh, viewProj, resolvedColor);
+        drawMesh(flatProgram, fallbackMesh, viewProj, fallbackColor);
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) throw new Error(`WEBGL2_FRAME_ERROR_${error}`);
+        const frame = {
+          at: now,
+          drawGapMs: lastDrawAt ? now - lastDrawAt : null,
+          backend: 'webgl2',
+          pixelRatio: actualPixelRatio,
+          camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
+        };
+        onFrame(frame);
+        lastDrawAt = now;
+        if (!firstFrameSettled) {
+          firstFrameSettled = true;
+          firstFrameResolve(frame);
+        }
+      } catch (error) {
+        if (!firstFrameSettled) {
+          firstFrameSettled = true;
+          firstFrameReject(error);
+        }
+        throw error;
+      }
     }
     requestAnimationFrame(draw);
   }
@@ -202,16 +225,18 @@ export function createPreview1WebGl2Renderer({
   const removeControls = installPreviewSceneControls(canvas, camera, () => { dirty = true; });
   const observer = new ResizeObserver(() => { dirty = true; });
   observer.observe(canvas);
+  resize();
   requestAnimationFrame(draw);
 
   return {
     header: scene.header,
+    firstFrame,
     stats: {
       ...scene.stats,
       backend: 'webgl2',
       graphics_profile: profile.id ?? 'balanced',
       max_dpr: profile.maxDpr ?? 1.5,
-      pixel_ratio: actualPixelRatio,
+      get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: profile.webglAntialias === false ? 1 : null,
     },
     invalidate() { dirty = true; },
@@ -219,6 +244,10 @@ export function createPreview1WebGl2Renderer({
       stopped = true;
       observer.disconnect();
       removeControls();
+      if (!firstFrameSettled) {
+        firstFrameSettled = true;
+        firstFrameReject(new Error('WEBGL2_DISPOSED_BEFORE_FIRST_FRAME'));
+      }
       destroyMesh(gl, terrainMesh);
       destroyMesh(gl, roadMesh);
       destroyMesh(gl, resolvedMesh);
