@@ -108,7 +108,12 @@ jobs:
         run: |
           set -eu
           mkdir -p /tmp/nwe-accepted-terrain
-          BASE='https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1'
+          export SNAPSHOT_COMMIT="$(git ls-remote https://github.com/B4kke/Norge-World-Engine.git refs/heads/preview-runtime | awk '{print $1}')"
+          case "$SNAPSHOT_COMMIT" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "invalid preview-runtime snapshot commit: $SNAPSHOT_COMMIT" >&2; exit 1 ;;
+          esac
+          BASE="https://raw.githubusercontent.com/B4kke/Norge-World-Engine/${SNAPSHOT_COMMIT}/nannestad-preview-1"
           ARTIFACT="/tmp/nwe-accepted-terrain/${EXPECTED_TERRAIN_SHA}.nwehgt"
           BUNDLE='/tmp/nwe-accepted-terrain/terrain.bundle.json'
           curl --fail --location --retry 3 --silent --show-error \
@@ -123,20 +128,27 @@ jobs:
             --timeout-ms 90000
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const result = JSON.parse(fs.readFileSync('/tmp/nwe-terrain-gpu-lifecycle-realdata.json', 'utf8'));
+          const path = '/tmp/nwe-terrain-gpu-lifecycle-realdata.json';
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'));
           const expected = process.env.EXPECTED_TERRAIN_SHA;
+          const snapshotCommit = process.env.SNAPSHOT_COMMIT;
           if (result.status !== 'PASS' || result.input_mode !== 'real-input') throw new Error(`unexpected real lifecycle result: ${JSON.stringify(result)}`);
           if (result.artifact_sha256 !== expected) throw new Error(`accepted terrain SHA changed: ${result.artifact_sha256}`);
           if (result.renderer_resource_lifecycle_observed !== true) throw new Error('real terrain GPU lifecycle was not observed');
+          if (result.gpu_resource_lifecycle?.physical_vram_release_observed !== false) throw new Error('physical VRAM release claim boundary missing');
           const checkpoints = Object.fromEntries((result.gpu_resource_lifecycle?.checkpoints ?? []).map((item) => [item.label, item]));
           if (checkpoints['initial-resident']?.gpu_resource_present !== true) throw new Error('initial real GPU resource missing');
           if (checkpoints['outside-active-inside-retain']?.gpu_resource_present !== false) throw new Error('real cached tile retained GPU resource');
           if (checkpoints['returned-center']?.gpu_resource_present !== true) throw new Error('real cache-hit GPU resource not recreated');
           if (result.resolver_calls !== 1 || result.scheduler?.cacheHits !== 1) throw new Error('real lifecycle refetched instead of cache-reactivating');
+          result.runtime_snapshot_commit = snapshotCommit;
+          fs.writeFileSync(path, `${JSON.stringify(result, null, 2)}\n`);
           console.log(JSON.stringify({
             status: result.status,
+            runtime_snapshot_commit: snapshotCommit,
             artifact_sha256: result.artifact_sha256,
             renderer_resource_lifecycle_observed: result.renderer_resource_lifecycle_observed,
+            physical_vram_release_observed: result.gpu_resource_lifecycle.physical_vram_release_observed,
             checkpoints: result.gpu_resource_lifecycle.checkpoints,
             activations: result.gpu_resource_lifecycle.activations,
             deactivations: result.gpu_resource_lifecycle.deactivations,
