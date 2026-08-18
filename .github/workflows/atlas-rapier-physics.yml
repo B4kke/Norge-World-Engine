@@ -1,0 +1,31 @@
+name: atlas-rapier-physics
+
+on:
+  pull_request:
+    paths:
+      - 'engine/world/**'
+      - 'prototypes/atlas-rapier-physics/**'
+      - '.github/workflows/atlas-rapier-physics.yml'
+  workflow_dispatch:
+
+jobs:
+  rapier-rebase-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install exact Rapier WASM candidate
+        working-directory: prototypes/atlas-rapier-physics
+        run: npm install --package-lock=false --ignore-scripts
+
+      - name: Syntax check probe
+        run: node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
+
+      - name: Run fixed-vs-rebased Rapier probe
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs | tee /tmp/atlas-rapier-physics.json
+          python -m json.tool /tmp/atlas-rapier-physics.json > /dev/null
