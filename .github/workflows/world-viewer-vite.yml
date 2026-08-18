@@ -34,11 +34,16 @@ jobs:
           node apps/world-viewer/test_benchmark_geometry.mjs
           node apps/world-viewer/test_benchmark_params.mjs
 
-      - name: Preview camera control regressions
+      - name: Preview camera and graphics regressions
         run: |
           node --check apps/world-viewer/src/previewCameraControls.mjs
+          node --check apps/world-viewer/src/graphicsProfiles.mjs
+          node --check apps/world-viewer/src/preview1SceneGeometry.mjs
+          node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
+          node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
           node --check apps/world-viewer/src/preview1Renderer.mjs
           node apps/world-viewer/test_preview_camera_controls.mjs
+          node apps/world-viewer/test_graphics_profiles.mjs
 
       - name: Terrain experiment syntax boundary
         run: |
