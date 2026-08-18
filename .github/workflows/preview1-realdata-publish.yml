@@ -89,6 +89,24 @@ jobs:
       - name: Build deployable World Viewer
         run: npm run build --workspace @nwe/world-viewer
 
+      - name: Real Preview 1 browser composition gate
+        run: |
+          node --check apps/world-viewer/run_preview1_browser_smoke.mjs
+          (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+          node apps/world-viewer/run_preview1_browser_smoke.mjs \
+            --runtime-root /tmp/nwe-preview \
+            --dist-root apps/world-viewer/dist \
+            --output /tmp/nwe-preview1-browser-proof.json \
+            --timeout-ms 90000
+          cat /tmp/nwe-preview1-browser-proof.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview1-browser-proof-${{ github.sha }}
+          path: /tmp/nwe-preview1-browser-proof.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Publish replaceable compiled snapshot branch
         env:
           GH_TOKEN: ${{ github.token }}
