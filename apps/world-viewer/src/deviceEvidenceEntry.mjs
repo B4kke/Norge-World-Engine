@@ -55,6 +55,8 @@ async function run() {
       locationHref: location.href,
       navigatorLike: navigator,
       screenLike: screen,
+      canvasLike: canvas,
+      devicePixelRatioLike: devicePixelRatio,
     });
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
