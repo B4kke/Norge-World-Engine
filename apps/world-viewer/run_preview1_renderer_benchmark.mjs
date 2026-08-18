@@ -225,12 +225,17 @@ async function main() {
     child.stdout.on('data', (chunk) => { chromeLog += chunk.toString(); });
     child.stderr.on('data', (chunk) => { chromeLog += chunk.toString(); });
 
+    let timeoutHandle;
+    const timeoutPromise = new Promise((_, rejectPromise) => {
+      timeoutHandle = setTimeout(() => {
+        rejectPromise(new Error(`${backend} timed out after ${timeoutMs} ms\n${chromeLog.slice(-5000)}`));
+      }, timeoutMs);
+    });
+
     try {
-      return await Promise.race([
-        reportPromise,
-        new Promise((_, rejectPromise) => setTimeout(() => rejectPromise(new Error(`${backend} timed out after ${timeoutMs} ms\n${chromeLog.slice(-5000)}`)), timeoutMs)),
-      ]);
+      return await Promise.race([reportPromise, timeoutPromise]);
     } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       reportHandlers.delete(reportPath);
       try { process.kill(-child.pid, 'SIGTERM'); } catch {}
       rmSync(profile, { recursive: true, force: true });
