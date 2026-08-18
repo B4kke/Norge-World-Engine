@@ -5,9 +5,9 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 ## Current Prototype-0 components
 
 - `runtime_verifier.mjs` — reconstructs provenance and verifies exact compiled artifact bytes before `READY_FOR_RUNTIME`.
-- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, byte-budget eviction and stale-load rejection.
+- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, separate inactive-cache/resident payload accounting and stale-load rejection.
 - `test_tile_scheduler.mjs` — scheduler lifecycle/adversarial regressions.
-- `benchmark_tile_scheduler.mjs` — synthetic 3×3 Nannestad scheduler simulation. It tests runtime scheduling mechanics only and does **not** claim that neighbouring Nannestad geodata/artifacts exist yet.
+- `benchmark_tile_scheduler.mjs` — synthetic 3×3 Nannestad scheduler simulation with constrained resident/cache byte stress. It tests runtime scheduling mechanics only and does **not** claim that neighbouring Nannestad geodata/artifacts exist yet or select production budgets.
 - `terrain_mesh_buffers.mjs` — deterministic renderer-independent height-grid → position/normal/UV/index buffer construction using the same pixel-center bilinear sampling semantics as Forsøk 16.
 - `terrain_mesh_worker_protocol.mjs` + `terrain_mesh_worker.mjs` — Dedicated Worker job/result contract for mesh construction.
 - `terrain_mesh_worker_client.mjs` — browser-side one-job worker client with AbortSignal cancellation and typed-buffer rehydration.
@@ -18,7 +18,11 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 
 The injected `loadTile(tile, {signal})` callback must return only after the tile payload has passed whatever artifact verification/decode gate the caller requires. The scheduler never contacts source geodata APIs and never promotes data. It only decides which already-runtime-eligible tile payloads should be loading, resident, cached or evicted.
 
-Renderer-specific scene work stays behind injected `activateTile`, `deactivateTile` and `disposeTile` callbacks. This keeps Three.js/WebGPU/Cesium/Unreal choices outside the scheduling core.
+Renderer-specific scene work stays behind injected `activateTile`, `deactivateTile` and `disposeTile` callbacks. This keeps Three.js/WebGPU/Cesium/Unreal choices outside the scheduling core. Activation failure keeps the verified payload cached for a later activation retry instead of forcing a source/runtime-input refetch; disposal failure keeps the payload and byte accounting intact rather than pretending memory was released.
+
+`maxCacheBytes` is specifically an **inactive cached-payload** budget. Resident payload bytes do not consume it. `maxResidentBytes` is an optional hard cap over scheduler-known payload bytes in `resident + activating`; it defaults to `null`, so no production resident-byte budget is selected by the core. This is a CPU/runtime-payload accounting boundary, not a claim about exact GPU/VRAM allocation. LUMEN may enforce renderer-resource budgets through the adapter layer once browser/device measurements justify a policy.
+
+During an asynchronous activation, bytes move through an explicit `activating` bucket. This reserves resident capacity before the adapter awaits GPU/scene work, so concurrent load completions cannot both pass the same resident budget and overcommit it.
 
 ## Terrain mesh job boundary
 
@@ -38,10 +42,12 @@ Scheduler snapshots report at least:
 
 - queue depth and active loads;
 - current/peak concurrency;
-- resident/cached/failed counts;
+- resident/activating/cached/failed counts;
 - cache hits/misses;
-- cached bytes and peak bytes;
-- activations/deactivations/evictions;
+- current resident, activating, inactive-cache and total retained payload bytes;
+- peak resident, activating, inactive-cache and retained payload bytes;
+- cache/resident budget overcommit bytes and resident-budget deferrals;
+- activations/deactivations/evictions plus activation/deactivation/disposal/lifecycle failures;
 - abort requests and stale completions dropped.
 
 Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte size and worker CPU duration. Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement.
@@ -51,6 +57,7 @@ Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte
 - no final Norway-wide tile index;
 - no accepted LOD metric beyond Prototype-0 distance prioritization;
 - no renderer choice;
+- no production `maxResidentBytes`, inactive-cache size or GPU/VRAM budget selected from the synthetic stress benchmark;
 - no worker-pool size/persistence policy;
 - no claim that a synthetic 3×3 scheduling test equals real multi-tile streaming;
 - no claim that hosted Node mesh timing equals Android browser worker timing.
