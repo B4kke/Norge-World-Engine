@@ -6,6 +6,7 @@ const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
 const rendererPreference = params.get('renderer') || 'webgl2';
 const graphicsProfile = params.get('graphics') || 'balanced';
 const evidenceTarget = params.get('target') === 'android-chrome' ? 'android-chrome' : 'generic-browser';
+const reportUrl = params.get('report');
 const frameCount = Number(params.get('frames') || '90');
 if (!Number.isInteger(frameCount) || frameCount < 10 || frameCount > 600) throw new Error('DEVICE_EVIDENCE_FRAMES_OUT_OF_RANGE');
 
@@ -45,6 +46,19 @@ function setStatus(text, state = '') {
   status.dataset.state = state;
 }
 
+async function postReport(payload) {
+  if (!reportUrl) return;
+  const target = new URL(reportUrl, location.href);
+  if (target.origin !== location.origin) throw new Error('DEVICE_EVIDENCE_REPORT_ORIGIN_MISMATCH');
+  const response = await nativeFetch(target.href, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`DEVICE_EVIDENCE_REPORT_FAILED: ${response.status}`);
+}
+
 async function run() {
   setStatus('LOADING VERIFIED ARTIFACTS');
   try {
@@ -76,6 +90,7 @@ async function run() {
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
     setStatus('DEVICE EVIDENCE PASS', 'pass');
+    await postReport(evidence);
     download.disabled = false;
     download.addEventListener('click', () => {
       const blob = new Blob([json], { type: 'application/json' });
@@ -88,8 +103,10 @@ async function run() {
     }, { once: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const failure = { schema: 'nwe.world-viewer-device-evidence/0.1', status: 'FAIL', error: message, capture_session_id: captureSessionId, evidence_target: evidenceTarget, runtime_requests: runtimeRequests };
     setStatus(`FAIL CLOSED · ${message}`, 'fail');
-    output.textContent = JSON.stringify({ schema: 'nwe.world-viewer-device-evidence/0.1', status: 'FAIL', error: message, capture_session_id: captureSessionId, evidence_target: evidenceTarget, runtime_requests: runtimeRequests }, null, 2);
+    output.textContent = JSON.stringify(failure, null, 2);
+    try { await postReport(failure); } catch {}
   }
 }
 
