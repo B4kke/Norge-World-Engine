@@ -33,6 +33,18 @@ function normalizedCaptureSessionId(value) {
   return typeof value === 'string' && /^[a-zA-Z0-9._:-]{8,128}$/.test(value) ? value : null;
 }
 
+export function buildCounterpartEvidenceUrl(locationHref, { activeBackend = null } = {}) {
+  const url = new URL(String(locationHref));
+  const sessionId = normalizedCaptureSessionId(url.searchParams.get('session'));
+  if (!sessionId) throw new Error('DEVICE_EVIDENCE_COUNTERPART_SESSION_REQUIRED');
+  const currentBackend = String(activeBackend ?? url.searchParams.get('renderer') ?? '').toLowerCase();
+  if (currentBackend !== 'webgl2' && currentBackend !== 'webgpu') {
+    throw new Error('DEVICE_EVIDENCE_COUNTERPART_BACKEND_INVALID');
+  }
+  url.searchParams.set('renderer', currentBackend === 'webgl2' ? 'webgpu' : 'webgl2');
+  return url.href;
+}
+
 export function classifyBrowserEnvironment(navigatorLike = {}) {
   const userAgent = String(navigatorLike?.userAgent ?? '');
   const uaData = navigatorLike?.userAgentData ?? null;
