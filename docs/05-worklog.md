@@ -42,7 +42,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Local geospatial regressions PASS: 4 tests covering Shapely box/polygon containment, SENTINEL triangle rejection and byte-repeatable Rasterio clip (`4 passed`).
 - The Node JCS known-vector and runtime lineage regression were executed locally against the exact upstream `canonicalize` v3.0.0 source from tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
 - Local Node syntax checks PASS for the schema helper, runtime verifier/regression and Cesium benchmark source.
-- PR #3 is mergeable against `main`.
+- PR #3 is mergeable into `main`.
 - Latest GitHub Actions run #63 for the PR still fails before repository commands execute: the hosted job exposes an empty step list. This is runner/account infrastructure failure, not evidence of a failed repository test.
 - Package/API versions and documented usage were verified against current PyPI/npm/upstream sources before final pinning.
 
@@ -137,7 +137,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 **Bevist**
 - Mobile capture: NVDB 722,013 B / 471 objects / SHA `789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30`; OSM 1,053,121 B / 5,704 elements / 141 candidates. Android NVDB bytes are exactly identical to later runner acquisition.
 - Hosted real-data roads: `471 raw -> 407 normalized -> 246 compiled paths`; artifact 171,732 B, SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`. Cold total 2168.958 ms; warm/offline 148.363 ms.
-- Hosted real-data buildings: `5,704 raw / 141 candidates -> 135 validated+compiled footprints`; artifact 80,846 B, SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms.
+- Hosted real-data buildings: `5,704 raw / 141 candidates -> 135 validated+compiled footprints`; artifact 80,846 B, SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms with identical artifact SHA.
 - Cold and warm runs yield identical per-source raw/artifact hashes and counts; warm reports raw-cache hits.
 - `runtime_verifier.mjs` returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS` for both exact compiled artifact byte streams.
 - OSM runner response had the same byte size and 5,704/141 counts as the earlier Android capture but a different raw SHA. The pipeline correctly represents it as a distinct SourceSnapshot instead of silently equating source revisions.
@@ -347,3 +347,25 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
+
+## 2026-08-19 — Strict Android WebGPU ↔ WebGL2 renderer A/B
+
+**Gjort**
+- Compared the operator-supplied WebGL2 and Unsafe-WebGPU Android Chrome captures from exact commit `b8cb6b35de3847aaab4357a9d89f81029dfb6997`, session `ab-msaa1-001` after normalizing the balanced one-sample workload and telemetry contract across backends.
+- Reconstructed `compareDeviceEvidenceContext()` against both JSON files; all comparison fields matched and the result is `0 mismatches / comparable=true`.
+- Added `docs/proofs/2026-08-19-android-webgpu-webgl2-strict-ab.md` and promoted `P0-VIEWER-01` from strict A/B open to strict matched A/B pass.
+
+**Bevist**
+- Exact world/runtime context matches: same artifacts, provenance, camera, surface, one-sample workload, streaming contract and 90-frame window; both captures PASS with 7 runtime requests / 0 raw-source calls.
+- WebGPU uses the core adapter directly under the diagnostic Unsafe WebGPU flag.
+- CPU-side repeated-draw cost favors WebGPU in this capture: p50/p95/p99/max `0.300/0.600/0.655/1.100 ms` versus WebGL2 `1.150/1.855/2.985/6.100 ms` (~74%/~68%/~78%/~82% lower).
+- GPU-resource-apply CPU is 2.7 ms WebGPU vs 19.2 ms WebGL2; renderer init 31.4 vs 53.9 ms.
+- Frame-gap p50 is effectively identical; WebGPU p95 is slightly worse while p99/max are materially lower. One 90-frame run is not a general/repeatability claim.
+- First-frame total is not backend-isolated: WebGPU's pre-render terrain pipeline was 496.4 ms vs WebGL2 236.2 ms, dominated by resolve-input and worker-roundtrip variance before renderer initialization.
+
+**Endret**
+- Branch keeps WebGPU-first experimentation and WebGL2 fallback as an evidence direction only; no `docs/04-decisions.md` renderer decision was added.
+- Normal Chrome WebGPU availability remains capability-blocked on the observed handset state; Unsafe WebGPU is diagnostic evidence only.
+
+**Neste**
+- Add capability-gated actual GPU timing, repeat alternating matched backend captures for variance, and isolate startup phases before comparing first-visible. Keep renderer GPU-resource lifecycle and multi-tile/LOD acceptance as separate gates.
