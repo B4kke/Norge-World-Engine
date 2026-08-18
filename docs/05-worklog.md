@@ -329,7 +329,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 ## 2026-08-18 — Agent v2 roles and project-specific skills
 
 **Gjort**
-- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data), ATLAS (world/coordinates) and SENTINEL (integration/QA).
+- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data) and ATLAS (world/coordinates) and SENTINEL (integration/QA).
 - Upgraded all seven existing repo-local Agent Skills to the current project evidence instead of early-P0 assumptions.
 - Added three missing skills: `nwe-renderer-platform`, `nwe-runtime-streaming` and `nwe-world-model`.
 - Updated `AGENTS.md` and `README.md` so role selection, branch isolation, artifact-only runtime, evidence classes and current P0 boundaries are explicit.
@@ -347,3 +347,26 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
+
+## 2026-08-18 — ATLAS world↔tile↔render coordinate contract
+
+**Gjort**
+- Added a production-direction `engine/world` candidate contract separating authoritative `WorldFrame`/`WorldPosition` from high-precision `TileFrame`, disposable render-local Float32 state and independent subsystem-local frames for later physics/runtime integration.
+- Made horizontal CRS and vertical datum separate mandatory world-frame identities. Render frames now require `(originSeriesId, epoch)` plus a high-precision anchor; raw temporal local deltas across an epoch boundary fail closed unless reconstructed/compensated with the matching historical origins.
+- Added `nwe.authoritative-world-snapshot/0.1` JSON Schema and deterministic serialization/replay that excludes render-origin state from authoritative snapshots.
+- Added an 8-case adversarial Node regression and wired it into baseline CI. Added `docs/proofs/2026-08-18-atlas-world-coordinate-contract.md` with evidence class and explicit non-decisions.
+
+**Bevist**
+- Local Node 22.16.0 regression PASS: 8/8 cases covering origin shift mid-tick, epoch-boundary temporal delta, large absolute coordinates, tile-boundary crossing, entity crossing render origin, serialization/replay, a physics/subsystem adapter across 1,000 render-origin shifts, and fail-closed frame/datum/epoch/series ambiguity.
+- Focused observations: max reconstructed world error **0.024125 mm** in the exercised large-coordinate case; naïve absolute Float32 conversion before subtraction introduces **0.085877 m** northing error in the same case; max compensated mid-tick physical-delta error **0.048829 mm**.
+- Authoritative replay serialization is byte-identical under fixed and shifting render-origin schedules, and the independent physics-local Float64 adapter remains unchanged across 1,000 render-origin shifts.
+- This does **not** prove browser/Android behavior, an actual physics engine, a network protocol, a whole-Norway CRS/index, an origin anchor or a shift threshold.
+
+**Endret**
+- Branch: `agent/atlas-world-frame-contract`, based on `agent/agent-system-v2`; no merge performed.
+- Added `engine/world/world_contract.mjs`, `engine/world/test_world_contract.mjs`, `engine/world/README.md`, `engine/world/schemas/authoritative-world-snapshot-v0.1.schema.json` and the ATLAS proof note; updated baseline CI and `docs/06-task-queue.md`.
+- `docs/04-decisions.md` remains unchanged because representative device/physics/network evidence is still missing.
+
+**Neste**
+- Have LUMEN/STRØM consume the candidate contract on the exact-real browser/device camera + tile path and measure origin-shift rebinding/temporal behavior under movement.
+- ATLAS should then test an actual physics adapter plus a versioned network snapshot/quantization boundary while keeping render-origin presentation state non-authoritative. Do not select a whole-Norway coordinate or shift-threshold policy until those representative measurements exist.
