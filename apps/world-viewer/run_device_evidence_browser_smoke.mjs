@@ -122,6 +122,10 @@ function schedulerEventTypes(trace) {
     .filter(Boolean);
 }
 
+function rendererCheckpointMap(probe) {
+  return Object.fromEntries((probe?.renderer_resource_checkpoints ?? []).map((checkpoint) => [checkpoint?.label, checkpoint]));
+}
+
 function assertEvidence(evidence) {
   if (!evidence || evidence.schema !== 'nwe.world-viewer-device-evidence/0.1') throw new Error('DEVICE_SMOKE_SCHEMA');
   if (evidence.status !== 'PASS') throw new Error(`DEVICE_SMOKE_STATUS: ${evidence?.error ?? 'unknown failure'}`);
@@ -144,10 +148,48 @@ function assertEvidence(evidence) {
   if (probe.resolver_calls_before !== 1 || probe.resolver_calls_after !== 1) throw new Error('DEVICE_SMOKE_REFETCH');
   if (probe.loads_started_delta !== 0) throw new Error(`DEVICE_SMOKE_LOAD_DELTA: ${probe.loads_started_delta}`);
   if (probe.cache_hits_delta !== 1) throw new Error(`DEVICE_SMOKE_CACHE_HIT_DELTA: ${probe.cache_hits_delta}`);
-  if (probe.renderer_resource_lifecycle_observed !== false) throw new Error('DEVICE_SMOKE_RENDERER_BOUNDARY');
+  if (probe.renderer_resource_lifecycle_observed !== true) throw new Error('DEVICE_SMOKE_RENDERER_LIFECYCLE_MISSING');
+  if (probe.renderer_backend !== 'webgl2') throw new Error(`DEVICE_SMOKE_RENDERER_LIFECYCLE_BACKEND: ${probe.renderer_backend}`);
+  if (probe.renderer_resource_creates_delta !== 1 || probe.renderer_resource_destroys_delta !== 1) {
+    throw new Error('DEVICE_SMOKE_RENDERER_LIFECYCLE_COUNTS');
+  }
+  if (probe.physical_vram_release_observed !== false) throw new Error('DEVICE_SMOKE_VRAM_CLAIM_INVALID');
+
+  const rendererCheckpoints = rendererCheckpointMap(probe);
+  const initialRenderer = rendererCheckpoints['initial-resident'];
+  const cachedRenderer = rendererCheckpoints['outside-active-inside-retain'];
+  const returnedRenderer = rendererCheckpoints['returned-center'];
+  if (!initialRenderer?.active || initialRenderer.current_buffer_count !== 3 || !(initialRenderer.current_payload_bytes > 0)) {
+    throw new Error(`DEVICE_SMOKE_RENDERER_INITIAL: ${JSON.stringify(initialRenderer)}`);
+  }
+  if (cachedRenderer?.active !== false || cachedRenderer?.current_buffer_count !== 0 || cachedRenderer?.current_payload_bytes !== 0) {
+    throw new Error(`DEVICE_SMOKE_RENDERER_CACHED: ${JSON.stringify(cachedRenderer)}`);
+  }
+  if (!returnedRenderer?.active || returnedRenderer.current_buffer_count !== 3 || !(returnedRenderer.current_payload_bytes > 0)) {
+    throw new Error(`DEVICE_SMOKE_RENDERER_RETURN: ${JSON.stringify(returnedRenderer)}`);
+  }
+  for (const checkpoint of [initialRenderer, cachedRenderer, returnedRenderer]) {
+    if (checkpoint?.tile_id !== EXPECTED.tileId || checkpoint?.artifact_sha256 !== EXPECTED.terrainSha || checkpoint?.backend !== 'webgl2') {
+      throw new Error(`DEVICE_SMOKE_RENDERER_IDENTITY: ${JSON.stringify(checkpoint)}`);
+    }
+    if (checkpoint?.physical_vram_release_observed !== false) throw new Error('DEVICE_SMOKE_RENDERER_CHECKPOINT_VRAM_CLAIM');
+  }
+  const finalLifecycle = evidence.renderer?.terrain_resource_lifecycle;
+  if (finalLifecycle?.schema !== 'nwe.preview-terrain-resource-lifecycle/0.1'
+    || finalLifecycle.backend !== 'webgl2'
+    || finalLifecycle.tile_id !== EXPECTED.tileId
+    || finalLifecycle.artifact_sha256 !== EXPECTED.terrainSha
+    || finalLifecycle.active !== true
+    || finalLifecycle.creates !== 2
+    || finalLifecycle.destroys !== 1
+    || finalLifecycle.physical_vram_release_observed !== false) {
+    throw new Error(`DEVICE_SMOKE_RENDERER_FINAL_LIFECYCLE: ${JSON.stringify(finalLifecycle)}`);
+  }
 
   if (trace?.schema !== 'nwe.streaming-movement-trace/0.1') throw new Error('DEVICE_SMOKE_TRACE_SCHEMA');
   if (trace.droppedEntries !== 0) throw new Error(`DEVICE_SMOKE_TRACE_DROPPED: ${trace.droppedEntries}`);
+  if (trace.metadata?.renderer_resource_lifecycle_observed !== true) throw new Error('DEVICE_SMOKE_TRACE_RENDERER_LIFECYCLE_MISSING');
+  if (trace.metadata?.physical_vram_release_observed !== false) throw new Error('DEVICE_SMOKE_TRACE_VRAM_CLAIM_INVALID');
   const labels = snapshotLabels(trace);
   for (const expected of ['initial-resident', 'outside-active-inside-retain', 'returned-center']) {
     if (!labels.includes(expected)) throw new Error(`DEVICE_SMOKE_SNAPSHOT_MISSING: ${expected}`);
@@ -158,7 +200,7 @@ function assertEvidence(evidence) {
   if (events.filter((type) => type === 'load-started').length !== 1) throw new Error('DEVICE_SMOKE_UNEXPECTED_LOAD_COUNT');
 
   return {
-    schema: 'nwe.device-evidence-browser-smoke-proof/0.1',
+    schema: 'nwe.device-evidence-browser-smoke-proof/0.2',
     status: 'PASS',
     evidence_class: 'hosted-headless-chrome-exact-real',
     tile_id: evidence.world.tile_id,
@@ -169,6 +211,7 @@ function assertEvidence(evidence) {
     renderer: {
       active_backend: evidence.renderer.active_backend,
       draw_calls_per_frame: evidence.renderer.draw_calls_per_frame,
+      terrain_resource_lifecycle: finalLifecycle,
     },
     movement_probe: probe,
     streaming_trace: {
@@ -176,10 +219,12 @@ function assertEvidence(evidence) {
       dropped_entries: trace.droppedEntries,
       snapshot_labels: labels,
       scheduler_event_types: events,
+      renderer_resource_lifecycle_observed: trace.metadata.renderer_resource_lifecycle_observed,
+      physical_vram_release_observed: trace.metadata.physical_vram_release_observed,
     },
     build: evidence.build,
     capture: evidence.capture,
-    interpretation: 'Exact-real hosted Chrome proof of verified single-tile runtime/cache movement. renderer_resource_lifecycle_observed=false; no GPU unload/reload or Android performance claim.',
+    interpretation: 'Exact-real hosted Chrome proof of verified single-tile runtime/cache movement plus WebGL2 terrain renderer-resource present→absent→present lifecycle without refetch. This observes renderer resource objects, not physical VRAM reclamation timing, and is not Android performance evidence.',
   };
 }
 
