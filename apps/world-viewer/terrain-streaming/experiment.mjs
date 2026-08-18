@@ -149,24 +149,61 @@ export async function runTerrainStreamingExperiment({
   const gpuResources = new Map();
   const gpuApplyMs = [];
   const gpuSyncMs = [];
+  const gpuLifecycle = {
+    activations: 0,
+    deactivations: 0,
+    dispose_calls: 0,
+    resource_sets_created: 0,
+    resource_sets_destroyed: 0,
+    peak_active_resource_sets: 0,
+    events: [],
+  };
+  const lifecycleCheckpoints = [];
   let firstPayload = null;
   let firstVisibleAt = null;
   let resolverCalls = 0;
 
-  const disposeGpu = (descriptor) => {
+  const recordLifecycleEvent = (kind, descriptor, details = {}) => {
+    gpuLifecycle.events.push({
+      sequence: gpuLifecycle.events.length + 1,
+      kind,
+      tile_id: descriptor.id,
+      active_resource_sets: gpuResources.size,
+      ...details,
+    });
+  };
+
+  const captureLifecycleCheckpoint = (label, descriptor) => {
+    const checkpoint = {
+      label,
+      tile_id: descriptor.id,
+      gpu_resource_present: gpuResources.has(descriptor.id),
+      active_resource_sets: gpuResources.size,
+    };
+    lifecycleCheckpoints.push(checkpoint);
+    return checkpoint;
+  };
+
+  const destroyGpuResourceSet = (descriptor, reason) => {
     const resource = gpuResources.get(descriptor.id);
-    if (!resource) return;
+    if (!resource) {
+      recordLifecycleEvent('destroy-skip-missing', descriptor, { reason });
+      return false;
+    }
     gl.deleteBuffer(resource.positionBuffer);
     gl.deleteBuffer(resource.indexBuffer);
     gl.deleteVertexArray(resource.vao);
     gpuResources.delete(descriptor.id);
+    gpuLifecycle.resource_sets_destroyed += 1;
+    recordLifecycleEvent('resource-destroyed', descriptor, { reason });
+    return true;
   };
 
   const activateTile = async (descriptor, payload) => {
     if (!firstPayload) firstPayload = payload;
     onPhase(firstVisibleAt == null ? 'gpu-upload' : 'cache-reactivate');
     const applyStart = performance.now();
-    disposeGpu(descriptor);
+    destroyGpuResourceSet(descriptor, 'replace-before-activate');
     const vao = gl.createVertexArray();
     const positionBuffer = gl.createBuffer();
     const indexBuffer = gl.createBuffer();
@@ -191,10 +228,26 @@ export async function runTerrainStreamingExperiment({
     gpuSyncMs.push(performance.now() - syncStart);
     gl.bindVertexArray(null);
     gpuResources.set(descriptor.id, { vao, positionBuffer, indexBuffer });
+    gpuLifecycle.activations += 1;
+    gpuLifecycle.resource_sets_created += 1;
+    gpuLifecycle.peak_active_resource_sets = Math.max(gpuLifecycle.peak_active_resource_sets, gpuResources.size);
+    recordLifecycleEvent('resource-created', descriptor, { reason: gpuLifecycle.activations === 1 ? 'initial-activation' : 'cache-reactivation' });
     if (firstVisibleAt == null) {
       await waitFrames(1);
       firstVisibleAt = performance.now();
     }
+  };
+
+  const deactivateTile = async (descriptor) => {
+    gpuLifecycle.deactivations += 1;
+    if (!destroyGpuResourceSet(descriptor, 'scheduler-deactivate')) {
+      throw new Error(`GPU_RESOURCE_DEACTIVATE_MISSING: ${descriptor.id}`);
+    }
+  };
+
+  const disposeTile = async (descriptor) => {
+    gpuLifecycle.dispose_calls += 1;
+    destroyGpuResourceSet(descriptor, 'scheduler-dispose');
   };
 
   const loadTile = createTerrainTileLoadFunction({
@@ -224,8 +277,8 @@ export async function runTerrainStreamingExperiment({
   const scheduler = new TileStreamingScheduler({
     loadTile,
     activateTile,
-    deactivateTile: async (descriptor) => disposeGpu(descriptor),
-    disposeTile: async (descriptor) => disposeGpu(descriptor),
+    deactivateTile,
+    disposeTile,
     activeRadiusMeters,
     retainRadiusMeters,
     maxConcurrentLoads: 1,
@@ -251,6 +304,10 @@ export async function runTerrainStreamingExperiment({
       throw new Error(`unexpected vertex count ${firstPayload.mesh.metadata.vertexCount}`);
     }
     if (resolverCalls !== 1) throw new Error(`initial load resolved terrain input ${resolverCalls} times`);
+    const initialGpu = captureLifecycleCheckpoint('initial-resident', tile);
+    if (!initialGpu.gpu_resource_present || initialGpu.active_resource_sets !== 1) {
+      throw new Error(`GPU_RESOURCE_INITIAL_MISSING: ${JSON.stringify(initialGpu)}`);
+    }
 
     onPhase('camera-exit');
     const outsideStart = performance.now();
@@ -260,6 +317,10 @@ export async function runTerrainStreamingExperiment({
     await waitFrames(2);
     if (snapshot.metrics.cachedCount !== 1 || snapshot.metrics.residentCount !== 0) {
       throw new Error(`tile did not enter cache band: ${JSON.stringify({ metrics: snapshot.metrics, records: snapshot.records, cacheProbeDistance })}`);
+    }
+    const cachedGpu = captureLifecycleCheckpoint('outside-active-inside-retain', tile);
+    if (cachedGpu.gpu_resource_present || cachedGpu.active_resource_sets !== 0) {
+      throw new Error(`GPU_RESOURCE_NOT_RELEASED_WHILE_CACHED: ${JSON.stringify(cachedGpu)}`);
     }
 
     onPhase('cache-return');
@@ -274,16 +335,37 @@ export async function runTerrainStreamingExperiment({
       throw new Error(`cache return caused unexpected reload/state: ${JSON.stringify({ metrics: snapshot.metrics, records: snapshot.records })}`);
     }
     if (resolverCalls !== 1) throw new Error(`cache return unexpectedly resolved terrain input again; calls=${resolverCalls}`);
+    const returnedGpu = captureLifecycleCheckpoint('returned-center', tile);
+    if (!returnedGpu.gpu_resource_present || returnedGpu.active_resource_sets !== 1) {
+      throw new Error(`GPU_RESOURCE_NOT_RECREATED_ON_CACHE_HIT: ${JSON.stringify(returnedGpu)}`);
+    }
+    if (gpuLifecycle.activations !== 2 || gpuLifecycle.deactivations !== 1 || gpuLifecycle.resource_sets_created !== 2 || gpuLifecycle.resource_sets_destroyed !== 1) {
+      throw new Error(`GPU_RESOURCE_LIFECYCLE_COUNTS: ${JSON.stringify(gpuLifecycle)}`);
+    }
 
     onPhase('pass');
     return {
-      schema: 'nwe.browser-terrain-worker-streaming-proof/0.3',
+      schema: 'nwe.browser-terrain-worker-streaming-proof/0.4',
       status: 'PASS',
       tile_id: tile.id,
       artifact_sha256: firstPayload.artifact.sha256,
       verification_code: firstPayload.verification.code,
       worker_boundary: 'module DedicatedWorker via TerrainMeshWorkerClient default workerFactory',
-      renderer_boundary: 'WebGL2 measurement harness only; no renderer decision',
+      renderer_boundary: 'WebGL2 terrain-resource lifecycle measurement harness only; no renderer decision',
+      renderer_resource_lifecycle_observed: true,
+      gpu_resource_lifecycle: {
+        backend: 'webgl2',
+        contract: 'resident-resource -> cached-no-resource -> cache-hit-recreated-resource',
+        checkpoints: lifecycleCheckpoints,
+        activations: gpuLifecycle.activations,
+        deactivations: gpuLifecycle.deactivations,
+        dispose_calls: gpuLifecycle.dispose_calls,
+        resource_sets_created: gpuLifecycle.resource_sets_created,
+        resource_sets_destroyed: gpuLifecycle.resource_sets_destroyed,
+        peak_active_resource_sets: gpuLifecycle.peak_active_resource_sets,
+        events: gpuLifecycle.events,
+        cache_reactivation_without_refetch: resolverCalls === 1 && snapshot.metrics.cacheHits === 1,
+      },
       mesh: firstPayload.mesh.metadata,
       scheduler: snapshot.metrics,
       retained_bytes: snapshot.records.find((record) => record.id === tile.id)?.byteSize ?? null,
