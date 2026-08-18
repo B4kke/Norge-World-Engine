@@ -22,14 +22,33 @@ function stableObject(value) {
   return value;
 }
 
+function normalizedBuildIdentity(buildIdentity = {}) {
+  return {
+    git_commit_sha: typeof buildIdentity?.git_commit_sha === 'string' && buildIdentity.git_commit_sha.length ? buildIdentity.git_commit_sha : null,
+    deployment_id: typeof buildIdentity?.deployment_id === 'string' && buildIdentity.deployment_id.length ? buildIdentity.deployment_id : null,
+  };
+}
+
 function comparisonContext(evidence) {
   return stableObject({
+    build: {
+      git_commit_sha: evidence?.build?.git_commit_sha ?? null,
+    },
     tile_id: evidence?.world?.tile_id ?? null,
     artifact_sha256: evidence?.world?.artifact_sha256 ?? null,
     verification: evidence?.world?.verification ?? null,
     graphics_profile: evidence?.renderer?.graphics_profile ?? null,
+    renderer_workload: {
+      max_dpr: evidence?.renderer?.max_dpr ?? null,
+      msaa_samples: evidence?.renderer?.msaa_samples ?? null,
+      power_preference: evidence?.renderer?.power_preference ?? null,
+    },
     camera: evidence?.renderer?.camera ?? null,
     render_surface: evidence?.renderer?.render_surface ?? null,
+    measurement_window: {
+      requested_frames: evidence?.timing_ms?.repeated_draw?.requested_frames ?? null,
+      measured_frames: evidence?.timing_ms?.repeated_draw?.measured_frames ?? null,
+    },
     device: evidence?.device ?? null,
   });
 }
@@ -45,6 +64,7 @@ export function compareDeviceEvidenceContext(left, right) {
   const lhs = comparisonContext(left);
   const rhs = comparisonContext(right);
   const mismatches = [];
+  if (!lhs.build.git_commit_sha || !rhs.build.git_commit_sha) mismatches.push('build_identity_missing');
   for (const key of Object.keys(lhs)) {
     if (JSON.stringify(lhs[key]) !== JSON.stringify(rhs[key])) mismatches.push(key);
   }
@@ -65,6 +85,7 @@ export function buildDeviceEvidence({
   screenLike = {},
   canvasLike = {},
   devicePixelRatioLike = globalThis.devicePixelRatio,
+  buildIdentity = {},
   capturedAt = new Date().toISOString(),
 }) {
   if (!result || result.schema !== 'nwe.world-preview-runtime/0.1' || result.status !== 'PASS') {
@@ -97,6 +118,7 @@ export function buildDeviceEvidence({
     captured_at: capturedAt,
     evidence_class: 'interactive-browser-device',
     page_url: String(locationHref ?? ''),
+    build: normalizedBuildIdentity(buildIdentity),
     device: {
       user_agent: safeNavigatorValue(navigatorLike, 'userAgent'),
       platform: safeNavigatorValue(navigatorLike, 'platform'),
@@ -122,6 +144,9 @@ export function buildDeviceEvidence({
       active_backend: result.renderer?.backend ?? null,
       fallback: result.renderer?.fallback ?? null,
       graphics_profile: result.graphics_profile ?? null,
+      max_dpr: finiteNumberOrNull(result.renderer?.max_dpr),
+      msaa_samples: finiteNumberOrNull(result.renderer?.msaa_samples),
+      power_preference: result.renderer?.power_preference ?? null,
       draw_calls_per_frame: result.renderer?.draw_calls_per_frame ?? null,
       gpu_buffer_count: result.renderer?.gpu_buffer_count ?? null,
       gpu_buffer_payload_bytes: result.renderer?.gpu_buffer_payload_bytes ?? null,
@@ -163,12 +188,13 @@ export function buildDeviceEvidence({
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Device evidence only. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; debug geometry remains non-authoritative.',
+    interpretation: 'Device evidence only. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same viewer commit, measurement window, accepted artifacts, camera, render workload/surface and device. Debug geometry remains non-authoritative.',
   };
 }
 
 export function evidenceFilename(evidence) {
   const backend = String(evidence?.renderer?.active_backend ?? 'unknown').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
   const tile = String(evidence?.world?.tile_id ?? 'tile').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
-  return `nwe-device-evidence-${tile}-${backend}.json`;
+  const commit = String(evidence?.build?.git_commit_sha ?? 'unbound').slice(0, 12).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+  return `nwe-device-evidence-${tile}-${backend}-${commit}.json`;
 }
