@@ -4,6 +4,7 @@ const DEFAULTS = Object.freeze({
   maxConcurrentLoads: 2,
   maxResidentTiles: 9,
   maxCacheBytes: 64 * 1024 * 1024,
+  maxResidentBytes: null,
 });
 
 function finite(value, label) {
@@ -14,6 +15,11 @@ function finite(value, label) {
 function nonNegative(value, label) {
   if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be >= 0`);
   return value;
+}
+
+function optionalNonNegative(value, label) {
+  if (value == null) return null;
+  return nonNegative(value, label);
 }
 
 function positiveInteger(value, label) {
@@ -66,6 +72,7 @@ export class TileStreamingScheduler {
     maxConcurrentLoads = DEFAULTS.maxConcurrentLoads,
     maxResidentTiles = DEFAULTS.maxResidentTiles,
     maxCacheBytes = DEFAULTS.maxCacheBytes,
+    maxResidentBytes = DEFAULTS.maxResidentBytes,
     clock = () => performance.now(),
     onEvent = () => {},
   } = {}) {
@@ -79,6 +86,7 @@ export class TileStreamingScheduler {
     positiveInteger(maxConcurrentLoads, 'maxConcurrentLoads');
     positiveInteger(maxResidentTiles, 'maxResidentTiles');
     nonNegative(maxCacheBytes, 'maxCacheBytes');
+    optionalNonNegative(maxResidentBytes, 'maxResidentBytes');
 
     Object.assign(this, {
       loadTile,
@@ -90,6 +98,7 @@ export class TileStreamingScheduler {
       maxConcurrentLoads,
       maxResidentTiles,
       maxCacheBytes,
+      maxResidentBytes,
       clock,
       onEvent,
     });
@@ -99,6 +108,8 @@ export class TileStreamingScheduler {
     this.camera = { e: 0, n: 0 };
     this.generation = 0;
     this.activeLoads = 0;
+    this.bytesResident = 0;
+    this.bytesActivating = 0;
     this.bytesCached = 0;
     this.metrics = {
       updates: 0,
@@ -110,16 +121,33 @@ export class TileStreamingScheduler {
       cacheHits: 0,
       cacheMisses: 0,
       activations: 0,
+      activationFailures: 0,
+      residentBudgetDeferrals: 0,
       deactivations: 0,
+      deactivationFailures: 0,
       evictions: 0,
+      disposalFailures: 0,
+      lifecycleFailures: 0,
       peakActiveLoads: 0,
+      peakBytesResident: 0,
+      peakBytesActivating: 0,
       peakBytesCached: 0,
+      peakRetainedBytes: 0,
       maxCacheBytes,
+      maxResidentBytes,
     };
   }
 
   #emit(type, detail = {}) {
     this.onEvent({ type, at: this.clock(), generation: this.generation, ...detail });
+  }
+
+  #updateBytePeaks() {
+    const retainedBytes = this.bytesResident + this.bytesActivating + this.bytesCached;
+    this.metrics.peakBytesResident = Math.max(this.metrics.peakBytesResident, this.bytesResident);
+    this.metrics.peakBytesActivating = Math.max(this.metrics.peakBytesActivating, this.bytesActivating);
+    this.metrics.peakBytesCached = Math.max(this.metrics.peakBytesCached, this.bytesCached);
+    this.metrics.peakRetainedBytes = Math.max(this.metrics.peakRetainedBytes, retainedBytes);
   }
 
   #recordFor(tile) {
@@ -199,7 +227,7 @@ export class TileStreamingScheduler {
     }
 
     await this.#evictOutsideRetain();
-    await this.#enforceBudget();
+    await this.#enforceCacheBudget();
     this.#drainQueue();
     return this.snapshot();
   }
@@ -216,22 +244,83 @@ export class TileStreamingScheduler {
   }
 
   async #activate(record, reason) {
-    if (record.state === 'resident') return;
-    if (record.payload == null) throw new Error(`cannot activate unloaded tile ${record.tile.id}`);
-    await this.activateTile(record.tile, record.payload, { reason });
-    record.state = 'resident';
-    record.lastTouched = this.generation;
-    this.metrics.activations += 1;
-    this.#emit('tile-activated', { tileId: record.tile.id, reason });
+    if (record.state === 'resident' || record.state === 'activating') return record.state === 'resident';
+    if (record.state !== 'cached' || record.payload == null) {
+      throw new Error(`cannot activate unloaded tile ${record.tile.id}`);
+    }
+    const projectedResidentBytes = this.bytesResident + this.bytesActivating + record.byteSize;
+    if (this.maxResidentBytes != null && projectedResidentBytes > this.maxResidentBytes) {
+      this.metrics.residentBudgetDeferrals += 1;
+      this.#emit('activation-deferred-budget', {
+        tileId: record.tile.id,
+        byteSize: record.byteSize,
+        projectedResidentBytes,
+        maxResidentBytes: this.maxResidentBytes,
+      });
+      return false;
+    }
+
+    record.state = 'activating';
+    this.bytesCached = Math.max(0, this.bytesCached - record.byteSize);
+    this.bytesActivating += record.byteSize;
+    this.#updateBytePeaks();
+
+    try {
+      await this.activateTile(record.tile, record.payload, { reason });
+      this.bytesActivating = Math.max(0, this.bytesActivating - record.byteSize);
+      this.bytesResident += record.byteSize;
+      record.state = 'resident';
+      record.error = null;
+      record.lastTouched = this.generation;
+      this.metrics.activations += 1;
+      this.#updateBytePeaks();
+      this.#emit('tile-activated', { tileId: record.tile.id, reason, byteSize: record.byteSize });
+
+      if (!record.desired) {
+        await this.#deactivate(record, 'interest-lost-during-activation');
+        if (record.distance > this.retainRadiusMeters) await this.#evict(record, 'activated-outside-retain');
+      }
+      return record.state === 'resident';
+    } catch (error) {
+      this.bytesActivating = Math.max(0, this.bytesActivating - record.byteSize);
+      this.bytesCached += record.byteSize;
+      record.state = 'cached';
+      record.error = error;
+      this.metrics.activationFailures += 1;
+      this.#updateBytePeaks();
+      this.#emit('activation-failed', {
+        tileId: record.tile.id,
+        reason,
+        message: String(error?.message ?? error),
+      });
+      if (!record.desired && record.distance > this.retainRadiusMeters) {
+        await this.#evict(record, 'activation-failed-outside-retain');
+      }
+      return false;
+    }
   }
 
   async #deactivate(record, reason) {
     if (record.state !== 'resident') return;
-    await this.deactivateTile(record.tile, record.payload, { reason });
+    try {
+      await this.deactivateTile(record.tile, record.payload, { reason });
+    } catch (error) {
+      record.error = error;
+      this.metrics.deactivationFailures += 1;
+      this.#emit('deactivation-failed', {
+        tileId: record.tile.id,
+        reason,
+        message: String(error?.message ?? error),
+      });
+      throw error;
+    }
+    this.bytesResident = Math.max(0, this.bytesResident - record.byteSize);
+    this.bytesCached += record.byteSize;
     record.state = 'cached';
     record.lastTouched = this.generation;
     this.metrics.deactivations += 1;
-    this.#emit('tile-deactivated', { tileId: record.tile.id, reason });
+    this.#updateBytePeaks();
+    this.#emit('tile-deactivated', { tileId: record.tile.id, reason, byteSize: record.byteSize });
   }
 
   #drainQueue() {
@@ -271,22 +360,32 @@ export class TileStreamingScheduler {
         record.controller = null;
         record.error = null;
         record.lastTouched = this.generation;
+        record.state = 'cached';
         this.bytesCached += byteSize;
-        this.metrics.peakBytesCached = Math.max(this.metrics.peakBytesCached, this.bytesCached);
         this.metrics.loadsCompleted += 1;
+        this.#updateBytePeaks();
         this.#emit('load-completed', {
           tileId: record.tile.id,
           byteSize,
           durationMs: this.clock() - startedAt,
         });
 
-        record.state = 'cached';
         if (record.desired) await this.#activate(record, 'load-complete');
         else if (record.distance > this.retainRadiusMeters) await this.#evict(record, 'completed-outside-retain');
-        await this.#enforceBudget();
+        await this.#enforceCacheBudget();
       })
       .catch((error) => {
-        if (record.loadToken !== token || record.state !== 'loading') return;
+        if (record.loadToken !== token) return;
+        if (record.state !== 'loading') {
+          record.error = error;
+          this.metrics.lifecycleFailures += 1;
+          this.#emit('lifecycle-failed', {
+            tileId: record.tile.id,
+            state: record.state,
+            message: String(error?.message ?? error),
+          });
+          return;
+        }
         record.controller = null;
         if (error?.name === 'AbortError') {
           record.state = 'idle';
@@ -313,11 +412,13 @@ export class TileStreamingScheduler {
     for (const record of candidates) await this.#evict(record, 'outside-retain-radius');
   }
 
-  async #enforceBudget() {
+  async #enforceCacheBudget() {
     if (this.bytesCached <= this.maxCacheBytes) return;
     const candidates = [...this.records.values()]
-      .filter((record) => !record.desired && record.state === 'cached')
-      .sort((a, b) => a.lastTouched - b.lastTouched || a.tile.id.localeCompare(b.tile.id));
+      .filter((record) => record.state === 'cached')
+      .sort((a, b) => Number(a.desired) - Number(b.desired)
+        || a.lastTouched - b.lastTouched
+        || a.tile.id.localeCompare(b.tile.id));
     for (const record of candidates) {
       if (this.bytesCached <= this.maxCacheBytes) break;
       await this.#evict(record, 'cache-budget');
@@ -329,7 +430,18 @@ export class TileStreamingScheduler {
     if (record.state !== 'cached') return;
     const payload = record.payload;
     const byteSize = record.byteSize;
-    await this.disposeTile(record.tile, payload, { reason });
+    try {
+      await this.disposeTile(record.tile, payload, { reason });
+    } catch (error) {
+      record.error = error;
+      this.metrics.disposalFailures += 1;
+      this.#emit('disposal-failed', {
+        tileId: record.tile.id,
+        reason,
+        message: String(error?.message ?? error),
+      });
+      throw error;
+    }
     record.payload = null;
     record.byteSize = 0;
     record.state = 'idle';
@@ -361,10 +473,15 @@ export class TileStreamingScheduler {
         error: record.error ? String(record.error?.message ?? record.error) : null,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
-    const counts = Object.fromEntries(['resident', 'cached', 'failed'].map((state) => [
+    const counts = Object.fromEntries(['resident', 'activating', 'cached', 'failed'].map((state) => [
       `${state}Count`,
       records.filter((record) => record.state === state).length,
     ]));
+    const retainedBytes = this.bytesResident + this.bytesActivating + this.bytesCached;
+    const cacheBudgetOvercommitBytes = Math.max(0, this.bytesCached - this.maxCacheBytes);
+    const residentBudgetOvercommitBytes = this.maxResidentBytes == null
+      ? 0
+      : Math.max(0, this.bytesResident + this.bytesActivating - this.maxResidentBytes);
     return {
       generation: this.generation,
       camera: { ...this.camera },
@@ -373,8 +490,14 @@ export class TileStreamingScheduler {
         ...counts,
         queueDepth: records.filter((record) => record.state === 'queued').length,
         activeLoads: this.activeLoads,
+        bytesResident: this.bytesResident,
+        bytesActivating: this.bytesActivating,
         bytesCached: this.bytesCached,
-        budgetOvercommitBytes: Math.max(0, this.bytesCached - this.maxCacheBytes),
+        retainedBytes,
+        cacheBudgetOvercommitBytes,
+        residentBudgetOvercommitBytes,
+        // Backward-compatible alias. maxCacheBytes is specifically the inactive-cache budget.
+        budgetOvercommitBytes: cacheBudgetOvercommitBytes,
       },
       records,
     };
