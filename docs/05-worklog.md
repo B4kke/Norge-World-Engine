@@ -347,3 +347,26 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
+
+## 2026-08-18 — FORGE NHM DTM seam authority probe
+
+**Gjort**
+- Started from `agent/agent-system-v2` on isolated branch `agent/forge-dtm1-seam-authority` and kept the production multi-source mosaic fail-closed.
+- Verified live Kartverket/Høydedata NHM ImageServer metadata and catalog entries around the Nannestad source seam instead of guessing from WCS output or file ordering.
+- Added `nwe_compiler.nhm_mosaic_authority`, focused regressions, `tools/geo/dtm1_nhm_mosaic_authority_probe.py`, manual metadata-only workflow `dtm1-seam-authority-probe.yml` and a proof note.
+- Opened stacked draft PR #26; no merge performed and no `docs/04-decisions.md` entry added.
+
+**Bevist**
+- The live `NHM_DTM_25833` catalog contains logical raster items `33-125-116` and `33-125-117`; provider catalog geometry independently reproduces the known 10 m overlap.
+- The provider service publishes default `ByAttribute`, `sortField=NAME`, ascending, `First`, bilinear mosaic configuration.
+- This still does not establish a production TransformContract: ArcGIS REST documents `ByAttribute` ordering for numeric/date fields while the provider declares `NAME` as a string, and logical catalog name/footprint does not prove raw Atom GeoTIFF byte identity or an explicit authority scope for downloadable overlap resolution.
+- The new classifier therefore requires `FAIL_CLOSED_UNPROVEN` and `production_transform_authorized=false`; it rejects treating this evidence as first/newest/mean/min/max/tolerance or lexical filename authority.
+
+**Endret**
+- `docs/proofs/2026-08-18-dtm1-seam-authority-probe.md` records the evidence and blockers.
+- `docs/06-task-queue.md` now records provider mosaic evidence without closing `P0-MULTITILE-TERRAIN-01`.
+- Raw GeoTIFF/LAS/LAZ remain outside Git/evidence; the new live probe hashes only small provider JSON responses.
+
+**Neste**
+- Obtain explicit Kartverket/Høydedata scope/ordering semantics or stronger machine-readable evidence tying the ImageServer mosaic rule to the exact Atom GeoTIFF identities.
+- If and only if those blockers close, version the seam TransformContract/provenance identity and execute the controlled cold live + source-network-free offline 3×3 promotion gate with 9/9 `READY_FOR_RUNTIME` and unchanged center-tile bytes.
