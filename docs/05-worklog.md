@@ -372,3 +372,30 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 **Neste**
 - Require exact-head CI/Vite PASS and verify the Vercel Preview commit identity.
 - Then capture WebGL2 and WebGPU on the same physical Android Chrome device and reject timing interpretation unless `compareDeviceEvidenceContext()` reports `comparable=true`.
+
+## 2026-08-18 — LUMEN capture-session evidence boundary
+
+**Gjort**
+- Synced persistent `agent/lumen-hourly` with current `main` `1be0671e82aa55c4f969a184d413a373220bb3ac` through non-force two-parent merge `9cb7fc03c638815d26527679fa4802583980c70a`; the incoming FORGE-only files did not overlap LUMEN-owned paths.
+- Audited the prior “same device” comparison and found that equal browser metadata cannot attest physical handset identity; two identical phones may expose the same UA, screen, DPR, memory and concurrency values.
+- Added a URL-persisted capture-session UUID, `target=android-chrome` browser-signal validation and explicit `physical_device_attested: false` evidence semantics.
+- `compareDeviceEvidenceContext()` now requires the same non-empty capture session in addition to exact build SHA, accepted artifact hashes, full provenance status, graphics workload, camera, render surface, measurement window and exposed browser/device context.
+- Hardened the Android Chrome classifier so Client Hints with brands require an explicit `Google Chrome` brand rather than accepting generic `Chromium`; UA fallback remains conservative when brand data is absent.
+- Kept raw-source blocking and full RuntimeVerificationBundle reconstruction unchanged.
+
+**Bevist**
+- Focused Node regression PASS: same-session WebGL2/WebGPU context passes; changed or missing session fails; desktop signals under the Android-Chrome target fail closed; Edge-on-Android-like UA and Client-Hints brand sets do not classify as Chrome; prior camera/surface/build/window/raw-source/provenance negatives remain green.
+- Browser/session metadata now provides stronger capture continuity but still does not prove physical device identity. Actual Android performance remains an external device-run gate.
+- This is evidence-hardening only; no WebGPU/WebGL2/Cesium decision is justified.
+
+**Endret**
+- `apps/world-viewer/src/deviceEvidence.mjs`
+- `apps/world-viewer/src/deviceEvidenceEntry.mjs`
+- `apps/world-viewer/test_device_evidence.mjs`
+- `docs/proofs/2026-08-18-lumen-device-capture-session-boundary.md`
+- `docs/06-task-queue.md`
+- This worklog. `docs/04-decisions.md` remains unchanged.
+
+**Neste**
+- Require exact-head CI/Vite PASS and an exact-commit Vercel Preview smoke check.
+- Then run forced WebGL2 and WebGPU, where supported, on one operator-controlled physical Android Chrome handset with the same `session` value. Interpret timing only when `compareDeviceEvidenceContext()` returns `comparable=true`; physical-device identity remains device-lab/operator evidence rather than a browser attestation claim.
