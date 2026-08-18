@@ -54,11 +54,11 @@ The JSON-only evidence artifact uploaded successfully:
 - ZIP SHA-256: `c749e22dbd02f26a74ceca3ded6c1fcccfe0258068f2e9e7e2721bf6e4c99ae8`;
 - raw TIFF/LAS/LAZ exclusion step: **PASS**.
 
-Companion exact-head runs observed during this handoff:
+Companion exact-head runs for the same code head:
 
 - `dtm1-multitile-source-plan` run `32191831642` — **PASS**;
 - `preview1-realdata-publish` run `32191831641` — **PASS**;
-- repository `baseline` run `32191831650` was still running when this proof was first written and must not be claimed PASS until GitHub reports completion.
+- repository `baseline` run `32191831650` — **PASS**.
 
 ## What this proves
 
