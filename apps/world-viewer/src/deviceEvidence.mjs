@@ -10,7 +10,63 @@ function safeNavigatorValue(navigatorLike, key) {
   return value === undefined ? null : value;
 }
 
-export function buildDeviceEvidence({ result, runtimeRequests, locationHref, navigatorLike = {}, screenLike = {}, capturedAt = new Date().toISOString() }) {
+function finiteNumberOrNull(value) {
+  return Number.isFinite(value) ? Number(value) : null;
+}
+
+function stableObject(value) {
+  if (Array.isArray(value)) return value.map(stableObject);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableObject(value[key])]));
+  }
+  return value;
+}
+
+function comparisonContext(evidence) {
+  return stableObject({
+    tile_id: evidence?.world?.tile_id ?? null,
+    artifact_sha256: evidence?.world?.artifact_sha256 ?? null,
+    verification: evidence?.world?.verification ?? null,
+    graphics_profile: evidence?.renderer?.graphics_profile ?? null,
+    camera: evidence?.renderer?.camera ?? null,
+    render_surface: evidence?.renderer?.render_surface ?? null,
+    device: evidence?.device ?? null,
+  });
+}
+
+export function compareDeviceEvidenceContext(left, right) {
+  if (left?.schema !== 'nwe.world-viewer-device-evidence/0.1' || left?.status !== 'PASS') {
+    throw new Error('DEVICE_EVIDENCE_COMPARE_LEFT_INVALID');
+  }
+  if (right?.schema !== 'nwe.world-viewer-device-evidence/0.1' || right?.status !== 'PASS') {
+    throw new Error('DEVICE_EVIDENCE_COMPARE_RIGHT_INVALID');
+  }
+
+  const lhs = comparisonContext(left);
+  const rhs = comparisonContext(right);
+  const mismatches = [];
+  for (const key of Object.keys(lhs)) {
+    if (JSON.stringify(lhs[key]) !== JSON.stringify(rhs[key])) mismatches.push(key);
+  }
+  return {
+    comparable: mismatches.length === 0,
+    mismatches,
+    left_backend: left.renderer?.active_backend ?? null,
+    right_backend: right.renderer?.active_backend ?? null,
+    context: lhs,
+  };
+}
+
+export function buildDeviceEvidence({
+  result,
+  runtimeRequests,
+  locationHref,
+  navigatorLike = {},
+  screenLike = {},
+  canvasLike = {},
+  devicePixelRatioLike = globalThis.devicePixelRatio,
+  capturedAt = new Date().toISOString(),
+}) {
   if (!result || result.schema !== 'nwe.world-preview-runtime/0.1' || result.status !== 'PASS') {
     throw new Error('DEVICE_EVIDENCE_RUNTIME_RESULT_INVALID');
   }
@@ -31,6 +87,10 @@ export function buildDeviceEvidence({ result, runtimeRequests, locationHref, nav
   }
   if (rawCalls.length) throw new Error(`DEVICE_EVIDENCE_RAW_SOURCE_CALL: ${rawCalls[0]}`);
 
+  const firstFrame = result.renderer?.first_frame ?? null;
+  const camera = firstFrame?.camera ?? null;
+  const rendererPixelRatio = finiteNumberOrNull(result.renderer?.pixel_ratio ?? firstFrame?.pixelRatio);
+
   return {
     schema: 'nwe.world-viewer-device-evidence/0.1',
     status: 'PASS',
@@ -44,10 +104,10 @@ export function buildDeviceEvidence({ result, runtimeRequests, locationHref, nav
       device_memory_gib: safeNavigatorValue(navigatorLike, 'deviceMemory'),
       language: safeNavigatorValue(navigatorLike, 'language'),
       screen_css_px: {
-        width: Number.isFinite(screenLike?.width) ? Number(screenLike.width) : null,
-        height: Number.isFinite(screenLike?.height) ? Number(screenLike.height) : null,
+        width: finiteNumberOrNull(screenLike?.width),
+        height: finiteNumberOrNull(screenLike?.height),
       },
-      device_pixel_ratio: Number.isFinite(globalThis.devicePixelRatio) ? Number(globalThis.devicePixelRatio) : null,
+      device_pixel_ratio: finiteNumberOrNull(devicePixelRatioLike),
     },
     world: {
       manifest_url: result.manifestUrl ?? null,
@@ -69,6 +129,22 @@ export function buildDeviceEvidence({ result, runtimeRequests, locationHref, nav
       timestamp_query_supported: result.renderer?.timestamp_query_supported ?? false,
       terrain_vertices: result.renderer?.terrain_vertices ?? null,
       terrain_triangles: result.renderer?.terrain_triangles ?? null,
+      camera: camera ? {
+        yaw: finiteNumberOrNull(camera.yaw),
+        pitch: finiteNumberOrNull(camera.pitch),
+        distance: finiteNumberOrNull(camera.distance),
+      } : null,
+      render_surface: {
+        css_px: {
+          width: finiteNumberOrNull(canvasLike?.clientWidth),
+          height: finiteNumberOrNull(canvasLike?.clientHeight),
+        },
+        backing_px: {
+          width: finiteNumberOrNull(canvasLike?.width),
+          height: finiteNumberOrNull(canvasLike?.height),
+        },
+        pixel_ratio: rendererPixelRatio,
+      },
     },
     timing_ms: {
       input_to_first_frame_ready_ms: result.timing_ms?.input_to_first_frame_ready_ms ?? null,
@@ -87,7 +163,7 @@ export function buildDeviceEvidence({ result, runtimeRequests, locationHref, nav
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Device evidence only. Compare renderer backends only when artifact hashes, camera contract, graphics profile and device are held constant; do not promote debug geometry to world truth.',
+    interpretation: 'Device evidence only. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; debug geometry remains non-authoritative.',
   };
 }
 
