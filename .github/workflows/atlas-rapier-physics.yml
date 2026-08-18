@@ -22,10 +22,17 @@ jobs:
         working-directory: prototypes/atlas-rapier-physics
         run: npm install --package-lock=false --ignore-scripts
 
-      - name: Syntax check probe
-        run: node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
+      - name: Syntax check probes
+        run: |
+          node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
+          node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
           node prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs | tee /tmp/atlas-rapier-physics.json
           python -m json.tool /tmp/atlas-rapier-physics.json > /dev/null
+
+      - name: Run extent-frequency Rapier matrix
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs | tee /tmp/atlas-rapier-matrix.json
+          python -m json.tool /tmp/atlas-rapier-matrix.json > /dev/null
