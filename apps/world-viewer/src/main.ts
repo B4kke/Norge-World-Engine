@@ -26,11 +26,15 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
           <p class="eyebrow">Norge World Engine</p>
           <h1>World Viewer · Nannestad</h1>
         </div>
-        <span class="mode">${modeLabel}</span>
+        <div class="topbar-actions">
+          <button type="button" class="panel-toggle" id="panel-toggle" aria-controls="runtime-panel" aria-expanded="false">Data</button>
+          <span class="mode">${modeLabel}</span>
+        </div>
       </header>
 
       <section class="viewport" aria-label="World renderer viewport">
         <canvas id="world-canvas"></canvas>
+        <div class="mobile-control-hint">1 finger: roter · 2 fingre: zoom + flytt</div>
         <div class="viewport-message" id="experiment-intro">
           <span class="status-dot"></span>
           <div>
@@ -43,7 +47,7 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
         <div class="phase-chip" id="phase-chip">IDLE</div>
       </section>
 
-      <aside class="panel">
+      <aside class="panel" id="runtime-panel">
         <section>
           <p class="section-label">World truth</p>
           <div class="row"><span>Scene</span><strong id="metric-scene">NANNESTAD 1×1 KM</strong></div>
@@ -74,12 +78,33 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
 
         <section>
           <p class="section-label">Controls / provenance</p>
-          <p class="copy">Drag to orbit · mouse wheel/pinch-style scroll to zoom · double-click to reset. Open <code>?lab=terrain</code> to keep Forsøk 18 available as an explicit laboratory view.</p>
+          <p class="copy">Touch: 1 finger orbit · 2 fingers pinch-zoom + pan. Mouse: drag orbit · Shift/middle/right drag pan · wheel zoom · double-click reset. Open <code>?lab=terrain</code> for Forsøk 18.</p>
           <p class="copy" id="artifact-note">Manifest: ${manifestUrl}</p>
         </section>
       </aside>
     </main>
   `;
+
+  const shellElement = document.querySelector<HTMLElement>('.shell');
+  const panelToggle = document.querySelector<HTMLButtonElement>('#panel-toggle');
+  const viewport = document.querySelector<HTMLElement>('.viewport');
+  if (!shellElement || !panelToggle || !viewport) return;
+
+  const mobileQuery = matchMedia('(max-width: 760px)');
+  const setPanelOpen = (open: boolean) => {
+    shellElement.classList.toggle('mobile-panel-open', open && mobileQuery.matches);
+    panelToggle.setAttribute('aria-expanded', String(open && mobileQuery.matches));
+    panelToggle.textContent = open && mobileQuery.matches ? 'Lukk' : 'Data';
+  };
+
+  setPanelOpen(false);
+  panelToggle.addEventListener('click', () => {
+    setPanelOpen(!shellElement.classList.contains('mobile-panel-open'));
+  });
+  viewport.addEventListener('pointerdown', () => {
+    if (shellElement.classList.contains('mobile-panel-open')) setPanelOpen(false);
+  });
+  mobileQuery.addEventListener?.('change', () => setPanelOpen(false));
 }
 
 function setMetric(id: string, value: string, state: 'pass' | 'warn' | 'fail' | 'neutral' = 'neutral') {
@@ -186,7 +211,7 @@ async function runDefaultPreview() {
       const coordinates = document.querySelector<HTMLElement>('#coordinates');
       if (coordinates) coordinates.textContent = `${result.tile_id} · EPSG:25832 / NN2000`;
       const note = document.querySelector<HTMLElement>('#world-note');
-      if (note) note.textContent = 'REAL COMPILED runtime artifacts er verifisert og rendret. Drag/zoom i viewport. Preview 2 utvider samme path til ekte 3×3 streaming.';
+      if (note) note.textContent = 'REAL COMPILED runtime artifacts er verifisert og rendret. På mobil: 1 finger roterer, 2 fingre zoomer og flytter kameraets målpunkt.';
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
       intro.classList.add('hidden');
