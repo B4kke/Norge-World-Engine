@@ -1,0 +1,223 @@
+name: dtm1-realdata-proof
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - '.github/workflows/dtm1-realdata-proof.yml'
+  workflow_dispatch:
+
+jobs:
+  terrain-realdata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Cold live DTM1 acquisition, warp, compile and offline proof
+        run: |
+          mkdir -p /tmp/nwe-data /tmp/nwe-proof
+          python - <<'PY'
+          import json
+          import shutil
+          import time
+          from pathlib import Path
+
+          import numpy as np
+          import rasterio
+
+          from nwe_compiler.acquisition import TILE_BOUNDS, TILE_ID
+          from nwe_compiler.raster import warp_dtm_to_canonical_grid
+          from nwe_compiler.terrain_acquisition import acquire_dtm1, terrain_source_snapshot
+          from nwe_compiler.terrain_artifacts import compile_terrain_artifact, persist_terrain_artifact
+
+          cache = Path('/tmp/nwe-data')
+          proof = Path('/tmp/nwe-proof')
+
+          t0 = time.perf_counter()
+          cold = acquire_dtm1(cache, refresh=True, timeout=600)
+          t1 = time.perf_counter()
+          cold_tif = proof / 'nannestad-dtm1-epsg25832-cold.tif'
+          cold_meta = warp_dtm_to_canonical_grid(cold.raw_path, cold_tif, TILE_BOUNDS)
+          t2 = time.perf_counter()
+          cold_artifact = compile_terrain_artifact(cold, cold_tif)
+          persisted = persist_terrain_artifact(cold_artifact, cold_tif, cache)
+          t3 = time.perf_counter()
+
+          warm = acquire_dtm1(cache, offline=True)
+          t4 = time.perf_counter()
+          warm_tif = proof / 'nannestad-dtm1-epsg25832-warm.tif'
+          warm_meta = warp_dtm_to_canonical_grid(warm.raw_path, warm_tif, TILE_BOUNDS)
+          warm_artifact = compile_terrain_artifact(warm, warm_tif)
+          t5 = time.perf_counter()
+
+          if cold.raw_sha256 != warm.raw_sha256:
+              raise SystemExit('raw DTM1 SHA changed cold->offline')
+          if cold_meta.sha256 != warm_meta.sha256:
+              raise SystemExit('canonical warped DTM SHA changed cold->offline')
+          if cold_artifact.artifact_sha256 != warm_artifact.artifact_sha256:
+              raise SystemExit('terrain artifact SHA changed cold->offline')
+          if not warm.cache_hit:
+              raise SystemExit('offline DTM1 acquisition did not use raw cache')
+
+          with rasterio.open(cold_tif) as dataset:
+              values = dataset.read(1)
+              valid = values[values != dataset.nodata]
+              if valid.size == 0:
+                  raise SystemExit('warped DTM contains no valid samples')
+              elevation = {
+                  'valid_samples': int(valid.size),
+                  'nodata_samples': int(values.size - valid.size),
+                  'min_m': float(np.min(valid)),
+                  'max_m': float(np.max(valid)),
+                  'mean_m': float(np.mean(valid)),
+              }
+              tags = dataset.tags()
+
+          artifact_copy = proof / Path(persisted.artifact_path).name
+          bundle_copy = proof / Path(persisted.bundle_path).name
+          shutil.copyfile(persisted.artifact_path, artifact_copy)
+          shutil.copyfile(persisted.bundle_path, bundle_copy)
+
+          source_snapshot = terrain_source_snapshot(cold)
+          result = {
+              'schema': 'nwe.dtm1-realdata-proof/0.2',
+              'status': 'PASS',
+              'tile_id': TILE_ID,
+              'source': {
+                  'retrieval_identity': cold.retrieval_identity,
+                  'raw_path_basename': Path(cold.raw_path).name,
+                  'raw_sha256': cold.raw_sha256,
+                  'raw_byte_size': cold.raw_byte_size,
+                  'raster_metadata': cold.raster_metadata,
+                  'service_feed_sha256': cold.service_feed_sha256,
+                  'dataset_feed_sha256': cold.dataset_feed_sha256,
+                  'source_snapshot': source_snapshot,
+              },
+              'canonical_warp': {
+                  'transform': 'EPSG:25833 -> EPSG:25832 fixed 1 m grid',
+                  'resampling': 'bilinear',
+                  'bounds_epsg25832': list(TILE_BOUNDS),
+                  'cold_sha256': cold_meta.sha256,
+                  'warm_sha256': warm_meta.sha256,
+                  'byte_size': cold_meta.byte_size,
+                  'width': cold_meta.width,
+                  'height': cold_meta.height,
+                  'pixel_size': list(cold_meta.pixel_size),
+                  'nodata': cold_meta.nodata,
+                  'tags': tags,
+                  'elevation': elevation,
+              },
+              'compiled_artifact': {
+                  'role': cold_artifact.role,
+                  'media_type': cold_artifact.bundle['artifact_ref']['media_type'],
+                  'cold_sha256': cold_artifact.artifact_sha256,
+                  'warm_sha256': warm_artifact.artifact_sha256,
+                  'byte_size': len(cold_artifact.artifact_bytes),
+                  'sample_count': cold_artifact.sample_count,
+                  'header': cold_artifact.artifact_header,
+                  'artifact_file': artifact_copy.name,
+                  'bundle_file': bundle_copy.name,
+              },
+              'timings_ms': {
+                  'cold_acquire': round((t1 - t0) * 1000, 3),
+                  'cold_warp': round((t2 - t1) * 1000, 3),
+                  'cold_compile_persist': round((t3 - t2) * 1000, 3),
+                  'offline_cache_verify': round((t4 - t3) * 1000, 3),
+                  'offline_warp_compile': round((t5 - t4) * 1000, 3),
+              },
+              'offline': {
+                  'cache_hit': warm.cache_hit,
+                  'raw_sha_equal': cold.raw_sha256 == warm.raw_sha256,
+                  'warp_sha_equal': cold_meta.sha256 == warm_meta.sha256,
+                  'artifact_sha_equal': cold_artifact.artifact_sha256 == warm_artifact.artifact_sha256,
+                  'source_requests': 0,
+              },
+          }
+          (proof / 'dtm1-realdata-proof.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps({
+              'status': result['status'],
+              'source_entry': cold.retrieval_identity['dataset_entry_id'],
+              'raw_sha256': cold.raw_sha256,
+              'raw_bytes': cold.raw_byte_size,
+              'source_raster': cold.raster_metadata,
+              'warp_sha256': cold_meta.sha256,
+              'warp_bytes': cold_meta.byte_size,
+              'terrain_artifact_sha256': cold_artifact.artifact_sha256,
+              'terrain_artifact_bytes': len(cold_artifact.artifact_bytes),
+              'elevation': elevation,
+              'timings_ms': result['timings_ms'],
+              'offline': result['offline'],
+          }, indent=2))
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install runtime canonicalization dependency
+        run: npm install --workspace @nwe/schemas-js --include-workspace-root=false
+
+      - name: Verify exact compiled terrain bytes with runtime verifier
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const proofDir = '/tmp/nwe-proof';
+          const report = JSON.parse(fs.readFileSync(path.join(proofDir, 'dtm1-realdata-proof.json'), 'utf8'));
+          const info = report.compiled_artifact;
+          const bundle = JSON.parse(fs.readFileSync(path.join(proofDir, info.bundle_file), 'utf8'));
+          const artifact = new Uint8Array(fs.readFileSync(path.join(proofDir, info.artifact_file)));
+          const verification = verifyRuntimeBundle(bundle, artifact);
+          if (!verification.ok) {
+            throw new Error(`${verification.code}: ${verification.detail}`);
+          }
+          if (verification.decision !== 'READY_FOR_RUNTIME') {
+            throw new Error(`unexpected decision ${verification.decision}`);
+          }
+          const result = {
+            schema: 'nwe.terrain-runtime-verification-proof/0.1',
+            status: 'PASS',
+            artifact_sha256: info.cold_sha256,
+            verification,
+          };
+          fs.writeFileSync(path.join(proofDir, 'runtime-verification.json'), JSON.stringify(result, null, 2) + '\n');
+          console.log(JSON.stringify(result, null, 2));
+          NODE
+
+      - name: Attribution notice
+        run: |
+          cat > /tmp/nwe-proof/ATTRIBUTION.txt <<'EOF'
+          Norge World Engine · Nannestad Prototype 0 terrain proof
+
+          DTM1 height data: Kartverket / Geonorge. CC BY 4.0.
+          Source selected from the official DTM1 Atom service using declared EPSG category and GeoRSS polygon.
+
+          The full 15 km raw GeoTIFF is intentionally not uploaded by this workflow.
+          EOF
+
+      - name: Remove duplicate warm raster before proof upload
+        run: rm -f /tmp/nwe-proof/nannestad-dtm1-epsg25832-warm.tif
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-dtm1-proof-${{ github.sha }}
+          path: /tmp/nwe-proof
+          if-no-files-found: error
+          retention-days: 7

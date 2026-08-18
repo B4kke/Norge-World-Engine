@@ -151,3 +151,54 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Android: test Forsøk 15 and record artifact SHA PASS, raw source request counter = 0, visual alignment, draw calls and source-debug behavior.
 - Engine: execute `P0-REALDATA-01` DTM1 authoritative terrain vertical; this is now the highest unresolved world-foundation gate.
 - Then package the same terrain+vector inputs for custom viewer and Cesium baseline and compare measured runtime behavior before any renderer/format decision.
+
+## 2026-08-17 — Authoritative DTM1 terrain vertical
+
+**Gjort**
+- Continued from merged `main` on `agent/dtm1-terrain-vertical`; corrected `vector-realdata-proof.yml` so future vector real-data proof follows `main` rather than the historical adapter branch.
+- Probed the live official Kartverket/Geonorge DTM1 Atom service instead of relying on the old source assumptions. Updated production DTM1 parsing to model the live contract: source entries are EPSG:25833; the GeoTIFF file is exposed as `rel=section`, `type=application/geotiff`; actual GeoRSS polygon geometry is authoritative.
+- Added streamed DTM1 acquisition/cache so the ~1.1 GB raw GeoTIFF is SHA-256-bound while streaming to ignored content-addressed storage rather than being loaded into RAM for provenance. Offline reuse rechecks raw size/SHA and raster metadata and performs zero source requests.
+- Kept the existing pixel-aligned/no-resampling DTM normalizer strict. Added a separate explicit Rasterio/GDAL warp from EPSG:25833 to a fixed 1000 × 1000, 1 m EPSG:25832 Nannestad grid with NN2000 preserved and bilinear resampling recorded in the transform contract.
+- Added deterministic `nwe.terrain-height-grid-artifact/0.1`: canonical header + 1,000,000 little-endian float32 elevations, engine-independent and persisted with RuntimeVerificationBundle.
+- Added live DTM1 real-data workflow, source/warp/cache/artifact regressions, proof document, and a parallel viewer-performance Issue #5 that is intentionally isolated from compiler/terrain semantics.
+
+**Bevist**
+- Live official DTM1 dataset feed contained 2033 polygon entries; exactly one declared polygon covers the Nannestad target: `33-125-117.tif`.
+- Raw source: 1,096,856,487 B, EPSG:25833, 1 m float32, 15010 × 15010, nodata -32767, SHA `f1c0f18378cc438d7e4b8f8a2114c4e5aa000216a4fd42965518df9a0bb97708`.
+- Normalized fixed-grid terrain: 1000 × 1000, 1 m EPSG:25832 + NN2000, 1,000,000 valid samples / 0 nodata, min 168.9711 m, max 197.6241 m, mean 189.7122 m, SHA `95c8fcf6f93c8fbb0533d6a82d68416b773f9a146970e1ae85676d3ba41c2adf`.
+- Compiled terrain artifact: 4,000,382 B, SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`.
+- Cold and offline runs produce identical raw, normalized and compiled artifact hashes; offline source requests = 0.
+- Exact compiled terrain bytes pass `runtime_verifier.mjs`: `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.
+- Hosted baseline on the same terrain branch is PASS.
+
+**Endret**
+- Added `terrain_acquisition.py`, `terrain_artifacts.py`, explicit terrain warp support and focused regressions.
+- Added D-007 for the proven Prototype-0 DTM1 transform/runtime artifact; final whole-Norway terrain/LOD format remains explicitly open.
+- Added `docs/proofs/2026-08-17-nannestad-dtm1-realdata.md` and updated the P0 queue to close the source/index/terrain artifact gates.
+
+**Neste**
+- Feed the exact verified terrain artifact into the artifact-only Android/world-viewer together with the 246 road paths + 135 building footprints, use the DTM for ground Z, and measure terrain decode/mesh/upload/first-visible/frame-time/draw calls. In parallel, another agent can work Issue #5 on viewer batching/performance without touching compiler/geodata contracts.
+
+## 2026-08-17 — Forsøk 16 Android terrain-integrated runtime
+
+**Gjort**
+- User executed Forsøk 16 on Android and supplied an oblique device screenshot of the exact terrain + road + building artifact harness.
+- Inspected the harness implementation to separate displayed proof from inference: 1 m / 1000×1000 DTM1 remains world truth, the mobile GPU terrain is sampled to 129×129, roads preserve valid NVDB NN2000 centerline Z with DTM1 fallback, and unresolved building heights remain explicit 5 m debug geometry.
+- Added `docs/proofs/2026-08-17-forsok16-android-runtime.md` and posted the measured device baseline to parallel viewer-performance Issue #5.
+- Updated the P0 queue so terrain integration is no longer marked open; viewer measurement/batching and streaming behavior are now the immediate runtime gates.
+
+**Bevist**
+- Device HUD: road/building/terrain artifact PASS; 246 roads / 14.89 km; 135 footprints; 15 source-backed building heights / 120 debug heights; 1,000,000 DTM samples; DTM range 168.97–197.62 m; runtime `READY ×3`; raw source network `BLOKKERT · 0 KALL`.
+- Captured performance: 1.3 ms terrain decode, 19.4 ms terrain mesh build, 220 ms boot, 224 draw calls, 16.7 ms / 60 FPS, 382 geometries / 2 textures at the captured camera.
+- The screenshot rejects a gross CRS/origin/Z integration failure: terrain relief, imagery, road network and footprints occupy the same world area.
+- The 224-call number is not accepted as a batching improvement because Forsøk 15's ~391 count used a different view and Forsøk 16 still creates separate geometries. The 382-geometry counter confirms per-object pressure remains.
+- The 19.4 ms synchronous terrain mesh build exceeds one 60 Hz frame budget, so repeating it on the main thread during tile streaming is a concrete hitch risk.
+
+**Endret**
+- No new architecture decision was accepted; D-007 remains unchanged. This session adds device evidence and narrows the next experiments rather than selecting a renderer/format.
+- Issue #5 now has the Forsøk 16 device metrics and same-camera comparison requirement.
+
+**Neste**
+- Build the repo-side fixed-camera benchmark required by Issue #5 and compare current per-object rendering against batching while preserving source-debug identity.
+- Instrument first-visible separately and capture p50/p95/p99 frame time rather than one rolling average.
+- Test terrain mesh generation in a worker or incrementally before moving to dynamic multi-tile load/unload/LOD.
