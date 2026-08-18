@@ -115,8 +115,13 @@ export async function createPreview1WebGpuRenderer({
   if (!navigator.gpu) throw new Error('WEBGPU_UNAVAILABLE');
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, msaaSamples: 1 };
   const adapterStartedAt = monotonicNow();
-  const adapterOptions = profile.powerPreference ? { powerPreference: profile.powerPreference } : undefined;
-  const adapter = await navigator.gpu.requestAdapter(adapterOptions);
+  const baseAdapterOptions = profile.powerPreference ? { powerPreference: profile.powerPreference } : {};
+  let adapterFeatureLevel = 'core';
+  let adapter = await navigator.gpu.requestAdapter(Object.keys(baseAdapterOptions).length ? baseAdapterOptions : undefined);
+  if (!adapter) {
+    adapterFeatureLevel = 'compatibility';
+    adapter = await navigator.gpu.requestAdapter({ ...baseAdapterOptions, featureLevel: 'compatibility' });
+  }
   if (!adapter) throw new Error('WEBGPU_ADAPTER_UNAVAILABLE');
   const device = await adapter.requestDevice();
   const adapterDeviceCpuMs = monotonicNow() - adapterStartedAt;
@@ -306,6 +311,7 @@ export async function createPreview1WebGpuRenderer({
     stats: {
       ...scene.stats,
       backend: 'webgpu',
+      webgpu_feature_level: adapterFeatureLevel,
       graphics_profile: profile.id ?? 'balanced',
       max_dpr: profile.maxDpr ?? 1.5,
       get pixel_ratio() { return actualPixelRatio; },
@@ -323,15 +329,16 @@ export async function createPreview1WebGpuRenderer({
         renderer_init_cpu_ms: rendererInitCpuMs,
       },
     },
-    invalidate() { dirty = true; },
-    dispose() {
+    drawForBenchmark() {
+      if (stopped) throw new Error('WEBGPU_RENDERER_STOPPED');
+      dirty = true;
+      draw(monotonicNow());
+      return lastDrawAt;
+    },
+    stop() {
       stopped = true;
       observer.disconnect();
       removeControls();
-      if (!firstFrameSettled) {
-        firstFrameSettled = true;
-        firstFrameReject(new Error('WEBGPU_DISPOSED_BEFORE_FIRST_FRAME'));
-      }
       depthTexture?.destroy();
       msaaTexture?.destroy();
       destroyMesh(terrainMesh);
@@ -339,7 +346,6 @@ export async function createPreview1WebGpuRenderer({
       destroyMesh(resolvedMesh);
       destroyMesh(fallbackMesh);
       for (const uniform of [terrainUniform, roadUniform, resolvedUniform, fallbackUniform]) uniform.destroy();
-      context.unconfigure?.();
       device.destroy?.();
     },
   };
