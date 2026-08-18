@@ -33,6 +33,39 @@ function normalizedCaptureSessionId(value) {
   return typeof value === 'string' && /^[a-zA-Z0-9._:-]{8,128}$/.test(value) ? value : null;
 }
 
+function streamingComparisonContract(streaming) {
+  const probe = streaming?.movement_probe ?? null;
+  const trace = streaming?.trace ?? null;
+  return stableObject({
+    movement_probe: probe ? {
+      schema: probe.schema ?? null,
+      status: probe.status ?? null,
+      path: probe.path ?? null,
+      tile_id: probe.tile_id ?? null,
+      movement_offset_e_m: finiteNumberOrNull(probe.movement_offset_e_m),
+      active_radius_m: finiteNumberOrNull(probe.active_radius_m),
+      retain_radius_m: finiteNumberOrNull(probe.retain_radius_m),
+      checkpoints: Array.isArray(probe.checkpoints) ? [...probe.checkpoints] : null,
+      resolver_calls_before: finiteNumberOrNull(probe.resolver_calls_before),
+      resolver_calls_after: finiteNumberOrNull(probe.resolver_calls_after),
+      loads_started_delta: finiteNumberOrNull(probe.loads_started_delta),
+      cache_hits_delta: finiteNumberOrNull(probe.cache_hits_delta),
+      renderer_resource_lifecycle_observed: probe.renderer_resource_lifecycle_observed === true,
+    } : null,
+    trace: trace ? {
+      schema: trace.schema ?? null,
+      max_entries: finiteNumberOrNull(trace.maxEntries),
+      dropped_entries: finiteNumberOrNull(trace.droppedEntries),
+      probe_id: trace.metadata?.probe_id ?? null,
+      movement_probe_enabled: trace.metadata?.movement_probe_enabled === true,
+      active_radius_m: finiteNumberOrNull(trace.metadata?.active_radius_m),
+      retain_radius_m: finiteNumberOrNull(trace.metadata?.retain_radius_m),
+      movement_offset_e_m: finiteNumberOrNull(trace.metadata?.movement_offset_e_m),
+      renderer_resource_lifecycle_observed: trace.metadata?.renderer_resource_lifecycle_observed === true,
+    } : null,
+  });
+}
+
 export function classifyBrowserEnvironment(navigatorLike = {}) {
   const userAgent = String(navigatorLike?.userAgent ?? '');
   const uaData = navigatorLike?.userAgentData ?? null;
@@ -70,6 +103,7 @@ function comparisonContext(evidence) {
     tile_id: evidence?.world?.tile_id ?? null,
     artifact_sha256: evidence?.world?.artifact_sha256 ?? null,
     verification: evidence?.world?.verification ?? null,
+    streaming: evidence?.streaming?.comparison_contract ?? null,
     graphics_profile: evidence?.renderer?.graphics_profile ?? null,
     renderer_workload: {
       max_dpr: evidence?.renderer?.max_dpr ?? null,
@@ -145,6 +179,33 @@ export function buildDeviceEvidence({
   }
   if (rawCalls.length) throw new Error(`DEVICE_EVIDENCE_RAW_SOURCE_CALL: ${rawCalls[0]}`);
 
+  const movementProbe = result.terrain?.movement_probe ?? null;
+  const streamingTrace = result.terrain?.streaming_trace ?? null;
+  if (movementProbe != null) {
+    if (movementProbe.schema !== 'nwe.single-tile-streaming-movement-probe/0.1' || movementProbe.status !== 'PASS') {
+      throw new Error('DEVICE_EVIDENCE_STREAMING_MOVEMENT_INVALID');
+    }
+    if (movementProbe.renderer_resource_lifecycle_observed !== false) {
+      throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_BOUNDARY_AMBIGUOUS');
+    }
+    if (streamingTrace?.schema !== 'nwe.streaming-movement-trace/0.1') {
+      throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_MISSING');
+    }
+  }
+  if (streamingTrace != null) {
+    if (streamingTrace.schema !== 'nwe.streaming-movement-trace/0.1') {
+      throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_INVALID');
+    }
+    if (!Number.isInteger(streamingTrace.droppedEntries) || streamingTrace.droppedEntries !== 0) {
+      throw new Error(`DEVICE_EVIDENCE_STREAMING_TRACE_INCOMPLETE: ${streamingTrace.droppedEntries}`);
+    }
+  }
+  const streaming = movementProbe || streamingTrace ? {
+    movement_probe: movementProbe,
+    trace: streamingTrace,
+  } : null;
+  if (streaming) streaming.comparison_contract = streamingComparisonContract(streaming);
+
   const normalizedTarget = evidenceTarget === 'android-chrome' ? 'android-chrome' : 'generic-browser';
   const browserEnvironment = classifyBrowserEnvironment(navigatorLike);
   if (normalizedTarget === 'android-chrome' && !browserEnvironment.inferred_android_chrome) {
@@ -188,6 +249,7 @@ export function buildDeviceEvidence({
       runtime_request_count: requests.length,
       raw_source_runtime_calls: 0,
     },
+    streaming,
     renderer: {
       requested_backend: result.renderer_preference ?? null,
       active_backend: result.renderer?.backend ?? null,
@@ -237,7 +299,7 @@ export function buildDeviceEvidence({
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, camera, render workload/surface and exposed device/browser context. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
+    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, streaming probe contract, camera, render workload/surface and exposed device/browser context. The streaming movement probe proves verified single-tile resident→cached→resident runtime/cache behavior with no refetch; renderer_resource_lifecycle_observed=false means it does not prove GPU resource unload/reload. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
   };
 }
 
