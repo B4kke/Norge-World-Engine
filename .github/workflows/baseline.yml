@@ -28,6 +28,11 @@ jobs:
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
 
+      - name: Preview 1 proof-gate regressions
+        run: |
+          bash -n tools/preview/preview1_change_gate.sh
+          python tools/preview/test_preview1_change_gate.py
+
       - name: Source contract verifier
         run: python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
 
@@ -47,6 +52,13 @@ jobs:
 
       - name: Cross-language RFC 8785 schema test
         run: npm run test:schemas
+
+      - name: World coordinate contract regressions
+        run: |
+          node --check engine/world/world_contract.mjs
+          node --check engine/world/test_world_contract.mjs
+          node engine/world/test_world_contract.mjs
+          python -m json.tool engine/world/schemas/authoritative-world-snapshot-v0.1.schema.json > /dev/null
 
       - name: Runtime provenance reconstruction regression
         run: |

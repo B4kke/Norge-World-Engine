@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +34,21 @@ jobs:
           node apps/world-viewer/test_benchmark_geometry.mjs
           node apps/world-viewer/test_benchmark_params.mjs
 
+      - name: Preview camera, graphics and observability regressions
+        run: |
+          node --check apps/world-viewer/src/previewCameraControls.mjs
+          node --check apps/world-viewer/src/graphicsProfiles.mjs
+          node --check apps/world-viewer/src/rendererObservability.mjs
+          node --check apps/world-viewer/src/preview1SceneGeometry.mjs
+          node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
+          node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
+          node --check apps/world-viewer/src/preview1Renderer.mjs
+          node --check apps/world-viewer/run_preview1_renderer_benchmark.mjs
+          node apps/world-viewer/test_preview_camera_controls.mjs
+          node apps/world-viewer/test_graphics_profiles.mjs
+          node apps/world-viewer/test_renderer_observability.mjs
+          node apps/world-viewer/test_webgpu_upload_alignment.mjs
+
       - name: Terrain experiment syntax boundary
         run: |
           node --check apps/world-viewer/terrain_runtime_input.mjs
@@ -53,6 +68,22 @@ jobs:
 
       - name: Browser environment
         run: (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+
+      - name: Exact Preview 1 renderer A/B on accepted compiled artifacts
+        run: |
+          node apps/world-viewer/run_preview1_renderer_benchmark.mjs \
+            --output /tmp/nwe-preview1-renderer-benchmark.json \
+            --timeout-ms 90000 \
+            --graphics balanced \
+            --frames 90
+          cat /tmp/nwe-preview1-renderer-benchmark.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-viewer-renderer-benchmark-${{ github.sha }}
+          path: /tmp/nwe-preview1-renderer-benchmark.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Synthetic 1000x1000 terrain DedicatedWorker gate
         env:

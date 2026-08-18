@@ -1,0 +1,26 @@
+name: visual-source-sample-order
+
+on:
+  workflow_dispatch:
+
+jobs:
+  order-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check
+        run: python -m py_compile tools/visual-data/order_visual_source_samples.py
+      - name: Create one public sample order per candidate
+        run: |
+          python tools/visual-data/order_visual_source_samples.py --output /tmp/nwe-visual-source-orders.json
+          cat /tmp/nwe-visual-source-orders.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-source-sample-order-${{ github.sha }}
+          path: /tmp/nwe-visual-source-orders.json
+          if-no-files-found: error
+          retention-days: 7

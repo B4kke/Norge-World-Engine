@@ -1,0 +1,46 @@
+name: visual-source-materialize
+
+on:
+  workflow_dispatch:
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install compiler raster dependencies
+        run: python -m pip install --disable-pip-version-check -e engine/compiler
+
+      - name: Ensure mature GDAL/OGR vector tooling
+        run: |
+          if ! command -v ogrinfo >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends gdal-bin
+          fi
+          ogrinfo --version
+          ogrinfo --formats | grep -i SOSI || true
+
+      - name: Syntax check
+        run: |
+          python -m py_compile tools/visual-data/order_visual_source_samples.py
+          python -m py_compile tools/visual-data/materialize_visual_source_samples.py
+
+      - name: Materialize bounded real Nannestad samples
+        run: |
+          rm -rf /tmp/nwe-visual-sources
+          python tools/visual-data/materialize_visual_source_samples.py \
+            --work-dir /tmp/nwe-visual-sources \
+            --output /tmp/nwe-visual-materialization.json
+          cat /tmp/nwe-visual-materialization.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-source-materialization-${{ github.sha }}
+          path: /tmp/nwe-visual-materialization.json
+          if-no-files-found: error
+          retention-days: 14
