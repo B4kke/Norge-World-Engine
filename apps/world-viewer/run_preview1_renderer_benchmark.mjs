@@ -131,6 +131,37 @@ function assertComparable(webgl2, webgpu) {
   return true;
 }
 
+function waitForChildExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolvePromise) => {
+    let settled = false;
+    const finish = (exited) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off('exit', onExit);
+      resolvePromise(exited);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    child.once('exit', onExit);
+  });
+}
+
+async function stopChrome(child, profile) {
+  try { process.kill(-child.pid, 'SIGTERM'); } catch {}
+  const exited = await waitForChildExit(child, 1500);
+  if (!exited) {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+    await waitForChildExit(child, 500);
+  }
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  } catch (error) {
+    console.warn(`benchmark profile cleanup skipped: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const distRoot = resolve(args['dist-root'] ?? DEFAULT_DIST_ROOT);
@@ -246,8 +277,7 @@ async function main() {
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
       reportHandlers.delete(reportPath);
-      try { process.kill(-child.pid, 'SIGTERM'); } catch {}
-      rmSync(profile, { recursive: true, force: true });
+      await stopChrome(child, profile);
     }
   }
 
