@@ -1,0 +1,35 @@
+name: visual-source-probe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/visual-data/**'
+      - 'docs/data-licenses/visual-sources.md'
+      - '.github/workflows/visual-source-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Syntax check
+        run: python -m py_compile tools/visual-data/probe_visual_sources.py
+
+      - name: Probe current official download contracts
+        run: |
+          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json
+          cat /tmp/nwe-visual-source-probe.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-source-probe-${{ github.sha }}
+          path: /tmp/nwe-visual-source-probe.json
+          if-no-files-found: error
+          retention-days: 14
