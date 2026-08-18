@@ -1,11 +1,53 @@
 import assert from 'node:assert/strict';
 import { buildDeviceEvidence, classifyBrowserEnvironment, compareDeviceEvidenceContext, evidenceFilename, isRawSourceRuntimeUrl } from './src/deviceEvidence.mjs';
 
+const movementProbe = {
+  schema: 'nwe.single-tile-streaming-movement-probe/0.1',
+  status: 'PASS',
+  path: 'center->outside-active-inside-retain->center',
+  tile_id: 'epsg25832_611000_6677000_1000m',
+  movement_offset_e_m: 1000,
+  active_radius_m: 800,
+  retain_radius_m: 1200,
+  checkpoints: ['initial-resident', 'outside-active-inside-retain', 'returned-center'],
+  resolver_calls_before: 1,
+  resolver_calls_after: 1,
+  loads_started_delta: 0,
+  cache_hits_delta: 1,
+  duration_ms: 4.5,
+  renderer_resource_lifecycle_observed: false,
+};
+
+const streamingTrace = {
+  schema: 'nwe.streaming-movement-trace/0.1',
+  metadata: {
+    tile_id: 'epsg25832_611000_6677000_1000m',
+    probe_id: 'preview1-single-tile-cache-roundtrip-v0.1',
+    movement_probe_enabled: true,
+    active_radius_m: 800,
+    retain_radius_m: 1200,
+    movement_offset_e_m: 1000,
+    renderer_resource_lifecycle_observed: false,
+  },
+  maxEntries: 256,
+  retainedEntries: 9,
+  droppedEntries: 0,
+  firstSequence: 1,
+  lastSequence: 9,
+  entries: [
+    { sequence: 1, recordedAt: 10, kind: 'scheduler-event', payload: { type: 'load-started' } },
+    { sequence: 9, recordedAt: 30, kind: 'scheduler-snapshot', payload: { label: 'returned-center' } },
+  ],
+};
+
 const result = {
   schema: 'nwe.world-preview-runtime/0.1', status: 'PASS', manifestUrl: 'https://example.invalid/manifest.json', tile_id: 'epsg25832_611000_6677000_1000m', graphics_profile: 'balanced', renderer_preference: 'webgl2',
   timing_ms: { input_to_first_frame_ready_ms: 321, startup_raf_gap: { p50_ms: 16.7 }, renderer_frame_benchmark: { requested_frames: 90, measured_frames: 90 } },
   browser_memory: { used_js_heap_bytes: 123 },
-  terrain: { artifact_sha256: 'terrain-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', retained_bytes: 4729120, timing_ms: { verify_ms: 20 } },
+  terrain: {
+    artifact_sha256: 'terrain-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', retained_bytes: 4729120, timing_ms: { verify_ms: 20 },
+    movement_probe: movementProbe, streaming_trace: streamingTrace,
+  },
   roads: { artifact_sha256: 'roads-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', count: 246 },
   buildings: { artifact_sha256: 'buildings-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', count: 135 },
   renderer: {
@@ -48,6 +90,10 @@ assert.equal(evidence.device.browser_environment.inferred_android_chrome, true);
 assert.equal(evidence.build.git_commit_sha, '0123456789abcdef0123456789abcdef01234567');
 assert.equal(evidence.world.raw_source_runtime_calls, 0);
 assert.equal(evidence.world.artifact_sha256.terrain, 'terrain-sha');
+assert.equal(evidence.streaming.movement_probe.status, 'PASS');
+assert.equal(evidence.streaming.trace.droppedEntries, 0);
+assert.equal(evidence.streaming.comparison_contract.movement_probe.cache_hits_delta, 1);
+assert.equal(evidence.streaming.comparison_contract.movement_probe.renderer_resource_lifecycle_observed, false);
 assert.equal(evidence.renderer.active_backend, 'webgl2');
 assert.equal(evidence.renderer.camera.distance, 1450);
 assert.deepEqual(evidence.renderer.render_surface.backing_px, { width: 824, height: 1200 });
@@ -63,6 +109,8 @@ assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (Linux; Androi
 const webgpuResult = structuredClone(result);
 webgpuResult.renderer.backend = 'webgpu';
 webgpuResult.renderer_preference = 'webgpu';
+webgpuResult.terrain.movement_probe.duration_ms = 8.5;
+webgpuResult.terrain.streaming_trace.entries[0].recordedAt = 100;
 const comparable = build({ result: webgpuResult });
 assert.deepEqual(compareDeviceEvidenceContext(evidence, comparable).mismatches, []);
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).comparable, true);
@@ -75,6 +123,12 @@ assert.deepEqual(compareDeviceEvidenceContext(evidence, changedSession).mismatch
 const missingSession = build({ result: webgpuResult, captureSessionId: null });
 assert.equal(compareDeviceEvidenceContext(evidence, missingSession).comparable, false);
 assert.deepEqual(compareDeviceEvidenceContext(evidence, missingSession).mismatches, ['capture_session_missing', 'capture']);
+
+const changedStreamingResult = structuredClone(webgpuResult);
+changedStreamingResult.terrain.movement_probe.active_radius_m = 900;
+const changedStreaming = build({ result: changedStreamingResult });
+assert.equal(compareDeviceEvidenceContext(evidence, changedStreaming).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, changedStreaming).mismatches, ['streaming']);
 
 const changedCameraResult = structuredClone(webgpuResult);
 changedCameraResult.renderer.first_frame.camera.yaw = 0.5;
@@ -99,6 +153,16 @@ assert.deepEqual(compareDeviceEvidenceContext(evidence, changedWindow).mismatche
 const missingBuild = build({ result: webgpuResult, buildIdentity: {} });
 assert.equal(compareDeviceEvidenceContext(evidence, missingBuild).comparable, false);
 assert.deepEqual(compareDeviceEvidenceContext(evidence, missingBuild).mismatches, ['build_identity_missing', 'build']);
+
+const droppedTrace = structuredClone(result);
+droppedTrace.terrain.streaming_trace.droppedEntries = 1;
+assert.throws(() => build({ result: droppedTrace }), /DEVICE_EVIDENCE_STREAMING_TRACE_INCOMPLETE/);
+const ambiguousRendererBoundary = structuredClone(result);
+ambiguousRendererBoundary.terrain.movement_probe.renderer_resource_lifecycle_observed = true;
+assert.throws(() => build({ result: ambiguousRendererBoundary }), /DEVICE_EVIDENCE_STREAMING_RENDERER_BOUNDARY_AMBIGUOUS/);
+const missingTrace = structuredClone(result);
+delete missingTrace.terrain.streaming_trace;
+assert.throws(() => build({ result: missingTrace }), /DEVICE_EVIDENCE_STREAMING_TRACE_MISSING/);
 
 assert.throws(() => build({ navigatorLike: { userAgent: 'desktop chrome' }, evidenceTarget: 'android-chrome' }), /DEVICE_EVIDENCE_TARGET_MISMATCH_ANDROID_CHROME/);
 assert.throws(() => buildDeviceEvidence({ result, runtimeRequests: ['https://api.openstreetmap.org/api/0.6/map'], locationHref: 'x' }), /DEVICE_EVIDENCE_RAW_SOURCE_CALL/);
