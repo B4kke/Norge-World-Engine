@@ -269,6 +269,7 @@ export function createPreview1WebGl2Renderer({
       max_dpr: profile.maxDpr ?? 1.5,
       get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: profile.webglAntialias === false ? 1 : null,
+      power_preference: profile.powerPreference ?? 'default',
       draw_calls_per_frame: drawCallsPerFrame,
       gpu_buffer_count: gpuBufferCount,
       gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
