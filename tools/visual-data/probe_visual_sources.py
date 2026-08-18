@@ -20,10 +20,15 @@ DATASETS = {
         "provider": "Kartverket",
         "purpose": "terrain-colour candidate",
     },
+    "sr16_raster": {
+        "metadata_uuid": "5de45872-f534-4e97-840e-3cfd8db04398",
+        "provider": "NIBIO",
+        "purpose": "forest/vegetation raster candidate",
+    },
     "sr16_vector": {
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
         "provider": "NIBIO",
-        "purpose": "forest/vegetation candidate",
+        "purpose": "forest/vegetation vector comparison only",
     },
 }
 
@@ -57,7 +62,6 @@ def all_strings(value: Any):
 def normalize_capability_url(url: str, metadata_uuid: str) -> str | None:
     value = url.replace("http://", "https://", 1)
     lower = value.lower()
-    # WMS GetCapabilities is a map-service contract, not Geonorge's download API.
     if "service=wms" in lower or "request=getcapabilities" in lower:
         return None
     if "/api/capabilities" not in lower and "/api/v3/capabilities" not in lower:
@@ -78,7 +82,6 @@ def capability_urls(metadata: Any, metadata_uuid: str) -> list[str]:
         normalized = normalize_capability_url(text, metadata_uuid)
         if normalized:
             values.append(normalized)
-    # Central Geonorge is a standards-compliant fallback only for datasets routed there.
     values.append(f"https://nedlasting.geonorge.no/api/v3/capabilities/{metadata_uuid}")
     return list(dict.fromkeys(values))
 
