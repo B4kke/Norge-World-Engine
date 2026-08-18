@@ -329,7 +329,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 ## 2026-08-18 — Agent v2 roles and project-specific skills
 
 **Gjort**
-- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data) and ATLAS (world/coordinates) and SENTINEL (integration/QA).
+- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data), ATLAS (world/coordinates) and SENTINEL (integration/QA).
 - Upgraded all seven existing repo-local Agent Skills to the current project evidence instead of early-P0 assumptions.
 - Added three missing skills: `nwe-renderer-platform`, `nwe-runtime-streaming` and `nwe-world-model`.
 - Updated `AGENTS.md` and `README.md` so role selection, branch isolation, artifact-only runtime, evidence classes and current P0 boundaries are explicit.
