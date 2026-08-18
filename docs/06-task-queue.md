@@ -86,6 +86,13 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 
 ## Infrastructure
 
+### INFRA-AGENTS-01 — Five-agent parallel ownership
+**Status:** CONFIGURED ON `agent/agent-system-v2` / VALIDATION + DRAFT-PR GATE OPEN  
+**Owner area:** `.agents`, cross-project workflow  
+**Done:** Agent v2 defines five primary roles: LUMEN (`apps/world-viewer`, WebGPU/WebGL experiments and Vercel Preview), STRØM (`engine/streaming`), FORGE (`engine/compiler` + source pipeline), ATLAS (world/coordinate contracts) and SENTINEL (integration/schemas/QA). Seven existing NWE skills are aligned to current evidence and three missing domain skills were added for world model, runtime streaming and renderer/platform work.  
+**Acceptance:** skill validator passes with all 10 skills; five role charters exist; `AGENTS.md` routes work by ownership; branch/PR rules prevent silent overlap; viewer role requires exact-commit Vercel Preview when deployment access is available and never treats preview success as world-truth/device evidence.  
+**Next:** validate the branch, open a draft PR, then use the five roles against their current P0 gates rather than recreating a sequential research chain.
+
 ### INFRA-CI-01 — GitHub Actions hosted runner
 **Status:** RESOLVED  
 Repository is public and GitHub-hosted runners execute normally. Baseline passes on `main` and active P0 branches. `baseline-self-hosted.yml` remains only as an optional controlled fallback.
