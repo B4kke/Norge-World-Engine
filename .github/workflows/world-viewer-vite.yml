@@ -47,6 +47,7 @@ jobs:
           node apps/world-viewer/test_preview_camera_controls.mjs
           node apps/world-viewer/test_graphics_profiles.mjs
           node apps/world-viewer/test_renderer_observability.mjs
+          node apps/world-viewer/test_webgpu_upload_alignment.mjs
 
       - name: Terrain experiment syntax boundary
         run: |
