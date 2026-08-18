@@ -1,0 +1,1 @@
+No merge until exact-head Vite, real-data publication and Vercel preview readback pass.
