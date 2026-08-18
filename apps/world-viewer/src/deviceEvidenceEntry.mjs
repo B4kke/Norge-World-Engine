@@ -57,6 +57,10 @@ async function run() {
       screenLike: screen,
       canvasLike: canvas,
       devicePixelRatioLike: devicePixelRatio,
+      buildIdentity: {
+        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+      },
     });
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
