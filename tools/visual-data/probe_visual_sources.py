@@ -54,21 +54,33 @@ def all_strings(value: Any):
             yield from all_strings(item)
 
 
+def normalize_capability_url(url: str, metadata_uuid: str) -> str | None:
+    value = url.replace("http://", "https://", 1)
+    lower = value.lower()
+    # WMS GetCapabilities is a map-service contract, not Geonorge's download API.
+    if "service=wms" in lower or "request=getcapabilities" in lower:
+        return None
+    if "/api/capabilities" not in lower and "/api/v3/capabilities" not in lower:
+        return None
+    value = value.rstrip("/")
+    if not value.lower().endswith(metadata_uuid.lower()):
+        value = f"{value}/{metadata_uuid}"
+    if "nedlasting.geonorge.no/api/capabilities/" in value:
+        value = value.replace("/api/capabilities/", "/api/v3/capabilities/")
+    return value
+
+
 def capability_urls(metadata: Any, metadata_uuid: str) -> list[str]:
     values = []
     for text in all_strings(metadata):
-        lower = text.lower()
-        if "capabilit" in lower and text.startswith(("https://", "http://")):
-            values.append(text.replace("http://", "https://", 1))
-    # Central Geonorge is a standards-compliant fallback for datasets routed there.
+        if not text.startswith(("https://", "http://")):
+            continue
+        normalized = normalize_capability_url(text, metadata_uuid)
+        if normalized:
+            values.append(normalized)
+    # Central Geonorge is a standards-compliant fallback only for datasets routed there.
     values.append(f"https://nedlasting.geonorge.no/api/v3/capabilities/{metadata_uuid}")
-    result = []
-    for url in values:
-        if "nedlasting.geonorge.no/api/capabilities/" in url:
-            url = url.replace("/api/capabilities/", "/api/v3/capabilities/")
-        if url not in result:
-            result.append(url)
-    return result
+    return list(dict.fromkeys(values))
 
 
 def hrefs(value: Any) -> list[str]:
@@ -99,7 +111,7 @@ def summarize_codelist(value: Any) -> dict[str, Any]:
         "supports_epsg_25832": any("25832" in text for text in texts),
         "supports_epsg_25833": any("25833" in text for text in texts),
         "mentions_nannestad": any("nannestad" in text or "3238" in text for text in texts),
-        "formats": sorted({
+        "names": sorted({
             str(entry.get("name"))
             for entry in entries
             if isinstance(entry, dict) and entry.get("name")
@@ -114,7 +126,7 @@ def probe_dataset(name: str, config: dict[str, str]) -> dict[str, Any]:
     metadata_url = f"https://kartkatalog.geonorge.no/api/getdata/{uuid}"
     try:
         metadata, meta_http = fetch_json(metadata_url)
-        result["metadata"] = {"http": meta_http, "title": metadata.get("title") if isinstance(metadata, dict) else None}
+        result["metadata"] = {"http": meta_http}
     except Exception as error:
         metadata = {}
         result["errors"].append({"phase": "metadata", "url": metadata_url, "error": repr(error)})
@@ -147,7 +159,6 @@ def probe_dataset(name: str, config: dict[str, str]) -> dict[str, Any]:
             except Exception as error:
                 cap_entry["codelists"][kind] = {"url": normalized, "error": repr(error)}
         result["capabilities"].append(cap_entry)
-        # One successful capability contract is enough; duplicate metadata URLs are not evidence.
         break
 
     result["status"] = "PASS" if result["metadata"] and result["capabilities"] else "INCOMPLETE"
