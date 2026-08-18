@@ -68,6 +68,18 @@ assert.deepEqual(compareDeviceEvidenceContext(evidence, comparable).mismatches, 
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).comparable, true);
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).physical_device_attested, false);
 
+const sameBackend = build();
+assert.equal(compareDeviceEvidenceContext(evidence, sameBackend).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, sameBackend).mismatches, ['backend_pair']);
+
+const fallbackResult = structuredClone(result);
+fallbackResult.renderer_preference = 'webgpu';
+fallbackResult.renderer.backend = 'webgl2';
+fallbackResult.renderer.fallback = 'webgpu-unavailable';
+const fallbackEvidence = build({ result: fallbackResult });
+assert.equal(compareDeviceEvidenceContext(evidence, fallbackEvidence).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, fallbackEvidence).mismatches, ['backend_fallback', 'backend_pair']);
+
 const changedSession = build({ result: webgpuResult, captureSessionId: 'lumen-session-002' });
 assert.equal(compareDeviceEvidenceContext(evidence, changedSession).comparable, false);
 assert.deepEqual(compareDeviceEvidenceContext(evidence, changedSession).mismatches, ['capture']);
