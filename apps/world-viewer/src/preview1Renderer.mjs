@@ -1,6 +1,5 @@
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
-
-const TAU = Math.PI * 2;
+import { installPreviewCameraControls } from './previewCameraControls.mjs';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -300,52 +299,17 @@ function cameraEye(camera) {
 }
 
 function installControls(canvas, camera, onChange) {
-  let active = false;
-  let lastX = 0;
-  let lastY = 0;
-  const pointerDown = (event) => {
-    active = true;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    canvas.setPointerCapture?.(event.pointerId);
-  };
-  const pointerMove = (event) => {
-    if (!active) return;
-    const dx = event.clientX - lastX;
-    const dy = event.clientY - lastY;
-    lastX = event.clientX;
-    lastY = event.clientY;
-    camera.yaw = (camera.yaw - dx * 0.006) % TAU;
-    camera.pitch = clamp(camera.pitch + dy * 0.0045, 0.16, 1.42);
-    onChange();
-  };
-  const pointerUp = (event) => {
-    active = false;
-    canvas.releasePointerCapture?.(event.pointerId);
-  };
-  const wheel = (event) => {
-    event.preventDefault();
-    camera.distance = clamp(camera.distance * Math.exp(event.deltaY * 0.00115), 260, 2400);
-    onChange();
-  };
-  const doubleClick = () => {
-    Object.assign(camera, makeCamera());
-    onChange();
-  };
-  canvas.addEventListener('pointerdown', pointerDown);
-  canvas.addEventListener('pointermove', pointerMove);
-  canvas.addEventListener('pointerup', pointerUp);
-  canvas.addEventListener('pointercancel', pointerUp);
-  canvas.addEventListener('wheel', wheel, { passive: false });
-  canvas.addEventListener('dblclick', doubleClick);
-  return () => {
-    canvas.removeEventListener('pointerdown', pointerDown);
-    canvas.removeEventListener('pointermove', pointerMove);
-    canvas.removeEventListener('pointerup', pointerUp);
-    canvas.removeEventListener('pointercancel', pointerUp);
-    canvas.removeEventListener('wheel', wheel);
-    canvas.removeEventListener('dblclick', doubleClick);
-  };
+  return installPreviewCameraControls(canvas, camera, onChange, {
+    resetCamera: () => {
+      const reset = makeCamera();
+      camera.yaw = reset.yaw;
+      camera.pitch = reset.pitch;
+      camera.distance = reset.distance;
+      camera.target[0] = reset.target[0];
+      camera.target[1] = reset.target[1];
+      camera.target[2] = reset.target[2];
+    },
+  });
 }
 
 export function createPreview1Renderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, onFrame = () => {} } = {}) {
@@ -424,7 +388,12 @@ export function createPreview1Renderer({ canvas, terrainPayload, roadsArtifact, 
       onFrame({
         at: now,
         drawGapMs: lastDrawAt ? now - lastDrawAt : null,
-        camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
+        camera: {
+          yaw: camera.yaw,
+          pitch: camera.pitch,
+          distance: camera.distance,
+          target: [...camera.target],
+        },
       });
       lastDrawAt = now;
     }
