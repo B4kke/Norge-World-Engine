@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { observeStreamingLifecycleAdapters } from './lifecycle_observer.mjs';
+import { createStreamingTraceRecorder } from './streaming_trace_recorder.mjs';
 
 {
   const observations = [];
@@ -63,4 +64,18 @@ import { observeStreamingLifecycleAdapters } from './lifecycle_observer.mjs';
   assert.equal(observations[0].durationMs, 0);
 }
 
-console.log('streaming lifecycle observer regressions: PASS (4 cases)');
+{
+  const recorder = createStreamingTraceRecorder({ clock: () => 123, maxEntries: 4 });
+  const adapters = observeStreamingLifecycleAdapters({
+    clock: (() => { const times = [1, 3]; return () => times.shift(); })(),
+    onObservation: recorder.onLifecycleObservation,
+  });
+  await adapters.activateTile({ id: 'tile-e' }, {}, { reason: 'cache-hit' });
+  const trace = recorder.exportTrace({ device: 'test' });
+  assert.equal(trace.entries.length, 1);
+  assert.equal(trace.entries[0].kind, 'lifecycle-observation');
+  assert.equal(trace.entries[0].payload.phase, 'activate');
+  assert.equal(trace.entries[0].payload.durationMs, 2);
+}
+
+console.log('streaming lifecycle observer regressions: PASS (5 cases)');
