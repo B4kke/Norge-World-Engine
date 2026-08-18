@@ -1,0 +1,132 @@
+name: dtm1-source-grid-geometry-audit
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_source_grid_audit.py'
+      - 'engine/compiler/tests/test_dtm1_source_grid_audit.py'
+      - '.github/workflows/dtm1-source-grid-geometry-audit.yml'
+  workflow_dispatch:
+
+jobs:
+  audit-live-atom-geometry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run focused source-grid tests
+        run: pytest -q engine/compiler/tests/test_dtm1_source_grid_audit.py
+
+      - name: Audit current official Atom geometry against documented 15 km route size
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from itertools import combinations
+          from urllib.request import Request, urlopen
+
+          from pyproj import Transformer
+          from shapely.ops import transform as shapely_transform
+
+          from nwe_compiler.dtm1_source_grid_audit import audit_declared_route_pair
+          from nwe_compiler.sources.dtm1_atom import (
+              parse_feed,
+              select_dataset_sources,
+              select_service_dataset,
+          )
+          from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
+          from nwe_compiler.tiles import square_tile_grid
+
+          NOMINAL_ROUTE_SIZE_M = 15_000.0
+          to_source = Transformer.from_crs('EPSG:4326', 'EPSG:25833', always_xy=True)
+
+          def get(url):
+              req = Request(url, headers={
+                  'User-Agent': USER_AGENT,
+                  'Accept': 'application/atom+xml, application/xml;q=0.9',
+              })
+              with urlopen(req, timeout=60) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.read()
+
+          service_bytes = get(SERVICE_URL)
+          service_entries = parse_feed(service_bytes)
+          _, dataset_url = select_service_dataset(service_entries, 'DTM1')
+          dataset_bytes = get(dataset_url)
+          entries = parse_feed(dataset_bytes)
+
+          unique = {}
+          for tile in square_tile_grid(radius=1):
+              plan = select_dataset_sources(entries, target=tile.bounds)
+              for source in plan.sources:
+                  unique[source.href] = source
+
+          if len(unique) != 2:
+              raise SystemExit(f'Nannestad 3x3 source topology changed: expected 2 sources, got {len(unique)}')
+
+          rows = []
+          for href, source in sorted(unique.items()):
+              geom = shapely_transform(to_source.transform, source.extent.geometry)
+              rows.append({
+                  'href': href,
+                  'entry_id': source.entry.id,
+                  'entry_updated': source.entry.updated,
+                  'bounds_epsg25833': list(geom.bounds),
+                  'canonical_spatial_geometry_type': source.extent.geometry_type,
+              })
+
+          audits = []
+          for first, second in combinations(rows, 2):
+              audit = audit_declared_route_pair(
+                  tuple(first['bounds_epsg25833']),
+                  tuple(second['bounds_epsg25833']),
+                  nominal_route_size_m=NOMINAL_ROUTE_SIZE_M,
+              )
+              audits.append({
+                  'source_a': first['href'],
+                  'source_b': second['href'],
+                  'audit': audit,
+              })
+
+          result = {
+              'schema': 'nwe.dtm1-live-source-grid-geometry-proof/0.1',
+              'status': 'HYPOTHESIS_SUPPORTED_NOT_AUTHORITY',
+              'nominal_route_size_basis': 'Kartverket/Data.norge DTM1 API description: data split into 15 km routes',
+              'nominal_route_size_m': NOMINAL_ROUTE_SIZE_M,
+              'service_feed_url': SERVICE_URL,
+              'service_feed_sha256': hashlib.sha256(service_bytes).hexdigest(),
+              'dataset_feed_url': dataset_url,
+              'dataset_feed_sha256': hashlib.sha256(dataset_bytes).hexdigest(),
+              'dataset_entry_count': len(entries),
+              'sources': rows,
+              'pair_audits': audits,
+              'production_seam_authority': False,
+              'authority_status': 'UNPROVEN',
+          }
+          if not all(item['audit']['pair']['hypothesis_supported'] for item in audits):
+              raise SystemExit('current Atom geometry does not support the buffered-route hypothesis')
+          if result['production_seam_authority'] is not False:
+              raise SystemExit('diagnostic must never promote a seam authority')
+
+          print(json.dumps(result, indent=2, sort_keys=True))
+          with open('/tmp/dtm1-source-grid-geometry-audit.json', 'w', encoding='utf-8') as fh:
+              json.dump(result, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-source-grid-geometry-audit-${{ github.sha }}
+          path: /tmp/dtm1-source-grid-geometry-audit.json
+          if-no-files-found: error
+          retention-days: 7

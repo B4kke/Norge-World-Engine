@@ -54,7 +54,20 @@ def main() -> None:
 
         assert run("pull_request", "synchronize", base, head, cwd=repo)["heavy"] == "true"
         assert run("pull_request", "synchronize", code, head, cwd=repo)["heavy"] == "false"
-        assert run("pull_request", "synchronize", "", head, cwd=repo)["heavy"] == "true"
+
+        streaming = repo / "engine/streaming/runtime.mjs"
+        streaming.parent.mkdir(parents=True)
+        streaming.write_text("export const scheduler = 1;\n", encoding="utf-8")
+        streaming_head = commit(repo, "streaming dependency change")
+        assert run("pull_request", "synchronize", head, streaming_head, cwd=repo)["heavy"] == "true"
+
+        compiler = repo / "engine/compiler/pipeline.py"
+        compiler.parent.mkdir(parents=True)
+        compiler.write_text("VALUE = 1\n", encoding="utf-8")
+        compiler_head = commit(repo, "compiler dependency change")
+        assert run("pull_request", "synchronize", streaming_head, compiler_head, cwd=repo)["heavy"] == "true"
+
+        assert run("pull_request", "synchronize", "", compiler_head, cwd=repo)["heavy"] == "true"
         assert run("pull_request", "opened", "", "", cwd=repo)["heavy"] == "true"
         assert run("push", "", "", "", cwd=repo)["heavy"] == "true"
 

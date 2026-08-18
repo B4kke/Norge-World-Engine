@@ -39,7 +39,7 @@ if ! changed="$(git diff --name-only --no-renames "$before" "$after")"; then
   emit true "unable to diff synchronize range"
 fi
 printf '%s\n' "$changed" >&2
-if printf '%s\n' "$changed" | grep -Eq '^(apps/world-viewer/|tools/preview/|\.github/workflows/preview1-realdata-publish\.yml$)'; then
+if printf '%s\n' "$changed" | grep -Eq '^(apps/world-viewer/|tools/preview/|engine/compiler/|engine/streaming/|engine/schemas/|requirements-dev\.txt$|package\.json$|package-lock\.json$|\.github/workflows/preview1-realdata-publish\.yml$)'; then
   emit true "proof-sensitive path changed in synchronize range"
 fi
 emit false "synchronize range contains no proof-sensitive path"

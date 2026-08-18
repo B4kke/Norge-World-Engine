@@ -7,6 +7,12 @@ on:
     paths:
       - 'apps/world-viewer/**'
       - 'tools/preview/**'
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - 'requirements-dev.txt'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/preview1-realdata-publish.yml'
   push:
     branches:
@@ -14,6 +20,12 @@ on:
     paths:
       - 'apps/world-viewer/**'
       - 'tools/preview/**'
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - 'requirements-dev.txt'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/preview1-realdata-publish.yml'
   workflow_dispatch:
 
