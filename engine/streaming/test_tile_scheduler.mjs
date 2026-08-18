@@ -293,6 +293,50 @@ async function testActivationFailureRetriesFromCache() {
   assert.equal(snapshot.records[0].error, null);
 }
 
+async function testInterestLostDuringActivationDeactivationFailureKeepsResidentAccounting() {
+  const tile = { id: 'stale-activation-cleanup', centerE: 0, centerN: 0 };
+  let signalActivationStarted;
+  let finishActivation;
+  const activationStarted = new Promise((resolve) => { signalActivationStarted = resolve; });
+  const activationGate = new Promise((resolve) => { finishActivation = resolve; });
+
+  const scheduler = new TileStreamingScheduler({
+    activeRadiusMeters: 100,
+    retainRadiusMeters: 200,
+    maxResidentTiles: 1,
+    maxConcurrentLoads: 1,
+    maxCacheBytes: 1000,
+    loadTile: async () => ({ payload: { verified: true }, byteSize: 100 }),
+    activateTile: async () => {
+      signalActivationStarted();
+      await activationGate;
+    },
+    deactivateTile: async () => {
+      throw new Error('synthetic stale deactivation failure');
+    },
+  });
+
+  await scheduler.update({ e: 0, n: 0 }, [tile]);
+  await activationStarted;
+  await scheduler.update({ e: 1000, n: 0 }, [tile]);
+  finishActivation();
+  const snapshot = await scheduler.whenIdle();
+
+  assert.equal(snapshot.metrics.loadsCompleted, 1);
+  assert.equal(snapshot.metrics.loadsFailed, 0);
+  assert.equal(snapshot.metrics.activations, 1);
+  assert.equal(snapshot.metrics.activationFailures, 0, 'post-activation cleanup failure is not an activation failure');
+  assert.equal(snapshot.metrics.deactivationFailures, 1);
+  assert.equal(snapshot.metrics.lifecycleFailures, 1);
+  assert.equal(snapshot.metrics.bytesResident, 100, 'failed deactivation must retain resident accounting');
+  assert.equal(snapshot.metrics.bytesActivating, 0);
+  assert.equal(snapshot.metrics.bytesCached, 0);
+  assert.equal(snapshot.metrics.retainedBytes, 100);
+  assert.equal(snapshot.records[0].state, 'resident');
+  assert.equal(snapshot.records[0].desired, false);
+  assert.match(snapshot.records[0].error, /stale deactivation failure/);
+}
+
 async function testStaleCompletionCannotResurrectAbortedTile() {
   const tiles = [
     { id: 'a', centerE: 0, centerN: 0 },
@@ -371,9 +415,10 @@ async function main() {
   await testDisposalFailureKeepsAccountingAndPayloadState();
   await testResidentBudgetDefersThenActivatesFromCache();
   await testActivationFailureRetriesFromCache();
+  await testInterestLostDuringActivationDeactivationFailureKeepsResidentAccounting();
   await testStaleCompletionCannotResurrectAbortedTile();
   await testFailedLoadCanRetryWithoutPoisoningTile();
-  console.log('tile scheduler regressions: PASS (11 cases)');
+  console.log('tile scheduler regressions: PASS (12 cases)');
 }
 
 main().catch((error) => {
