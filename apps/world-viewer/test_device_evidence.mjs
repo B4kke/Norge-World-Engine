@@ -9,7 +9,8 @@ const result = {
   roads: { artifact_sha256: 'roads-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', count: 246 },
   buildings: { artifact_sha256: 'buildings-sha', verification_code: 'RUNTIME_VERIFICATION_PASS', count: 135 },
   renderer: {
-    backend: 'webgl2', fallback: null, draw_calls_per_frame: 4, gpu_buffer_count: 9, gpu_buffer_payload_bytes: 849246,
+    backend: 'webgl2', fallback: null, graphics_profile: 'balanced', max_dpr: 2, msaa_samples: 1, power_preference: 'default',
+    draw_calls_per_frame: 4, gpu_buffer_count: 9, gpu_buffer_payload_bytes: 849246,
     gpu_attachment_estimated_bytes: 1000, timestamp_query_supported: false, terrain_vertices: 16641, terrain_triangles: 32768,
     source_backed_building_heights: 15, unresolved_building_heights: 120, pixel_ratio: 2,
     first_frame: { pixelRatio: 2, camera: { yaw: 0.4, pitch: -0.65, distance: 1450 } },
@@ -25,12 +26,14 @@ const build = (overrides = {}) => buildDeviceEvidence({
   screenLike: { width: 412, height: 915 },
   canvasLike: { clientWidth: 412, clientHeight: 600, width: 824, height: 1200 },
   devicePixelRatioLike: 2,
+  buildIdentity: { git_commit_sha: '0123456789abcdef0123456789abcdef01234567', deployment_id: 'dpl_test' },
   capturedAt: '2026-08-18T18:00:00.000Z',
   ...overrides,
 });
 
 const evidence = build();
 assert.equal(evidence.status, 'PASS');
+assert.equal(evidence.build.git_commit_sha, '0123456789abcdef0123456789abcdef01234567');
 assert.equal(evidence.world.raw_source_runtime_calls, 0);
 assert.equal(evidence.world.artifact_sha256.terrain, 'terrain-sha');
 assert.equal(evidence.renderer.active_backend, 'webgl2');
@@ -38,7 +41,7 @@ assert.equal(evidence.renderer.camera.distance, 1450);
 assert.deepEqual(evidence.renderer.render_surface.backing_px, { width: 824, height: 1200 });
 assert.equal(evidence.renderer.render_surface.pixel_ratio, 2);
 assert.equal(evidence.timing_ms.repeated_draw.measured_frames, 90);
-assert.match(evidenceFilename(evidence), /webgl2\.json$/);
+assert.match(evidenceFilename(evidence), /webgl2-0123456789ab\.json$/);
 assert.equal(isRawSourceRuntimeUrl('https://www.vegvesen.no/nvdb'), true);
 
 const webgpuResult = structuredClone(result);
@@ -57,6 +60,20 @@ assert.deepEqual(compareDeviceEvidenceContext(evidence, changedCamera).mismatche
 const changedSurface = build({ result: webgpuResult, canvasLike: { clientWidth: 412, clientHeight: 600, width: 412, height: 600 } });
 assert.equal(compareDeviceEvidenceContext(evidence, changedSurface).comparable, false);
 assert.deepEqual(compareDeviceEvidenceContext(evidence, changedSurface).mismatches, ['render_surface']);
+
+const changedBuild = build({ result: webgpuResult, buildIdentity: { git_commit_sha: '1111111111111111111111111111111111111111', deployment_id: 'dpl_other' } });
+assert.equal(compareDeviceEvidenceContext(evidence, changedBuild).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, changedBuild).mismatches, ['build']);
+
+const changedWindowResult = structuredClone(webgpuResult);
+changedWindowResult.timing_ms.renderer_frame_benchmark = { requested_frames: 120, measured_frames: 120 };
+const changedWindow = build({ result: changedWindowResult });
+assert.equal(compareDeviceEvidenceContext(evidence, changedWindow).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, changedWindow).mismatches, ['measurement_window']);
+
+const missingBuild = build({ result: webgpuResult, buildIdentity: {} });
+assert.equal(compareDeviceEvidenceContext(evidence, missingBuild).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, missingBuild).mismatches, ['build_identity_missing', 'build']);
 
 assert.throws(() => buildDeviceEvidence({ result, runtimeRequests: ['https://api.openstreetmap.org/api/0.6/map'], locationHref: 'x' }), /DEVICE_EVIDENCE_RAW_SOURCE_CALL/);
 const bad = structuredClone(result);
