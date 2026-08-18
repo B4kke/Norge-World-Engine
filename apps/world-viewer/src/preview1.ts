@@ -115,7 +115,7 @@ export async function runPreview1({
   fetchImpl = globalThis.fetch,
   graphicsProfile = 'balanced',
   rendererPreference = 'auto',
-  benchmarkFrameCount = 0,
+  benchmarkFrameCount = Number(new URLSearchParams(location.search).get('previewBenchmarkFrames') || '0'),
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
