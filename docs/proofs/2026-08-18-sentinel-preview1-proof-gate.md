@@ -37,7 +37,7 @@ The exact PR #20 workflow at head `8e015711...` independently demonstrated the s
 
 ## Result
 
-**FAIL — the strong claim was falsified.**
+**FAIL — the old strong claim was falsified.**
 
 This finding does **not** show that `RuntimeVerificationBundle`, WebCrypto/JCS reconstruction, artifact SHA verification, or the existing exact-head browser proofs are invalid. It shows that the CI admission gate could allow a future proof-sensitive update to avoid re-running those proofs.
 
@@ -54,10 +54,16 @@ This finding does **not** show that `RuntimeVerificationBundle`, WebCrypto/JCS r
 
 The regression is wired into the repository baseline as well as the Preview 1 change-gate job.
 
+## Hosted acceptance
+
+Baseline run `32165756560` / run number `659` completed **PASS** on code/proof head `ce35190d0b7cf4728de03a8f6c10c3327bbd1e1f`. The dedicated `Preview 1 proof-gate regressions` step passed, together with the existing source-contract/compiler, runtime provenance, scheduler, terrain worker, verified terrain-loader, viewer artifact-boundary and Cesium baseline checks.
+
+Classification after the fix: **PASS for the synchronize-range admission invariant exercised by this regression.** This is a CI/control-plane proof only; it does not upgrade Android, renderer/GPU, multi-tile seam, or whole-Norway evidence.
+
 ## Evidence calibration
 
 - **FACT:** the previous workflow used only `HEAD^..HEAD` for synchronize classification.
 - **FACT:** the adversarial three-commit history makes that classifier return `heavy=false` while the complete update range contains a proof-sensitive viewer change.
 - **FACT:** the replacement regression passes in the local isolated Git fixture.
-- **PENDING CI:** hosted baseline execution on the SENTINEL branch/stacked PR is required before the fix itself is called integrated PASS.
+- **FACT:** hosted baseline run `32165756560` passed the same regression and the surrounding integration suite on `ce35190d...`.
 - **UNCHANGED:** Android performance/gesture acceptance, real 3×3 terrain seam promotion, and whole-Norway coordinate policy remain separate open gates.
