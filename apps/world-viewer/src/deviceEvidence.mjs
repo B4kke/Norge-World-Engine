@@ -29,10 +29,44 @@ function normalizedBuildIdentity(buildIdentity = {}) {
   };
 }
 
+function normalizedCaptureSessionId(value) {
+  return typeof value === 'string' && /^[a-zA-Z0-9._:-]{8,128}$/.test(value) ? value : null;
+}
+
+export function classifyBrowserEnvironment(navigatorLike = {}) {
+  const userAgent = String(navigatorLike?.userAgent ?? '');
+  const uaData = navigatorLike?.userAgentData ?? null;
+  const uaPlatform = typeof uaData?.platform === 'string' ? uaData.platform : null;
+  const uaMobile = typeof uaData?.mobile === 'boolean' ? uaData.mobile : null;
+  const brands = Array.isArray(uaData?.brands)
+    ? uaData.brands.map((item) => String(item?.brand ?? '')).filter(Boolean).sort()
+    : [];
+  const android = /android/i.test(uaPlatform ?? '') || /android/i.test(userAgent);
+  const explicitChromeBrand = brands.some((brand) => /google chrome/i.test(brand));
+  const chromiumBrand = brands.some((brand) => /^chromium$/i.test(brand));
+  const chromeUa = /(?:chrome|crios)\//i.test(userAgent)
+    && !/(?:edga|edgios|opr|opera|samsungbrowser)\//i.test(userAgent);
+  const chromiumFamily = explicitChromeBrand || chromiumBrand || chromeUa;
+  const androidChrome = android && chromiumFamily && uaMobile !== false;
+  return {
+    user_agent_data_mobile: uaMobile,
+    user_agent_data_platform: uaPlatform,
+    user_agent_data_brands: brands,
+    inferred_android: android,
+    inferred_chromium_family: chromiumFamily,
+    inferred_android_chrome: androidChrome,
+    physical_device_attested: false,
+  };
+}
+
 function comparisonContext(evidence) {
   return stableObject({
     build: {
       git_commit_sha: evidence?.build?.git_commit_sha ?? null,
+    },
+    capture: {
+      session_id: evidence?.capture?.session_id ?? null,
+      target: evidence?.capture?.target ?? null,
     },
     tile_id: evidence?.world?.tile_id ?? null,
     artifact_sha256: evidence?.world?.artifact_sha256 ?? null,
@@ -65,6 +99,7 @@ export function compareDeviceEvidenceContext(left, right) {
   const rhs = comparisonContext(right);
   const mismatches = [];
   if (!lhs.build.git_commit_sha || !rhs.build.git_commit_sha) mismatches.push('build_identity_missing');
+  if (!lhs.capture.session_id || !rhs.capture.session_id) mismatches.push('capture_session_missing');
   for (const key of Object.keys(lhs)) {
     if (JSON.stringify(lhs[key]) !== JSON.stringify(rhs[key])) mismatches.push(key);
   }
@@ -74,6 +109,7 @@ export function compareDeviceEvidenceContext(left, right) {
     left_backend: left.renderer?.active_backend ?? null,
     right_backend: right.renderer?.active_backend ?? null,
     context: lhs,
+    physical_device_attested: false,
   };
 }
 
@@ -86,6 +122,8 @@ export function buildDeviceEvidence({
   canvasLike = {},
   devicePixelRatioLike = globalThis.devicePixelRatio,
   buildIdentity = {},
+  captureSessionId = null,
+  evidenceTarget = 'generic-browser',
   capturedAt = new Date().toISOString(),
 }) {
   if (!result || result.schema !== 'nwe.world-preview-runtime/0.1' || result.status !== 'PASS') {
@@ -108,6 +146,12 @@ export function buildDeviceEvidence({
   }
   if (rawCalls.length) throw new Error(`DEVICE_EVIDENCE_RAW_SOURCE_CALL: ${rawCalls[0]}`);
 
+  const normalizedTarget = evidenceTarget === 'android-chrome' ? 'android-chrome' : 'generic-browser';
+  const browserEnvironment = classifyBrowserEnvironment(navigatorLike);
+  if (normalizedTarget === 'android-chrome' && !browserEnvironment.inferred_android_chrome) {
+    throw new Error('DEVICE_EVIDENCE_TARGET_MISMATCH_ANDROID_CHROME');
+  }
+
   const firstFrame = result.renderer?.first_frame ?? null;
   const camera = firstFrame?.camera ?? null;
   const rendererPixelRatio = finiteNumberOrNull(result.renderer?.pixel_ratio ?? firstFrame?.pixelRatio);
@@ -116,15 +160,21 @@ export function buildDeviceEvidence({
     schema: 'nwe.world-viewer-device-evidence/0.1',
     status: 'PASS',
     captured_at: capturedAt,
-    evidence_class: 'interactive-browser-device',
+    evidence_class: normalizedTarget === 'android-chrome' ? 'android-chrome-browser-capture' : 'interactive-browser-device',
     page_url: String(locationHref ?? ''),
     build: normalizedBuildIdentity(buildIdentity),
+    capture: {
+      target: normalizedTarget,
+      session_id: normalizedCaptureSessionId(captureSessionId),
+      physical_device_attested: false,
+    },
     device: {
       user_agent: safeNavigatorValue(navigatorLike, 'userAgent'),
       platform: safeNavigatorValue(navigatorLike, 'platform'),
       hardware_concurrency: safeNavigatorValue(navigatorLike, 'hardwareConcurrency'),
       device_memory_gib: safeNavigatorValue(navigatorLike, 'deviceMemory'),
       language: safeNavigatorValue(navigatorLike, 'language'),
+      browser_environment: browserEnvironment,
       screen_css_px: {
         width: finiteNumberOrNull(screenLike?.width),
         height: finiteNumberOrNull(screenLike?.height),
@@ -188,7 +238,7 @@ export function buildDeviceEvidence({
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Device evidence only. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same viewer commit, measurement window, accepted artifacts, camera, render workload/surface and device. Debug geometry remains non-authoritative.',
+    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, camera, render workload/surface and exposed device/browser context. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
   };
 }
 
@@ -196,5 +246,6 @@ export function evidenceFilename(evidence) {
   const backend = String(evidence?.renderer?.active_backend ?? 'unknown').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
   const tile = String(evidence?.world?.tile_id ?? 'tile').replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
   const commit = String(evidence?.build?.git_commit_sha ?? 'unbound').slice(0, 12).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
-  return `nwe-device-evidence-${tile}-${backend}-${commit}.json`;
+  const session = String(evidence?.capture?.session_id ?? 'nosession').slice(0, 16).replace(/[^a-z0-9_-]+/gi, '-').toLowerCase();
+  return `nwe-device-evidence-${tile}-${backend}-${commit}-${session}.json`;
 }
