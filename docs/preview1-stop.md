@@ -1,1 +1,0 @@
-Preview 1 implementation is branch-complete; hosted gates decide acceptance.
