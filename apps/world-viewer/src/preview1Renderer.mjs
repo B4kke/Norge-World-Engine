@@ -15,12 +15,18 @@ export async function createPreview1Renderer({
 
   const webGpuAvailable = Boolean(globalThis.navigator?.gpu);
   if (rendererPreference !== 'webgl2' && webGpuAvailable) {
+    let webGpuRenderer = null;
     try {
-      return await createPreview1WebGpuRenderer({
+      webGpuRenderer = await createPreview1WebGpuRenderer({
         ...options,
         graphicsProfile: profile,
       });
+      // A device/context that exists but cannot submit the real first frame is not
+      // a usable Preview 1 backend. Auto mode must fall back before READY.
+      await webGpuRenderer.firstFrame;
+      return webGpuRenderer;
     } catch (error) {
+      webGpuRenderer?.dispose?.();
       if (rendererPreference === 'webgpu') throw error;
       onBackendFallback({ from: 'webgpu', to: 'webgl2', error });
     }
