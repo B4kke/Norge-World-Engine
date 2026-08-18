@@ -108,10 +108,13 @@ assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (Linux; Androi
 
 const webgpuResult = structuredClone(result);
 webgpuResult.renderer.backend = 'webgpu';
+webgpuResult.renderer.webgpu_feature_level = 'core';
 webgpuResult.renderer_preference = 'webgpu';
 webgpuResult.terrain.movement_probe.duration_ms = 8.5;
 webgpuResult.terrain.streaming_trace.entries[0].recordedAt = 100;
 const comparable = build({ result: webgpuResult });
+assert.equal(comparable.renderer.webgpu_feature_level, 'core');
+assert.equal(comparable.renderer.webgpu_adapter_request_mode, 'core');
 assert.deepEqual(compareDeviceEvidenceContext(evidence, comparable).mismatches, []);
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).comparable, true);
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).physical_device_attested, false);
