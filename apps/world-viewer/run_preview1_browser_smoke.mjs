@@ -268,8 +268,15 @@ async function main() {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     await new Promise((resolvePromise) => server.close(resolvePromise));
     // Chrome can briefly keep profile files open after the process group receives
-    // SIGTERM. Retrying only cleanup avoids turning a proven GPU frame into a false CI failure.
-    rmSync(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
+    // SIGTERM. Cleanup is non-authoritative on an ephemeral runner, so a known
+    // transient profile-lock race must not turn an already validated browser proof
+    // into a false CI failure.
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (error) {
+      if (!['ENOTEMPTY', 'EBUSY', 'EPERM'].includes(error?.code)) throw error;
+      console.warn(`Preview 1 browser profile cleanup deferred: ${error.code}`);
+    }
   }
 }
 
