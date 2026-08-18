@@ -325,3 +325,36 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
 - Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
 - Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.
+
+## 2026-08-18 — LUMEN exact-real renderer observability
+
+**Gjort**
+- Continued on `agent/lumen-renderer-metrics`, stacked on the active Preview 1 branch instead of duplicating its renderer work. Draft PR #27 remains unmerged.
+- Added renderer-side observability for the actual `apps/world-viewer` path: input→first-frame-ready, startup rAF p50/p95/p99/largest gap, repeated identical-scene frame-gap and draw-CPU percentiles, draw calls, scene-build CPU, GPU resource apply/enqueue CPU, GPU buffer count/payload, retained terrain bytes, browser heap when exposed and WebGPU timestamp-query capability.
+- Preserved the fail-closed first-frame contract. WebGPU still waits for `queue.onSubmittedWorkDone()` before first-frame readiness; RuntimeVerificationBundle verification remains mandatory before renderer resource creation.
+- Added a forced same-artifact WebGL2/WebGPU A/B harness over the accepted Preview 1 manifest, fixed camera contract and graphics profile. The harness rejects mismatched artifact SHAs/tile/geometry counts, fallback, failed provenance or raw Kartverket/NVDB/OSM/Overpass runtime calls.
+- Fixed a real WebGPU transport bug discovered by the new gate: `GPUQueue.writeBuffer` requires the upload byte length to be divisible by 4. Odd-length Uint16 index payloads are now zero-padded only for GPU transport; logical index count, world geometry and artifact identity are unchanged. Added a regression for 2- and 6-byte Uint16 payloads.
+- Added a minimal WebGPU control probe before the NWE WebGPU run. This prevents a hosted-runner device failure from being mislabeled as an NWE renderer failure: NWE WebGPU is compared only when the 64×64 control clear/submit/present path itself succeeds.
+
+**Bevist**
+- GitHub Actions for head `0a113d383d1b7a00d05c27094ec17d9491d9cab9` are green: `baseline` run `32167399717`, `world-viewer-vite` run `32167399718` and `viewer-benchmark` run `32167399817` all completed successfully. The viewer job executed the PR merge ref `fad7a44272558b5f0ab7bb9c38e6773099c4705e` in Chrome 151.0.7922.108.
+- Exact accepted Preview 1 WebGL2 path passes full browser verification on tile `epsg25832_611000_6677000_1000m` with terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`, road SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`, building SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`, exactly 7 compiled/bundle runtime requests and **0 raw-source runtime calls**.
+- Hosted WebGL2 measurement: input→first-frame-ready **1961.4 ms**; startup rAF p50/p95/p99/largest **16.7 / 347.515 / 512.654 / 533.3 ms**. The opt-in 90-frame identical-scene redraw window measured frame-gap p50/p95/p99/largest **50.1 / 110.845 / 151.915 / 166.6 ms** and draw-CPU p50/p95/p99/largest **54.5 / 77.165 / 162.136 / 168.9 ms**. It submitted **4 draw calls/frame**. These hosted/software-renderer measurements are directional diagnostics, not Android or gameplay-camera acceptance.
+- Renderer resource evidence for that WebGL2 run: scene-build CPU **44.1 ms**, GPU resource apply CPU **29.6 ms**, renderer init CPU **625.2 ms**, 9 GPU buffers with **849,246 B** logical payload, **4,729,120 B** retained terrain, 16,641 terrain vertices / 32,768 triangles, 246 road paths and 135 building footprints.
+- The minimal hosted WebGPU control probe fails with `A valid external Instance reference no longer exists.` Therefore the run is intentionally reported `PARTIAL` for renderer comparison: WebGL2 exact-real evidence is valid, but **no hosted WebGPU-vs-WebGL2 performance comparison is claimed**. Android/real-device WebGPU remains open.
+- The benchmark JSON was uploaded as Actions artifact `world-viewer-renderer-benchmark-fad7a44272558b5f0ab7bb9c38e6773099c4705e` (artifact id `9335952780`).
+
+**Endret**
+- `apps/world-viewer/src/rendererObservability.mjs`
+- `apps/world-viewer/src/preview1.ts`
+- `apps/world-viewer/src/preview1WebGl2Renderer.mjs`
+- `apps/world-viewer/src/preview1WebGpuRenderer.mjs`
+- `apps/world-viewer/src/preview1Renderer.d.ts`
+- `apps/world-viewer/run_preview1_renderer_benchmark.mjs`
+- renderer observability/WebGPU upload regressions and `.github/workflows/world-viewer-vite.yml`
+- `docs/04-decisions.md` was deliberately left unchanged: this evidence does not select WebGPU, WebGL2, Cesium, worker policy, cache policy or LOD architecture.
+
+**Neste**
+- Run the exact accepted Preview 1 artifacts on Android Chrome with the same camera/profile and forced WebGL2 plus forced WebGPU where supported. Capture input→first-frame, startup/frame p50/p95/p99/largest, draw calls, resource upload/apply, retained bytes/memory and timestamp-query data where the device exposes it.
+- Treat the hosted WebGPU control failure as an environment capability result only; do not infer that the NWE WebGPU renderer is accepted or rejected until the real-device gate runs.
+- Retry exact-commit Vercel Preview smoke when the project/account build gate allows it; Vercel remains deployment smoke evidence, never renderer performance evidence.
