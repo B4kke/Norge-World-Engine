@@ -6,11 +6,11 @@ Minimal browser/runtime consumer and measurable viewer boundary for Norge World 
 
 `index.html` + `src/` form the deployable Vite application shell for the browser viewer. Vite is only the replaceable web build/development tool; it does not select WebGPU, WebGL2, Three.js, Cesium, terrain format or world-coordinate policy.
 
-The deployable shell is intentionally built **around**, not instead of, the viewer/runtime work already in this directory:
+The deployable app is built around the same runtime boundaries used by the repo benchmarks:
 
-- `artifact_consumer.mjs` remains the compiled-artifact browser gate and now requires full WebCrypto/JCS RuntimeVerificationBundle reconstruction before decode;
-- `benchmark/` remains the real-artifact WebGL2 batching measurement harness;
-- the Vite entrypoint does not fabricate terrain, roads or buildings while hosted runtime-artifact distribution is still open.
+- `artifact_consumer.mjs` requires full WebCrypto/JCS RuntimeVerificationBundle reconstruction before JSON artifact decode;
+- `benchmark/` remains the real-artifact WebGL2 vector batching measurement harness;
+- **Forsøk 18** is now available from the main World Viewer viewport and drives terrain through the shared browser worker/scheduler experiment core.
 
 Current Vercel contract:
 
@@ -20,7 +20,30 @@ Current Vercel contract:
 - Output Directory: `dist`
 - Install Command: automatic/default
 
-A successful Vercel deployment proves the web application shell can be hosted. It is not yet evidence that the accepted Nannestad terrain artifact, terrain worker/streaming path or renderer performance are integrated into that deployment.
+A successful deployment proves the web application can be hosted. It is not by itself evidence that a particular renderer, tile format, device budget or whole-Norway streaming policy is accepted.
+
+## Forsøk 18 — terrain runtime in the World Viewer
+
+The main app exposes **Kjør Forsøk 18**. Default mode is deliberately labeled `SYNTHETIC STRUCTURAL`: it builds a 1000 × 1000 float32 terrain fixture in the browser and sends it through the same production-direction boundaries that a hosted real terrain artifact uses:
+
+`RuntimeVerificationBundle -> WebCrypto/JCS -> NWEHGT01 decode -> module DedicatedWorker -> TileStreamingScheduler -> WebGL2 measurement upload/draw`.
+
+The visible panel reports provenance status, DedicatedWorker status, first-visible, rAF gap, GPU apply time, cache hit and retained bytes. The camera then moves outside the active radius but remains inside the retain radius, forcing `resident -> cached`; returning to the tile must produce a scheduler cache hit without another terrain resolver call.
+
+The synthetic fixture is a runtime/structure test only. Its shape and SHA are **not** Nannestad world truth.
+
+A hosted accepted terrain bundle can use the same app path with explicit query parameters:
+
+```text
+?terrainBundle=/runtime/nannestad/terrain.bundle.json
+&terrainTileId=<tile-id>
+&centerE=<easting>
+&centerN=<northing>
+```
+
+`terrain_runtime_input.mjs` still rejects raw-source transport references before the compiled-artifact request. Normal browser runtime must never acquire DTM/NVDB/OSM source data directly.
+
+Exact hosted structural proof is recorded in `docs/proofs/2026-08-18-world-viewer-terrain-worker.md`. The current open gate is to drive the exact accepted Nannestad DTM1 RuntimeVerificationBundle/artifact through this same real browser-worker path, then repeat on Android Chrome.
 
 ## Compiled-artifact browser gate
 
