@@ -28,6 +28,11 @@ jobs:
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
 
+      - name: Preview 1 proof-gate regressions
+        run: |
+          bash -n tools/preview/preview1_change_gate.sh
+          python tools/preview/test_preview1_change_gate.py
+
       - name: Source contract verifier
         run: python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
 
