@@ -14,16 +14,10 @@ function absoluteUrl(reference: string, base: string) {
 }
 
 function assertManifest(value: any) {
-  if (!value || value.schema !== 'nwe.world-preview-manifest/0.1') {
-    throw new Error(`PREVIEW_MANIFEST_SCHEMA: ${value?.schema ?? 'missing'}`);
-  }
-  if (!value.tile?.id || !Array.isArray(value.tile?.bounds) || value.tile.bounds.length !== 4) {
-    throw new Error('PREVIEW_MANIFEST_TILE: tile id/bounds missing');
-  }
+  if (!value || value.schema !== 'nwe.world-preview-manifest/0.1') throw new Error(`PREVIEW_MANIFEST_SCHEMA: ${value?.schema ?? 'missing'}`);
+  if (!value.tile?.id || !Array.isArray(value.tile?.bounds) || value.tile.bounds.length !== 4) throw new Error('PREVIEW_MANIFEST_TILE: tile id/bounds missing');
   for (const key of ['terrain', 'roads', 'buildings']) {
-    if (typeof value[key]?.bundle !== 'string' || !value[key].bundle) {
-      throw new Error(`PREVIEW_MANIFEST_LAYER: ${key}.bundle missing`);
-    }
+    if (typeof value[key]?.bundle !== 'string' || !value[key].bundle) throw new Error(`PREVIEW_MANIFEST_LAYER: ${key}.bundle missing`);
   }
   return value;
 }
@@ -35,19 +29,10 @@ async function fetchPreviewManifest(manifestUrl: string, fetchImpl: typeof globa
 }
 
 function centerFromBounds(bounds: number[]) {
-  return {
-    e: (bounds[0] + bounds[2]) / 2,
-    n: (bounds[1] + bounds[3]) / 2,
-  };
+  return { e: (bounds[0] + bounds[2]) / 2, n: (bounds[1] + bounds[3]) / 2 };
 }
 
-async function loadTerrain(
-  manifest: any,
-  manifestUrl: string,
-  onPhase: (phase: string) => void,
-  fetchImpl: typeof globalThis.fetch,
-  graphicsProfile: any,
-) {
+async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: string) => void, fetchImpl: typeof globalThis.fetch, graphicsProfile: any) {
   const terrainBundleUrl = absoluteUrl(manifest.terrain.bundle, manifestUrl);
   const center = centerFromBounds(manifest.tile.bounds);
   const descriptor = { id: manifest.tile.id, centerE: center.e, centerN: center.n };
@@ -59,12 +44,7 @@ async function loadTerrain(
     resolveRuntimeInput: async (tile: any, { signal }: any) => {
       resolverCalls += 1;
       onPhase('terrain-fetch');
-      return loadTerrainRuntimeInput({
-        bundleUrl: terrainBundleUrl,
-        expectedTileId: tile.id,
-        fetchImpl,
-        signal,
-      });
+      return loadTerrainRuntimeInput({ bundleUrl: terrainBundleUrl, expectedTileId: tile.id, fetchImpl, signal });
     },
     verifyBundle: async (bundle: any, bytes: Uint8Array) => {
       onPhase('terrain-verify');
@@ -96,12 +76,8 @@ async function loadTerrain(
 
   await scheduler.update({ e: center.e, n: center.n }, [descriptor]);
   const snapshot = await scheduler.whenIdle();
-  if (!payload || payload.verification?.code !== 'RUNTIME_VERIFICATION_PASS') {
-    throw new Error('PREVIEW_TERRAIN_NOT_READY: terrain payload failed runtime verification');
-  }
-  if (snapshot.metrics.loadsCompleted !== 1 || snapshot.metrics.loadsFailed !== 0) {
-    throw new Error(`PREVIEW_TERRAIN_SCHEDULER: ${JSON.stringify(snapshot.metrics)}`);
-  }
+  if (!payload || payload.verification?.code !== 'RUNTIME_VERIFICATION_PASS') throw new Error('PREVIEW_TERRAIN_NOT_READY: terrain payload failed runtime verification');
+  if (snapshot.metrics.loadsCompleted !== 1 || snapshot.metrics.loadsFailed !== 0) throw new Error(`PREVIEW_TERRAIN_SCHEDULER: ${JSON.stringify(snapshot.metrics)}`);
   return { payload, snapshot, resolverCalls, bundleUrl: terrainBundleUrl };
 }
 
@@ -134,22 +110,12 @@ export async function runPreview1({
   const manifest = await fetchPreviewManifest(manifestBase, fetchImpl);
 
   onPhase('compiled-vectors');
-  const roadsPromise = loadCompiledJsonArtifact({
-    bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase),
-    expectedRole: 'road-network',
-    fetchImpl,
-  });
-  const buildingsPromise = loadCompiledJsonArtifact({
-    bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase),
-    expectedRole: 'building-footprints',
-    fetchImpl,
-  });
+  const roadsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase), expectedRole: 'road-network', fetchImpl });
+  const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
   const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
   const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
 
-  if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) {
-    throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
-  }
+  if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
 
   let rendererFallback: any = null;
   onPhase('renderer');
@@ -169,6 +135,9 @@ export async function runPreview1({
     },
     onFrame,
   });
+
+  onPhase('first-frame');
+  const firstFrame = await renderer.firstFrame;
 
   const result = {
     schema: 'nwe.world-preview-runtime/0.1',
@@ -199,6 +168,7 @@ export async function runPreview1({
     renderer: {
       ...renderer.stats,
       fallback: rendererFallback,
+      first_frame: firstFrame,
     },
     attribution: manifest.attribution ?? [],
   };
