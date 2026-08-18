@@ -1,5 +1,5 @@
 import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1.ts';
-import { buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { buildCounterpartEvidenceUrl, buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
 
 const params = new URLSearchParams(location.search);
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
@@ -20,7 +20,8 @@ const canvas = document.querySelector('#device-canvas');
 const status = document.querySelector('#device-status');
 const output = document.querySelector('#device-output');
 const download = document.querySelector('#device-download');
-if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement)) {
+const counterpart = document.querySelector('#device-counterpart');
+if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement) || !(counterpart instanceof HTMLAnchorElement)) {
   throw new Error('DEVICE_EVIDENCE_UI_MISSING');
 }
 
@@ -85,6 +86,14 @@ async function run() {
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, { once: true });
+
+    const requested = String(evidence.renderer?.requested_backend ?? '').toLowerCase();
+    const active = String(evidence.renderer?.active_backend ?? '').toLowerCase();
+    if (requested === active && (active === 'webgl2' || active === 'webgpu')) {
+      counterpart.href = buildCounterpartEvidenceUrl(location.href, { activeBackend: active });
+      counterpart.textContent = active === 'webgl2' ? 'Kjør samme session med WebGPU' : 'Kjør samme session med WebGL2';
+      counterpart.hidden = false;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`FAIL CLOSED · ${message}`, 'fail');
