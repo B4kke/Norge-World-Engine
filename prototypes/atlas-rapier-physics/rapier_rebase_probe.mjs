@@ -14,6 +14,7 @@ const DT = 1 / 60;
 const STEPS = 3600;
 const BALL_RADIUS_M = 0.5;
 const FLOOR_WORLD_HEIGHT_M = 188.25;
+const REBASE_STEPS = [900, 1800, 2700];
 
 const worldFrame = createWorldFrame({
   id: 'nwe-world-nannestad-rapier-probe',
@@ -133,7 +134,7 @@ function rebaseRapierState({ frame, floor, body, anchorWorld }) {
   };
 }
 
-function rebasePlan() {
+function farAnchorPlan() {
   return new Map([
     [900, createWorldPosition(worldFrame, { easting: 621000.25, northing: 6689000.5, height: 185.125 })],
     [1800, createWorldPosition(worldFrame, { easting: 617250.75, northing: 6692250.25, height: 181.875 })],
@@ -141,13 +142,34 @@ function rebasePlan() {
   ]);
 }
 
-function runCandidate({ rebased }) {
+function nearBodyAnchorForStep(step) {
+  const t = step * DT;
+  return createWorldPosition(worldFrame, {
+    easting: initialWorldPosition.easting + initialVelocityWorld.east * t + 3.125,
+    northing: initialWorldPosition.northing + initialVelocityWorld.north * t - 4.375,
+    height: FLOOR_WORLD_HEIGHT_M,
+  });
+}
+
+function nearBodyPlan() {
+  return new Map(REBASE_STEPS.map((step) => [step, nearBodyAnchorForStep(step)]));
+}
+
+function planFor(mode) {
+  if (mode === 'fixed') return new Map();
+  if (mode === 'near-body') return nearBodyPlan();
+  if (mode === 'far-anchor-adversarial') return farAnchorPlan();
+  throw new Error(`unknown rebase mode: ${mode}`);
+}
+
+function runCandidate({ mode }) {
   let frame = makeFrame();
   const { world, floor, body } = createRapierWorld(frame);
-  const plan = rebased ? rebasePlan() : new Map();
+  const plan = planFor(mode);
   let maxRebaseRoundTripErrorM = 0;
   let rebaseCount = 0;
   let maxSpeedMps = 0;
+  let maxHorizontalLocalDistanceM = 0;
   const startMs = performance.now();
 
   for (let step = 0; step < STEPS; step += 1) {
@@ -160,10 +182,12 @@ function runCandidate({ rebased }) {
     }
     world.step();
     const velocity = body.linvel();
-    if (!finiteVector(velocity) || !finiteVector(body.translation())) {
+    const translation = body.translation();
+    if (!finiteVector(velocity) || !finiteVector(translation)) {
       throw new Error(`Rapier produced a non-finite state at step ${step}`);
     }
     maxSpeedMps = Math.max(maxSpeedMps, Math.hypot(velocity.x, velocity.y, velocity.z));
+    maxHorizontalLocalDistanceM = Math.max(maxHorizontalLocalDistanceM, Math.hypot(translation.x, translation.z));
   }
 
   const elapsedMs = performance.now() - startMs;
@@ -175,8 +199,10 @@ function runCandidate({ rebased }) {
   world.free();
 
   return {
+    mode,
     rebaseCount,
     maxRebaseRoundTripErrorM,
+    maxHorizontalLocalDistanceM,
     maxSpeedMps,
     elapsedMs,
     finalWorldPosition,
@@ -186,10 +212,16 @@ function runCandidate({ rebased }) {
   };
 }
 
-const fixed = runCandidate({ rebased: false });
-const rebased = runCandidate({ rebased: true });
-const finalPositionDriftM = vecDistance(fixed.finalWorldPosition, rebased.finalWorldPosition);
-const finalVelocityDriftMps = velocityDistance(fixed.finalVelocityWorld, rebased.finalVelocityWorld);
+function compare(reference, candidate) {
+  return {
+    finalPositionDriftM: vecDistance(reference.finalWorldPosition, candidate.finalWorldPosition),
+    finalVelocityDriftMps: velocityDistance(reference.finalVelocityWorld, candidate.finalVelocityWorld),
+  };
+}
+
+const fixed = runCandidate({ mode: 'fixed' });
+const nearBody = runCandidate({ mode: 'near-body' });
+const farAnchorAdversarial = runCandidate({ mode: 'far-anchor-adversarial' });
 
 const absoluteFloat32 = new Float32Array([
   initialWorldPosition.easting,
@@ -210,15 +242,17 @@ const relativeRoundTrip = createWorldPosition(worldFrame, {
 });
 const anchorRelativeFloat32ErrorM = vecDistance(initialWorldPosition, relativeRoundTrip);
 
-if (rebased.rebaseCount !== 3 || fixed.rebaseCount !== 0) throw new Error('unexpected rebase count');
-if (rebased.finalPhysicsEpoch !== 3 || fixed.finalPhysicsEpoch !== 0) throw new Error('unexpected physics epoch');
-if (rebased.maxRebaseRoundTripErrorM > 0.1) throw new Error(`rebase round-trip error is implausibly large: ${rebased.maxRebaseRoundTripErrorM}`);
-if (fixed.maxSpeedMps > 100 || rebased.maxSpeedMps > 100) throw new Error('probe produced implausible speed');
-if (Math.abs(fixed.finalGroundClearanceM) > 0.1 || Math.abs(rebased.finalGroundClearanceM) > 0.1) {
-  throw new Error('probe did not finish near the collision plane');
+for (const candidate of [nearBody, farAnchorAdversarial]) {
+  if (candidate.rebaseCount !== 3 || candidate.finalPhysicsEpoch !== 3) throw new Error(`unexpected rebase accounting for ${candidate.mode}`);
+  if (candidate.maxRebaseRoundTripErrorM > 0.1) throw new Error(`rebase round-trip error is implausibly large for ${candidate.mode}`);
+  if (candidate.maxSpeedMps > 100) throw new Error(`probe produced implausible speed for ${candidate.mode}`);
+  if (Math.abs(candidate.finalGroundClearanceM) > 0.1) throw new Error(`${candidate.mode} did not finish near the collision plane`);
 }
-if (!(anchorRelativeFloat32ErrorM < absoluteFloat32ErrorM)) {
-  throw new Error('anchor-relative Float32 did not improve initial coordinate representation');
+if (fixed.rebaseCount !== 0 || fixed.finalPhysicsEpoch !== 0) throw new Error('unexpected fixed-frame rebase accounting');
+if (fixed.maxSpeedMps > 100 || Math.abs(fixed.finalGroundClearanceM) > 0.1) throw new Error('invalid fixed-frame result');
+if (!(anchorRelativeFloat32ErrorM < absoluteFloat32ErrorM)) throw new Error('anchor-relative Float32 did not improve initial coordinate representation');
+if (!(nearBody.maxHorizontalLocalDistanceM < farAnchorAdversarial.maxHorizontalLocalDistanceM)) {
+  throw new Error('near-body control did not reduce local horizontal extent');
 }
 
 console.log(JSON.stringify({
@@ -230,11 +264,13 @@ console.log(JSON.stringify({
     verticalDatum: worldFrame.verticalDatum,
     axisOrder: worldFrame.axisOrder,
   },
-  workload: { steps: STEPS, timestepSeconds: DT, ballRadiusM: BALL_RADIUS_M, floorWorldHeightM: FLOOR_WORLD_HEIGHT_M },
+  workload: { steps: STEPS, timestepSeconds: DT, ballRadiusM: BALL_RADIUS_M, floorWorldHeightM: FLOOR_WORLD_HEIGHT_M, rebaseSteps: REBASE_STEPS },
   representation: { absoluteFloat32ErrorM, anchorRelativeFloat32ErrorM },
-  fixed,
-  rebased,
-  comparison: { finalPositionDriftM, finalVelocityDriftMps },
+  candidates: { fixed, nearBody, farAnchorAdversarial },
+  comparisons: {
+    fixedVsNearBody: compare(fixed, nearBody),
+    fixedVsFarAnchorAdversarial: compare(fixed, farAnchorAdversarial),
+  },
   nonDecisions: {
     physicsEngine: true,
     physicsPrecision: true,
