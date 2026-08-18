@@ -34,11 +34,12 @@ jobs:
           node apps/world-viewer/test_benchmark_geometry.mjs
           node apps/world-viewer/test_benchmark_params.mjs
 
-      - name: Preview camera, graphics and observability regressions
+      - name: Preview camera, graphics, device evidence and observability regressions
         run: |
           node --check apps/world-viewer/src/previewCameraControls.mjs
           node --check apps/world-viewer/src/graphicsProfiles.mjs
           node --check apps/world-viewer/src/rendererObservability.mjs
+          node --check apps/world-viewer/src/deviceEvidence.mjs
           node --check apps/world-viewer/src/preview1SceneGeometry.mjs
           node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
           node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
@@ -49,6 +50,7 @@ jobs:
           node apps/world-viewer/test_graphics_profiles.mjs
           node apps/world-viewer/test_renderer_observability.mjs
           node apps/world-viewer/test_webgpu_upload_alignment.mjs
+          node apps/world-viewer/test_device_evidence.mjs
 
       - name: Terrain experiment syntax boundary
         run: |
@@ -87,7 +89,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Exact-real device-evidence movement/cache smoke
+      - name: Exact-real device-evidence movement/cache + renderer-resource smoke
         run: |
           node apps/world-viewer/run_device_evidence_browser_smoke.mjs \
             --output /tmp/nwe-device-evidence-browser-smoke.json \
