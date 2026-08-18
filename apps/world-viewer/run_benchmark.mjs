@@ -8,7 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { parseBenchmarkFrameCount, parsePositiveInteger } from './benchmark/params.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
+const REPO_ROOT = resolve(ROOT, '../..');
+const CANONICALIZE_ENTRY = fileURLToPath(import.meta.resolve('canonicalize'));
 const MIME = { '.html': 'text/html; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8' };
+const ENGINE_STATIC = new Map([
+  ['/engine/streaming/runtime_verifier_web.mjs', join(REPO_ROOT, 'engine', 'streaming', 'runtime_verifier_web.mjs')],
+  ['/engine/streaming/runtime_verifier_core.mjs', join(REPO_ROOT, 'engine', 'streaming', 'runtime_verifier_core.mjs')],
+]);
 
 function parseArgs(argv) {
   const args = {};
@@ -66,6 +72,8 @@ function findChrome() {
 function safeStaticPath(urlPath) {
   if (urlPath === '/' || urlPath === '/benchmark' || urlPath === '/benchmark/') return join(ROOT, 'benchmark', 'index.html');
   if (urlPath === '/artifact_consumer.mjs') return join(ROOT, 'artifact_consumer.mjs');
+  if (urlPath === '/vendor/canonicalize.mjs') return CANONICALIZE_ENTRY;
+  if (ENGINE_STATIC.has(urlPath)) return ENGINE_STATIC.get(urlPath);
   if (urlPath.startsWith('/benchmark/')) {
     const relative = urlPath.slice('/benchmark/'.length);
     if (!relative || relative.includes('..')) return null;

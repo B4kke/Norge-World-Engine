@@ -273,3 +273,29 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Highest value runtime task: remove the Node-only `crypto` dependency from the full graph-reconstructing provenance path by introducing a browser-compatible RFC 8785/JCS + WebCrypto verifier with parity regressions against the existing Node verifier.
 - Then exercise the accepted terrain artifact through a real browser Dedicated Worker and instrument transfer/startup, GPU apply/upload, rAF gaps and camera movement on Android.
 - In parallel, keep `P0-MULTITILE-TERRAIN-01` fail-closed until an evidence-backed DTM1 overlap transform is documented; do not infer a whole-Norway seam rule from file order, timestamp, averaging or tolerance.
+
+## 2026-08-18 — Browser provenance parity
+
+**Gjort**
+- Split runtime provenance verification into a crypto-agnostic semantic core plus thin Node and WebCrypto SHA-256 adapters instead of maintaining two verifier implementations.
+- Kept all source/transform/normalized graph closure, singular/plural source references, compiler config, lineage, immutable ArtifactRef, raw-source transport, promotion-gate and byte-integrity rules in `runtime_verifier_core.mjs`.
+- Added `runtime_verifier_web.mjs` using the same pinned RFC 8785/JCS `canonicalize@3.0.0`, `TextEncoder` and WebCrypto.
+- Upgraded the actual browser `artifact_consumer` from byte-size/SHA-only verification to full RuntimeVerificationBundle reconstruction before JSON decode while retaining the pre-fetch raw-source transport block.
+- Extended the localhost real-data viewer harness to serve only repo verifier modules plus the locally installed pinned canonicalizer through an import map; no CDN/runtime external verifier dependency was added.
+
+**Bevist**
+- Initial parity baseline `32136500278` is PASS: all 11 existing happy/adversarial bundles produce identical Node/WebCrypto decision, code and reconstructed hashes; missing WebCrypto fails explicitly.
+- Final full baseline `32136951635` is PASS.
+- Real-data Chrome run `32136951610` is PASS on the exact road/building artifacts. Browser regression proves valid graph load, raw-source rejection before second request, forged-lineage rejection and tampered-byte rejection; raw-source runtime calls remain 0.
+- The real browser benchmark remains 381 logical vector objects → 2 draw calls with frame p95 50.0 → 16.7 ms and render-sync p95 0.4 → 0.2 ms on hosted headless Chrome.
+- Full graph verification introduces a material hosted first-load measurement question: separate runs moved road/building `verify_decode_ms` from ~112.9/~89.8 ms to ~201.7/~173.4 ms and boot-to-first-visible from ~788.5 to ~993.5 ms. Because other phases also varied, this is not accepted as an exact crypto-only delta.
+
+**Endret**
+- `docs/proofs/2026-08-18-browser-provenance-parity.md` records architecture, parity, real Chrome evidence and the new performance question.
+- `docs/06-task-queue.md` closes browser full-provenance parity as an implementation blocker and promotes real browser terrain worker/movement + Android timing as the next streaming/runtime gate.
+- No `docs/04-decisions.md` entry was added; verification correctness is an implementation contract, while worker/caching/performance policy remains open.
+
+**Neste**
+- Exercise the accepted terrain artifact through `verifyRuntimeBundleWeb -> terrain_tile_loader -> actual module DedicatedWorker -> TileStreamingScheduler` in a real browser harness and instrument verification/decode, worker transfer/startup, apply/GPU upload and rAF gaps.
+- Reuse the harness on Android Chrome before selecting worker pooling, provenance-cache policy, hard GPU/resident budgets or LOD.
+- Keep the real multi-source DTM1 seam fail-closed in parallel; do not use runtime progress as justification for inventing an overlap rule.

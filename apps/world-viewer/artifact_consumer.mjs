@@ -1,3 +1,5 @@
+import { verifyRuntimeBundleWeb } from "../../engine/streaming/runtime_verifier_web.mjs";
+
 const RAW_SOURCE_MARKERS = ["geonorge", "kartverket", "vegvesen", "nvdb", "overpass", "openstreetmap"];
 
 export class ArtifactConsumerError extends Error {
@@ -19,18 +21,23 @@ export function assertCompiledTransport(reference) {
   return reference;
 }
 
-async function sha256Hex(bytes, cryptoImpl) {
-  if (!cryptoImpl?.subtle) {
-    throw new ArtifactConsumerError("WEBCRYPTO_REQUIRED", "crypto.subtle is unavailable");
-  }
-  const digest = await cryptoImpl.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 export function defaultCacheResolver(reference, bundleUrl) {
   if (!reference.startsWith("cache://compiled/")) return new URL(reference, bundleUrl).href;
   const relative = reference.slice("cache://compiled/".length);
   return new URL(`./compiled/${relative}`, bundleUrl).href;
+}
+
+function verificationError(result) {
+  if (result?.code === "BYTE_SIZE_MISMATCH") {
+    return new ArtifactConsumerError("ARTIFACT_BYTE_SIZE_MISMATCH", result.detail);
+  }
+  if (result?.code === "ARTIFACT_SHA256_MISMATCH") {
+    return new ArtifactConsumerError("ARTIFACT_SHA256_MISMATCH", result.detail);
+  }
+  return new ArtifactConsumerError(
+    "RUNTIME_VERIFICATION_REJECTED",
+    `${result?.code ?? "UNKNOWN"}: ${result?.detail ?? "bundle/artifact rejected"}`,
+  );
 }
 
 export async function loadCompiledJsonArtifact({
@@ -59,6 +66,9 @@ export async function loadCompiledJsonArtifact({
     throw new ArtifactConsumerError("ARTIFACT_ROLE_MISMATCH", `${artifactRef.artifact_role} != ${expectedRole}`);
   }
 
+  // Keep the pre-fetch transport guard even though the full verifier repeats the rule.
+  // A malicious bundle must not gain a raw-source request merely because full graph
+  // verification needs the compiled artifact bytes.
   const reference = assertCompiledTransport(artifactRef.transport?.reference ?? artifactRef.reference);
   const artifactUrl = resolveTransport(reference, bundleUrl);
   assertCompiledTransport(artifactUrl);
@@ -68,19 +78,16 @@ export async function loadCompiledJsonArtifact({
     throw new ArtifactConsumerError("ARTIFACT_FETCH_FAILED", `${artifactResponse.status} ${artifactUrl}`);
   }
   const bytes = new Uint8Array(await artifactResponse.arrayBuffer());
-  if (bytes.byteLength !== artifactRef.byte_size) {
-    throw new ArtifactConsumerError("ARTIFACT_BYTE_SIZE_MISMATCH", `${bytes.byteLength} != ${artifactRef.byte_size}`);
-  }
-  const actualSha = await sha256Hex(bytes, cryptoImpl);
-  if (actualSha !== artifactRef.sha256) {
-    throw new ArtifactConsumerError("ARTIFACT_SHA256_MISMATCH", `${actualSha} != ${artifactRef.sha256}`);
+  const verification = await verifyRuntimeBundleWeb(bundle, bytes, { cryptoImpl });
+  if (!verification.ok || verification.decision !== "READY_FOR_RUNTIME") {
+    throw verificationError(verification);
   }
 
   let artifact;
   try {
-    artifact = JSON.parse(new TextDecoder().decode(bytes));
+    artifact = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch (error) {
     throw new ArtifactConsumerError("ARTIFACT_JSON_INVALID", error instanceof Error ? error.message : String(error));
   }
-  return { bundle, artifactRef, artifact, artifactUrl, bytes };
+  return { bundle, artifactRef, artifact, artifactUrl, bytes, verification };
 }

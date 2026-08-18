@@ -18,12 +18,19 @@
     #status { color: #8ff0af; }
     @media (max-width: 800px) { body { grid-template-columns: 1fr; grid-template-rows: 58vh 42vh; } #panel { border-left: 0; border-top: 1px solid #203640; } }
   </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "canonicalize": "/vendor/canonicalize.mjs"
+      }
+    }
+  </script>
 </head>
 <body>
   <main id="stage"><canvas id="gl"></canvas></main>
   <aside id="panel">
     <h1>Norge World Engine · P0 viewer batching benchmark</h1>
-    <p class="note">Compiled-artifact-only WebGL2 microbenchmark. Fixed full-tile camera. No raw NVDB/OSM/Kartverket networking. Geometry bytes are shared between per-object and batched modes; only draw grouping changes. Click a visible road/building for artifact/source trace metadata.</p>
+    <p class="note">Compiled-artifact-only WebGL2 microbenchmark. Fixed full-tile camera. No raw NVDB/OSM/Kartverket networking. RuntimeVerificationBundle graph + artifact bytes are verified in-browser before decode. Geometry bytes are shared between per-object and batched modes; only draw grouping changes. Click a visible road/building for artifact/source trace metadata.</p>
     <p id="status">starting…</p>
     <h1>Metrics</h1><pre id="metrics">—</pre>
     <h1>Debug trace</h1><pre id="debug">click geometry</pre>
