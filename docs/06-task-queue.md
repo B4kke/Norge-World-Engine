@@ -5,24 +5,32 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 ## P0 — Critical
 
 ### P0-REALDATA-01 — Authoritative DTM1 terrain vertical
-**Status:** REAL-DATA COLD/OFFLINE + COMPILED ARTIFACT + RUNTIME + ANDROID CONSUMER PASS  
+**Status:** MERGED / REAL-DATA COLD+OFFLINE + COMPILED ARTIFACT + RUNTIME + ANDROID CONSUMER PASS  
 **Owner area:** `engine/compiler`, `engine/streaming`  
 **Done/evidence:** official Kartverket/Geonorge Atom service selects exactly one Nannestad DTM1 source, `33-125-117.tif`; raw source is 1,096,856,487 B, EPSG:25833 + NN2000, 1 m float32 with raw SHA `f1c0f18378cc438d7e4b8f8a2114c4e5aa000216a4fd42965518df9a0bb97708`. Compiler streams it into content-addressed raw cache, explicitly warps it with Rasterio/GDAL to the fixed 1000 × 1000 / 1 m EPSG:25832 + NN2000 Nannestad grid using bilinear resampling, and emits normalized SHA `95c8fcf6f93c8fbb0533d6a82d68416b773f9a146970e1ae85676d3ba41c2adf`.  
-**Compiled artifact:** `nwe.terrain-height-grid-artifact/0.1`, 4,000,382 B / 1,000,000 float32 samples, SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`. Cold and source-network-free offline runs are byte-identical; runtime verifier returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`. Android Forsøk 16 then consumes that terrain artifact together with the proven vector artifacts, reports terrain PASS / `READY ×3`, samples road/building ground Z from DTM1 and keeps raw source networking blocked at 0 calls.  
+**Compiled artifact:** `nwe.terrain-height-grid-artifact/0.1`, 4,000,382 B / 1,000,000 float32 samples, SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`. Cold and source-network-free offline runs are byte-identical; runtime verifier returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`. Android Forsøk 16 consumes that terrain artifact together with the proven vector artifacts, reports terrain PASS / `READY ×3`, samples road/building ground Z from DTM1 and keeps raw source networking blocked at 0 calls.  
 **Proof:** `docs/proofs/2026-08-17-nannestad-dtm1-realdata.md` and `docs/proofs/2026-08-17-forsok16-android-runtime.md`.  
-**Next:** terrain source/compiler/runtime integration is no longer the immediate blocker. Move to measurable viewer/streaming behavior: same-camera performance baseline, terrain mesh work scheduling, then multi-tile load/unload/LOD experiments. Whole-Norway DTM acquisition/LOD format remains open.
+**Next:** single-tile terrain source/compiler/runtime integration is no longer the immediate blocker. Whole-Norway DTM acquisition/LOD format remains open.
+
+### P0-MULTITILE-TERRAIN-01 — Real neighboring terrain promotion
+**Status:** HIGHEST OPEN TERRAIN GATE / MULTI-TILE FOUNDATION MERGED / REAL SEAM POLICY OPEN  
+**Owner area:** `engine/compiler`, `engine/streaming`  
+**Done/evidence:** merged multi-tile foundation separates runtime 1 km tile identity from Kartverket source tiling, binds tile-specific cache/lineage, reuses exact SHA-addressed raw source objects, supports plural SourceSnapshot provenance and fails closed on ambiguous source coverage. Live Nannestad 3×3 source planning resolves **9 runtime tiles**, **2 unique DTM1 raw files** and **2 runtime tiles requiring both sources** because the EPSG:25833 source grid crosses the EPSG:25832 runtime grid.  
+**Critical blocker:** the two authoritative raw files overlap by 10 m but their valid heights are not identical. The current production mosaic therefore deliberately rejects the overlap instead of choosing first/newest/mean/tolerance. Dedicated diagnostics compare candidate surfaces to Kartverket's seamless 1 m WCS only as an independent QA sensor; WCS is not admitted as source authority and no official Kartverket overlap-priority rule has yet been found.  
+**Acceptance:** document an evidence-backed deterministic seam transform with explicit provenance/config identity, then run one controlled cold live 3×3 compile followed by source-network-free offline repeat. Require 9 independently identified artifacts/bundles, identical cold/offline artifact hashes, 9/9 `READY_FOR_RUNTIME`, no raw TIFFs in Git/evidence uploads, and unchanged center-tile bytes from the accepted single-tile vertical.  
+**Do not claim:** a real 3×3 terrain artifact pass until this gate executes successfully.
 
 ### P0-ATOM-INDEX-01 — Exact spatial source selection
-**Status:** LIVE DTM1 SOURCE PASS  
+**Status:** LIVE DTM1 SOURCE + MULTI-SOURCE SET PLANNING PASS  
 **Owner area:** `engine/compiler`  
-**Done/evidence:** production parser uses GeoRSS lat/lon -> lon/lat normalization and Shapely actual `covers`; bbox remains prefilter only. Live official DTM1 dataset feed contained 2033 polygon entries in EPSG:25833 and exactly one declared polygon covers the Nannestad target. The selected file is resolved from the explicit `rel=section`, `type=application/geotiff` link; filename/title guessing is forbidden.  
+**Done/evidence:** production parser uses GeoRSS lat/lon -> lon/lat normalization and Shapely actual `covers`; bbox remains prefilter only. Live official DTM1 dataset feed contained 2033 polygon entries in EPSG:25833. Single-tile selection resolves the accepted Nannestad file from the explicit `rel=section`, `type=application/geotiff` link; filename/title guessing is forbidden. Multi-tile source-set planning now also requires the declared geometry union to cover the runtime tile and fails closed on ambiguous minimal source sets.  
 **Next:** reuse the same fail-closed pattern for later terrain/source families rather than generalizing from filenames.
 
 ### P0-PROVENANCE-02 — Runtime-verifiable lineage
-**Status:** IMPLEMENTED + HOSTED BASELINE + REAL VECTOR + REAL TERRAIN + ANDROID CONSUMER PASS  
+**Status:** IMPLEMENTED + HOSTED BASELINE + REAL VECTOR + REAL TERRAIN + MULTI-SOURCE GRAPH SUPPORT  
 **Owner area:** `engine/schemas`, `engine/streaming`  
-**Evidence:** public hosted baseline installs Python `rfc8785` and Node `canonicalize`, executes cross-language JCS and adversarial runtime regressions, and passes. Real Nannestad road, building and terrain bundles are reconstructed against exact artifact bytes and return `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`; Forsøk 16 exposes all three verified artifacts at the Android runtime boundary while blocking raw source networking.  
-**Open:** complete/version remaining 02.7 schema definitions as repository schemas; provenance implementation is no longer an execution blocker.
+**Evidence:** public hosted baseline installs Python `rfc8785` and Node `canonicalize`, executes cross-language JCS and adversarial runtime regressions, and passes. Real Nannestad road, building and single-source terrain bundles are reconstructed against exact artifact bytes and return `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`. Runtime verifier now also enforces graph closure and plural source-snapshot references for multi-source terrain contracts.  
+**Open:** merge/version the strict repository JSON Schema contract after reconciling it with the final multi-source seam fields; provenance implementation itself is no longer an execution blocker.
 
 ### P0-NVDB-01 — Road adapter
 **Status:** REAL-DATA VERTICAL PASS / WIDTH + PHYSICAL SURFACE SEMANTICS OPEN  
@@ -48,16 +56,16 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 **Status:** REAL TERRAIN + VECTOR ANDROID VISUAL PASS / PERFORMANCE BASELINE PARTIAL  
 **Done now:** Forsøk 16 SHA-verifies and renders the real terrain, road and building artifacts with 0 raw-source calls. The 1 m / 1000×1000 DTM1 artifact remains world truth while the mobile GPU terrain is sampled to 129×129. Android screenshot evidence reports **1.3 ms terrain decode, 19.4 ms terrain mesh build, 220 ms boot, 224 draw calls, 16.7 ms / 60 FPS, 382 geometries and 2 textures** at the captured oblique camera. No gross CRS/origin/Z failure is visible.  
 **Important limitation:** 224 vs the earlier ~391 draw-call observation is **not batching evidence** because the camera differs and the harness still creates separate geometries. `382 geo` confirms per-object pressure remains high. The 19.4 ms synchronous terrain mesh build exceeds one 60 Hz frame budget and is a likely future streaming hitch if repeated on the main thread.  
-**Next highest-value work:** Issue #5 owns the fixed-camera renderer benchmark and batching comparison. In parallel, streaming work must move terrain mesh/buffer generation behind a worker/incremental job boundary before real multi-tile load/unload is accepted.  
-**Parallel issue:** GitHub Issue #5 owns viewer batching/performance and now contains the Forsøk 16 device baseline.
+**Next highest-value work:** fixed-camera batching evidence and the terrain worker boundary can merge independently; then integrate verified artifact decode/worker output into the scheduler.  
+**Parallel issue:** GitHub Issue #5 owns viewer batching/performance and contains the Forsøk 16 device baseline.
 
 ### P0-STREAMING-01 — World tile lifecycle scheduler
-**Status:** SYNTHETIC 3×3 SCHEDULER + CACHE/FAILURE REGRESSIONS PASS / REAL MULTI-TILE OPEN  
+**Status:** SYNTHETIC 3×3 SCHEDULER + CACHE/FAILURE REGRESSIONS PASS / REAL ARTIFACT INTEGRATION OPEN  
 **Owner area:** `engine/streaming`  
-**Done/evidence:** renderer-independent `TileStreamingScheduler` provides deterministic camera-distance priority, active/retain radii, max resident count, max concurrent loads, resident↔cached lifecycle, inactive-cache byte budget/eviction, load aborts, stale-completion rejection, failure retry and lifecycle metrics. Hosted baseline passes **6 adversarial scheduler cases**. A synthetic 3×3 Nannestad descriptor benchmark (`center -> east -> north-east -> center-return`) completes 9/9 loads with **peak concurrency 2**, **2 cache hits**, **4 evictions**, final **5 resident / 0 cached**, **22,282,240 B retained**, queue/active loads 0, and final budget overcommit 0.  
-**Important limitation:** the benchmark uses opaque synthetic 4.25 MiB payloads. It proves scheduling mechanics only; it does not prove neighbouring Nannestad artifacts, real HTTP/cache latency, browser/GPU memory, frame-time stability, seams or LOD. `maxCacheBytes` currently budgets inactive cached payloads, not a hard resident/GPU memory ceiling; peak retained bytes can temporarily exceed that number when desired tiles are resident.  
+**Done/evidence:** renderer-independent `TileStreamingScheduler` provides deterministic camera-distance priority, active/retain radii, max resident count, max concurrent loads, resident↔cached lifecycle, inactive-cache byte budget/eviction, load aborts, stale-completion rejection, failure retry and lifecycle metrics. Hosted baseline passes **7 adversarial scheduler cases**, including one-shot/generator tile input. A synthetic 3×3 Nannestad descriptor benchmark (`center -> east -> north-east -> center-return`) completes 9/9 loads with **peak concurrency 2**, **2 cache hits**, **4 evictions**, final **5 resident / 0 cached**, **22,282,240 B retained**, queue/active loads 0, and final budget overcommit 0.  
+**Important limitation:** the benchmark uses opaque synthetic 4.25 MiB payloads. It proves scheduling mechanics only; it does not prove neighboring terrain artifacts, real HTTP/cache latency, browser/GPU memory, frame-time stability, seams or LOD. `maxCacheBytes` currently budgets inactive cached payloads, not a hard resident/GPU memory ceiling; peak retained bytes can temporarily exceed that number when desired tiles are resident.  
 **Proof:** `docs/proofs/2026-08-17-streaming-scheduler-synthetic.md`.  
-**Next:** first move the measured 19.4 ms terrain mesh build behind a deterministic worker/incremental job boundary, then materialize a real 2×2/3×3 terrain artifact experiment and drive it through this scheduler with first-visible, load/unload latency, bytes, retained memory and p50/p95/p99 frame-time measurements. Final whole-Norway tile addressing/LOD remains open.
+**Next:** merge the worker boundary, then integrate `RuntimeVerificationBundle -> verified artifact bytes -> NWEHGT01 decode -> terrain worker -> TileStreamingScheduler.loadTile()`. Real 3×3 terrain motion waits on `P0-MULTITILE-TERRAIN-01`; integration can first use accepted single-tile artifacts and synthetic neighboring descriptors without weakening the seam gate.
 
 ### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
 **Status:** TOOLING + CESIUM BASELINE BUILD PASS / SHARED TERRAIN+VECTOR RENDER ARTIFACT OPEN  
@@ -69,11 +77,11 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 
 ### INFRA-CI-01 — GitHub Actions hosted runner
 **Status:** RESOLVED  
-Repository is public and GitHub-hosted runners execute normally. Baseline passes on `main` and on the DTM1/streaming branches. `baseline-self-hosted.yml` remains only as an optional controlled fallback.
+Repository is public and GitHub-hosted runners execute normally. Baseline passes on `main` and active P0 branches. `baseline-self-hosted.yml` remains only as an optional controlled fallback.
 
 ### INFRA-CI-02 — Real-data proof trigger hygiene
-**Status:** FIXED ON DTM1 BRANCH / PENDING MERGE  
-Both `vector-realdata-proof.yml` and `dtm1-realdata-proof.yml` are corrected on the DTM1 branch to target relevant `main` pushes after merge instead of historical agent-branch pushes. PR #6 is still draft/unmerged, so `main` has not received this trigger policy yet.
+**Status:** RESOLVED / MERGED  
+The DTM1 and vector real-data proof workflow triggers have been corrected and merged; historical agent-branch-only trigger assumptions are no longer an active blocker.
 
 ## Explicitly deprioritized until current P0 evidence is integrated
 
