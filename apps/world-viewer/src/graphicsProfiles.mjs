@@ -18,7 +18,7 @@ const PROFILES = Object.freeze({
     terrainOutputSize: 129,
     maxDpr: 1.5,
     msaaSamples: 1,
-    webglAntialias: true,
+    webglAntialias: false,
     powerPreference: undefined,
     vegetationBudget: 7500,
   }),
