@@ -1,0 +1,43 @@
+name: Runtime origin-shift invariants
+
+on:
+  push:
+    paths:
+      - 'prototypes/runtime-coordinate-precision/**'
+      - 'prototypes/runtime-origin-shift/**'
+      - 'docs/proofs/2026-08-18-runtime-origin-shift-invariants.md'
+      - '.github/workflows/runtime-origin-shift.yml'
+  pull_request:
+    paths:
+      - 'prototypes/runtime-coordinate-precision/**'
+      - 'prototypes/runtime-origin-shift/**'
+      - 'docs/proofs/2026-08-18-runtime-origin-shift-invariants.md'
+      - '.github/workflows/runtime-origin-shift.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  origin-shift:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Upstream precision regression
+        run: node prototypes/runtime-coordinate-precision/test_precision.mjs
+      - name: Origin-shift deterministic regression
+        run: node prototypes/runtime-origin-shift/test_origin_runtime.mjs
+      - name: Temporal origin-shift regression
+        run: node prototypes/runtime-origin-shift/test_temporal_origin_shift.mjs
+      - name: Host benchmark
+        run: |
+          node prototypes/runtime-origin-shift/benchmark_origin_runtime.mjs | tee runtime-origin-shift.json
+          {
+            echo '## VEKTOR runtime origin-shift benchmark'
+            echo
+            echo '```json'
+            cat runtime-origin-shift.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
