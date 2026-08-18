@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildDeviceEvidence, compareDeviceEvidenceContext, evidenceFilename, isRawSourceRuntimeUrl } from './src/deviceEvidence.mjs';
+import { buildDeviceEvidence, classifyBrowserEnvironment, compareDeviceEvidenceContext, evidenceFilename, isRawSourceRuntimeUrl } from './src/deviceEvidence.mjs';
 
 const result = {
   schema: 'nwe.world-preview-runtime/0.1', status: 'PASS', manifestUrl: 'https://example.invalid/manifest.json', tile_id: 'epsg25832_611000_6677000_1000m', graphics_profile: 'balanced', renderer_preference: 'webgl2',
@@ -18,21 +18,33 @@ const result = {
   },
 };
 
+const androidNavigator = {
+  userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36',
+  platform: 'Linux armv8l', hardwareConcurrency: 8, deviceMemory: 8, language: 'nb-NO',
+  userAgentData: { mobile: true, platform: 'Android', brands: [{ brand: 'Chromium' }, { brand: 'Google Chrome' }] },
+};
+
 const build = (overrides = {}) => buildDeviceEvidence({
   result,
   runtimeRequests: ['https://runtime.example/manifest.json', 'https://runtime.example/terrain.bundle'],
-  locationHref: 'https://preview.example/device-evidence.html?renderer=webgl2',
-  navigatorLike: { userAgent: 'Android Chrome test', platform: 'Linux armv8l', hardwareConcurrency: 8, deviceMemory: 8, language: 'nb-NO' },
+  locationHref: 'https://preview.example/device-evidence.html?renderer=webgl2&target=android-chrome&session=lumen-session-001',
+  navigatorLike: androidNavigator,
   screenLike: { width: 412, height: 915 },
   canvasLike: { clientWidth: 412, clientHeight: 600, width: 824, height: 1200 },
   devicePixelRatioLike: 2,
   buildIdentity: { git_commit_sha: '0123456789abcdef0123456789abcdef01234567', deployment_id: 'dpl_test' },
+  captureSessionId: 'lumen-session-001',
+  evidenceTarget: 'android-chrome',
   capturedAt: '2026-08-18T18:00:00.000Z',
   ...overrides,
 });
 
 const evidence = build();
 assert.equal(evidence.status, 'PASS');
+assert.equal(evidence.evidence_class, 'android-chrome-browser-capture');
+assert.equal(evidence.capture.session_id, 'lumen-session-001');
+assert.equal(evidence.capture.physical_device_attested, false);
+assert.equal(evidence.device.browser_environment.inferred_android_chrome, true);
 assert.equal(evidence.build.git_commit_sha, '0123456789abcdef0123456789abcdef01234567');
 assert.equal(evidence.world.raw_source_runtime_calls, 0);
 assert.equal(evidence.world.artifact_sha256.terrain, 'terrain-sha');
@@ -41,8 +53,11 @@ assert.equal(evidence.renderer.camera.distance, 1450);
 assert.deepEqual(evidence.renderer.render_surface.backing_px, { width: 824, height: 1200 });
 assert.equal(evidence.renderer.render_surface.pixel_ratio, 2);
 assert.equal(evidence.timing_ms.repeated_draw.measured_frames, 90);
-assert.match(evidenceFilename(evidence), /webgl2-0123456789ab\.json$/);
+assert.match(evidenceFilename(evidence), /webgl2-0123456789ab-lumen-session-00\.json$/);
 assert.equal(isRawSourceRuntimeUrl('https://www.vegvesen.no/nvdb'), true);
+assert.equal(classifyBrowserEnvironment(androidNavigator).inferred_android_chrome, true);
+assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0.0.0' }).inferred_android_chrome, false);
+assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (Linux; Android 15) Chrome/140.0.0.0 EdgA/140.0.0.0 Mobile' }).inferred_android_chrome, false);
 
 const webgpuResult = structuredClone(result);
 webgpuResult.renderer.backend = 'webgpu';
@@ -50,6 +65,15 @@ webgpuResult.renderer_preference = 'webgpu';
 const comparable = build({ result: webgpuResult });
 assert.deepEqual(compareDeviceEvidenceContext(evidence, comparable).mismatches, []);
 assert.equal(compareDeviceEvidenceContext(evidence, comparable).comparable, true);
+assert.equal(compareDeviceEvidenceContext(evidence, comparable).physical_device_attested, false);
+
+const changedSession = build({ result: webgpuResult, captureSessionId: 'lumen-session-002' });
+assert.equal(compareDeviceEvidenceContext(evidence, changedSession).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, changedSession).mismatches, ['capture']);
+
+const missingSession = build({ result: webgpuResult, captureSessionId: null });
+assert.equal(compareDeviceEvidenceContext(evidence, missingSession).comparable, false);
+assert.deepEqual(compareDeviceEvidenceContext(evidence, missingSession).mismatches, ['capture_session_missing', 'capture']);
 
 const changedCameraResult = structuredClone(webgpuResult);
 changedCameraResult.renderer.first_frame.camera.yaw = 0.5;
@@ -75,6 +99,7 @@ const missingBuild = build({ result: webgpuResult, buildIdentity: {} });
 assert.equal(compareDeviceEvidenceContext(evidence, missingBuild).comparable, false);
 assert.deepEqual(compareDeviceEvidenceContext(evidence, missingBuild).mismatches, ['build_identity_missing', 'build']);
 
+assert.throws(() => build({ navigatorLike: { userAgent: 'desktop chrome' }, evidenceTarget: 'android-chrome' }), /DEVICE_EVIDENCE_TARGET_MISMATCH_ANDROID_CHROME/);
 assert.throws(() => buildDeviceEvidence({ result, runtimeRequests: ['https://api.openstreetmap.org/api/0.6/map'], locationHref: 'x' }), /DEVICE_EVIDENCE_RAW_SOURCE_CALL/);
 const bad = structuredClone(result);
 bad.terrain.verification_code = 'FAIL';
