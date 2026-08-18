@@ -1,18 +1,27 @@
 import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1.ts';
-import { buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { buildCounterpartEvidenceUrl, buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
 
 const params = new URLSearchParams(location.search);
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
 const rendererPreference = params.get('renderer') || 'webgl2';
 const graphicsProfile = params.get('graphics') || 'balanced';
+const evidenceTarget = params.get('target') === 'android-chrome' ? 'android-chrome' : 'generic-browser';
 const frameCount = Number(params.get('frames') || '90');
 if (!Number.isInteger(frameCount) || frameCount < 10 || frameCount > 600) throw new Error('DEVICE_EVIDENCE_FRAMES_OUT_OF_RANGE');
+
+let captureSessionId = params.get('session');
+if (!captureSessionId) {
+  captureSessionId = crypto.randomUUID();
+  params.set('session', captureSessionId);
+  history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`);
+}
 
 const canvas = document.querySelector('#device-canvas');
 const status = document.querySelector('#device-status');
 const output = document.querySelector('#device-output');
 const download = document.querySelector('#device-download');
-if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement)) {
+const counterpart = document.querySelector('#device-counterpart');
+if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement) || !(counterpart instanceof HTMLAnchorElement)) {
   throw new Error('DEVICE_EVIDENCE_UI_MISSING');
 }
 
@@ -55,6 +64,14 @@ async function run() {
       locationHref: location.href,
       navigatorLike: navigator,
       screenLike: screen,
+      canvasLike: canvas,
+      devicePixelRatioLike: devicePixelRatio,
+      buildIdentity: {
+        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+      },
+      captureSessionId,
+      evidenceTarget,
     });
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
@@ -69,10 +86,18 @@ async function run() {
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, { once: true });
+
+    const requested = String(evidence.renderer?.requested_backend ?? '').toLowerCase();
+    const active = String(evidence.renderer?.active_backend ?? '').toLowerCase();
+    if (requested === active && (active === 'webgl2' || active === 'webgpu')) {
+      counterpart.href = buildCounterpartEvidenceUrl(location.href, { activeBackend: active });
+      counterpart.textContent = active === 'webgl2' ? 'Kjør samme session med WebGPU' : 'Kjør samme session med WebGL2';
+      counterpart.hidden = false;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`FAIL CLOSED · ${message}`, 'fail');
-    output.textContent = JSON.stringify({ schema: 'nwe.world-viewer-device-evidence/0.1', status: 'FAIL', error: message, runtime_requests: runtimeRequests }, null, 2);
+    output.textContent = JSON.stringify({ schema: 'nwe.world-viewer-device-evidence/0.1', status: 'FAIL', error: message, capture_session_id: captureSessionId, evidence_target: evidenceTarget, runtime_requests: runtimeRequests }, null, 2);
   }
 }
 

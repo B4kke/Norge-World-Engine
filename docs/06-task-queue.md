@@ -109,3 +109,15 @@ DTM1, vector and viewer real-data workflows have reusable main/PR/manual trigger
 - full-Norway prebuild;
 - FKB work that blocks terrain/viewer measurement;
 - production imagery dependency before redistribution/cache rights are documented.
+
+## Active LUMEN evidence gate — 2026-08-18
+
+### P0-VIEWER-DEVICE-COMPARABILITY-01 — Same-device renderer benchmark validity
+**Status:** CAPTURE-SESSION + BUILD/ARTIFACT/CAMERA/SURFACE GATES IMPLEMENTED ON `agent/lumen-hourly` / EXACT-HEAD CI + PHYSICAL ANDROID CAPTURE OPEN  
+**Owner area:** `apps/world-viewer`  
+**Problem found:** exposed browser/device metadata can establish context similarity but cannot prove that two captures were made on the same physical handset; two identical devices may expose identical UA/screen/DPR/memory/concurrency values. Treating metadata equality as physical-device attestation would overclaim the evidence class.  
+**Implemented:** device evidence retains the existing exact build SHA, accepted artifact hashes, full verification codes, graphics workload, camera, render surface and measurement-window gates, and now also carries a generated/persisted `capture.session_id`. `compareDeviceEvidenceContext()` requires the same non-empty capture session. `target=android-chrome` adds a conservative Android+Chrome browser-signal check using User-Agent Client Hints where available with UA fallback. Evidence explicitly records `physical_device_attested: false`; browser/session evidence reduces accidental mixing but does not cryptographically attest hardware identity. Full RuntimeVerificationBundle and raw-source fail-closed gates are unchanged.  
+**Structural evidence:** focused Node regression accepts same-session cross-backend evidence and rejects changed/missing capture session, desktop signals under the Android-Chrome target, Edge-on-Android-like UA, changed camera/render surface/build/window, raw-source URLs and non-PASS provenance.  
+**Acceptance:** exact PR head must pass viewer/CI gates and exact-commit Vercel smoke; then an operator-controlled physical Android Chrome run must use the same `session` value for forced WebGL2 and WebGPU captures and require `comparable=true` before timing interpretation. Physical-device identity remains external/device-lab evidence, not a browser attestation claim.  
+**Proof:** `docs/proofs/2026-08-18-lumen-device-evidence-build-boundary.md` and `docs/proofs/2026-08-18-lumen-device-capture-session-boundary.md`.  
+**Next:** obtain the two physical Android captures on the exact deployable preview; compare first-visible, frame p50/p95/p99/max, draw calls, resource apply/upload and retained memory only after context comparability passes.
