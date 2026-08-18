@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nwe.local/schemas/network-spatial-snapshot-v0.1.schema.json",
+  "title": "NWE candidate network spatial snapshot v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "worldFrame", "tick", "sequence", "networkFrame", "entities"],
+  "properties": {
+    "schema": {"const": "nwe.network-spatial-snapshot/0.1-candidate"},
+    "worldFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "horizontalCrs", "horizontalUnit", "verticalDatum", "verticalUnit"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "horizontalCrs": {"type": "string", "minLength": 1},
+        "horizontalUnit": {"const": "metre"},
+        "verticalDatum": {"type": "string", "minLength": 1},
+        "verticalUnit": {"const": "metre"}
+      }
+    },
+    "tick": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "sequence": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "networkFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["networkFrameId", "epoch", "anchorWorld", "positionQuantumMeters"],
+      "properties": {
+        "networkFrameId": {"type": "string", "minLength": 1},
+        "epoch": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "anchorWorld": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["easting", "northing", "height"],
+          "properties": {
+            "easting": {"type": "number"},
+            "northing": {"type": "number"},
+            "height": {"type": "number"}
+          }
+        },
+        "positionQuantumMeters": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "position"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "position": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["networkFrameId", "networkEpoch", "q"],
+            "properties": {
+              "networkFrameId": {"type": "string", "minLength": 1},
+              "networkEpoch": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+              "q": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
