@@ -267,20 +267,6 @@ export class TileStreamingScheduler {
 
     try {
       await this.activateTile(record.tile, record.payload, { reason });
-      this.bytesActivating = Math.max(0, this.bytesActivating - record.byteSize);
-      this.bytesResident += record.byteSize;
-      record.state = 'resident';
-      record.error = null;
-      record.lastTouched = this.generation;
-      this.metrics.activations += 1;
-      this.#updateBytePeaks();
-      this.#emit('tile-activated', { tileId: record.tile.id, reason, byteSize: record.byteSize });
-
-      if (!record.desired) {
-        await this.#deactivate(record, 'interest-lost-during-activation');
-        if (record.distance > this.retainRadiusMeters) await this.#evict(record, 'activated-outside-retain');
-      }
-      return record.state === 'resident';
     } catch (error) {
       this.bytesActivating = Math.max(0, this.bytesActivating - record.byteSize);
       this.bytesCached += record.byteSize;
@@ -298,6 +284,21 @@ export class TileStreamingScheduler {
       }
       return false;
     }
+
+    this.bytesActivating = Math.max(0, this.bytesActivating - record.byteSize);
+    this.bytesResident += record.byteSize;
+    record.state = 'resident';
+    record.error = null;
+    record.lastTouched = this.generation;
+    this.metrics.activations += 1;
+    this.#updateBytePeaks();
+    this.#emit('tile-activated', { tileId: record.tile.id, reason, byteSize: record.byteSize });
+
+    if (!record.desired) {
+      await this.#deactivate(record, 'interest-lost-during-activation');
+      if (record.distance > this.retainRadiusMeters) await this.#evict(record, 'activated-outside-retain');
+    }
+    return record.state === 'resident';
   }
 
   async #deactivate(record, reason) {
