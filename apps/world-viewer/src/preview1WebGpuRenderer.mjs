@@ -37,9 +37,23 @@ struct Uniforms { viewProj: mat4x4<f32>, color: vec4<f32>, };
 
 function aligned4(value) { return Math.max(4, Math.ceil(value / 4) * 4); }
 
+export function gpuUploadBytes4(data) {
+  if (!data?.byteLength) return null;
+  const raw = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (raw.byteLength % 4 === 0) return raw;
+  const padded = new Uint8Array(aligned4(raw.byteLength));
+  padded.set(raw);
+  return padded;
+}
+
 function createGpuBuffer(device, data, usage, label) {
-  const buffer = device.createBuffer({ label, size: aligned4(data?.byteLength ?? 0), usage: usage | GPUBufferUsage.COPY_DST });
-  if (data?.byteLength) device.queue.writeBuffer(buffer, 0, data.buffer, data.byteOffset, data.byteLength);
+  const upload = gpuUploadBytes4(data);
+  const buffer = device.createBuffer({
+    label,
+    size: upload?.byteLength ?? 4,
+    usage: usage | GPUBufferUsage.COPY_DST,
+  });
+  if (upload) device.queue.writeBuffer(buffer, 0, upload);
   return buffer;
 }
 
