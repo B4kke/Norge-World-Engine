@@ -19,6 +19,11 @@ TARGETS = {
         "metadata_uuid": "60ecee84-bd74-430c-92dc-a1a01a05df9e",
         "match": ["t32vpm", "32vpm"],
     },
+    "sr16_raster": {
+        "url": "https://kart8.nibio.no/api/v2/codelists/area/5de45872-f534-4e97-840e-3cfd8db04398",
+        "metadata_uuid": "5de45872-f534-4e97-840e-3cfd8db04398",
+        "match": ["nannestad", "3238"],
+    },
     "sr16_vector": {
         "url": "https://kart8.nibio.no/api/v2/codelists/area/27206b9e-4830-4f71-810d-d04c0dc32b59",
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
@@ -45,8 +50,6 @@ def matches(entry: Any, needles: list[str]) -> bool:
 
 
 def compact_entry(entry: Any) -> Any:
-    # Area entries are safe small metadata. Keep their provider-defined shape intact,
-    # but remove any large nested blobs if a provider adds one later.
     if not isinstance(entry, dict):
         return entry
     result = {}
