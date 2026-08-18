@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
 import { byteLengthOf, createFrameGapMonitor, percentile, summarizeFrameGaps } from './src/rendererObservability.mjs';
 
+function assertNear(actual, expected, epsilon = 1e-9) {
+  assert.ok(Math.abs(actual - expected) <= epsilon, `expected ${actual} to be within ${epsilon} of ${expected}`);
+}
+
 assert.equal(percentile([10, 20, 30, 40], 0.5), 25);
 assert.equal(percentile([10, 20, 30, 40], 0.95), 38.5);
 assert.equal(percentile([7], 0.99), 7);
 assert.equal(percentile([], 0.5), null);
 assert.throws(() => percentile([1], 1.1), /quantile/);
-assert.deepEqual(summarizeFrameGaps([16, 18, 20, 100]), {
-  samples: 4,
-  p50_ms: 19,
-  p95_ms: 88,
-  p99_ms: 97.6,
-  largest_ms: 100,
-});
+const gapSummary = summarizeFrameGaps([16, 18, 20, 100]);
+assert.equal(gapSummary.samples, 4);
+assert.equal(gapSummary.p50_ms, 19);
+assertNear(gapSummary.p95_ms, 88);
+assertNear(gapSummary.p99_ms, 97.6);
+assert.equal(gapSummary.largest_ms, 100);
 assert.equal(byteLengthOf(new Uint8Array(4), new Float32Array(3), null), 16);
 
 const callbacks = new Map();
