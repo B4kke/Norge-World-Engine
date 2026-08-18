@@ -201,6 +201,121 @@ jobs:
           console.log(JSON.stringify(result, null, 2));
           NODE
 
+      - name: Drive exact accepted terrain through loader, worker client and scheduler
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+
+          import { executeTerrainMeshWorkerJob } from './engine/streaming/terrain_mesh_worker_protocol.mjs';
+          import { TerrainMeshWorkerClient } from './engine/streaming/terrain_mesh_worker_client.mjs';
+          import { createTerrainTileLoadFunction } from './engine/streaming/terrain_tile_loader.mjs';
+          import { TileStreamingScheduler } from './engine/streaming/tile_scheduler.mjs';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const proofDir = '/tmp/nwe-proof';
+          const report = JSON.parse(fs.readFileSync(path.join(proofDir, 'dtm1-realdata-proof.json'), 'utf8'));
+          const info = report.compiled_artifact;
+          const bundle = JSON.parse(fs.readFileSync(path.join(proofDir, info.bundle_file), 'utf8'));
+          const artifactBytes = new Uint8Array(fs.readFileSync(path.join(proofDir, info.artifact_file)));
+
+          class ProtocolWorker {
+            constructor() {
+              this.terminated = false;
+              this.onmessage = null;
+              this.onerror = null;
+            }
+            postMessage(message) {
+              queueMicrotask(() => {
+                if (this.terminated) return;
+                try {
+                  const { result } = executeTerrainMeshWorkerJob(message);
+                  this.onmessage?.({ data: result });
+                } catch (error) {
+                  this.onerror?.({ error, message: error.message });
+                }
+              });
+            }
+            terminate() {
+              this.terminated = true;
+            }
+          }
+
+          const workerClient = new TerrainMeshWorkerClient({ workerFactory: () => new ProtocolWorker() });
+          const header = info.header;
+          const [minE, minN, maxE, maxN] = header.bounds;
+          const tile = {
+            id: header.tile_id,
+            centerE: (minE + maxE) / 2,
+            centerN: (minN + maxN) / 2,
+          };
+          let activated = null;
+          const loadTile = createTerrainTileLoadFunction({
+            resolveRuntimeInput: async () => ({ bundle, artifactBytes }),
+            verifyBundle: verifyRuntimeBundle,
+            meshWorkerClient: workerClient,
+            meshOptionsForTile: ({ header: verifiedHeader }) => ({
+              outputSize: 129,
+              originE: (verifiedHeader.bounds[0] + verifiedHeader.bounds[2]) / 2,
+              originN: (verifiedHeader.bounds[1] + verifiedHeader.bounds[3]) / 2,
+              // Explicit QA parameter only. No vertical-origin policy is selected here.
+              originH: 0,
+            }),
+          });
+          const scheduler = new TileStreamingScheduler({
+            loadTile,
+            activateTile: async (_tile, payload) => { activated = payload; },
+            activeRadiusMeters: 10,
+            retainRadiusMeters: 20,
+            maxConcurrentLoads: 1,
+            maxResidentTiles: 1,
+            maxCacheBytes: 16 * 1024 * 1024,
+          });
+
+          await scheduler.update({ e: tile.centerE, n: tile.centerN }, [tile]);
+          const snapshot = await scheduler.whenIdle();
+          if (snapshot.metrics.loadsCompleted !== 1 || snapshot.metrics.loadsFailed !== 0 || snapshot.metrics.residentCount !== 1) {
+            throw new Error(`unexpected scheduler state: ${JSON.stringify(snapshot.metrics)}`);
+          }
+          if (!activated || activated.verification.code !== 'RUNTIME_VERIFICATION_PASS') {
+            throw new Error('verified terrain payload was not activated');
+          }
+          if (activated.artifact.sha256 !== info.cold_sha256) {
+            throw new Error(`artifact SHA changed through runtime pipeline: ${activated.artifact.sha256}`);
+          }
+          if (activated.elevations.length !== 1_000_000 || activated.elevations.byteLength !== 4_000_000) {
+            throw new Error(`unexpected retained elevation grid: ${activated.elevations.length}/${activated.elevations.byteLength}`);
+          }
+          if (activated.mesh.metadata.vertexCount !== 16_641 || activated.mesh.metadata.triangleCount !== 32_768) {
+            throw new Error(`unexpected mesh shape: ${JSON.stringify(activated.mesh.metadata)}`);
+          }
+          if (activated.mesh.metadata.byteSize !== 729_120) {
+            throw new Error(`unexpected mesh byte size ${activated.mesh.metadata.byteSize}`);
+          }
+          const retainedByteSize = snapshot.records[0].byteSize;
+          if (retainedByteSize !== 4_729_120) {
+            throw new Error(`unexpected scheduler retained byte size ${retainedByteSize}`);
+          }
+
+          const result = {
+            schema: 'nwe.terrain-runtime-pipeline-realdata-proof/0.1',
+            status: 'PASS',
+            tile_id: tile.id,
+            artifact_sha256: activated.artifact.sha256,
+            artifact_byte_size: info.byte_size,
+            elevation_samples: activated.elevations.length,
+            retained_elevation_bytes: activated.elevations.byteLength,
+            mesh: activated.mesh.metadata,
+            scheduler_retained_bytes: retainedByteSize,
+            scheduler_metrics: snapshot.metrics,
+            timing_ms: activated.timingMs,
+            worker_boundary: 'TerrainMeshWorkerClient + protocol worker shim; browser Dedicated Worker performance remains device evidence',
+            origin_qa_parameter: activated.mesh.metadata.origin,
+          };
+          fs.writeFileSync(path.join(proofDir, 'terrain-runtime-pipeline-realdata.json'), JSON.stringify(result, null, 2) + '\n');
+          console.log(JSON.stringify(result, null, 2));
+          NODE
+
       - name: Attribution notice
         run: |
           cat > /tmp/nwe-proof/ATTRIBUTION.txt <<'EOF'
