@@ -133,6 +133,10 @@ export async function runTerrainStreamingExperiment({
   }
   if (typeof resolveRuntimeInput !== 'function') throw new TypeError('resolveRuntimeInput is required');
   if (typeof Worker !== 'function') throw new Error('Dedicated Worker API unavailable');
+  if (!(retainRadiusMeters > activeRadiusMeters)) {
+    throw new Error('terrain cache experiment requires retainRadiusMeters > activeRadiusMeters');
+  }
+  const cacheProbeDistance = activeRadiusMeters + (retainRadiusMeters - activeRadiusMeters) / 2;
 
   onPhase('renderer');
   const rendererSetupStart = performance.now();
@@ -238,7 +242,7 @@ export async function runTerrainStreamingExperiment({
     await waitFrames(2);
 
     if (snapshot.metrics.loadsCompleted !== 1 || snapshot.metrics.loadsFailed !== 0 || snapshot.metrics.residentCount !== 1) {
-      throw new Error(`unexpected initial scheduler state: ${JSON.stringify(snapshot.metrics)}`);
+      throw new Error(`unexpected initial scheduler state: ${JSON.stringify({ metrics: snapshot.metrics, records: snapshot.records })}`);
     }
     if (!firstPayload || firstPayload.verification.code !== 'RUNTIME_VERIFICATION_PASS') {
       throw new Error('terrain payload was not fully verified');
@@ -250,12 +254,12 @@ export async function runTerrainStreamingExperiment({
 
     onPhase('camera-exit');
     const outsideStart = performance.now();
-    await scheduler.update({ e: tile.centerE + 10000, n: tile.centerN + 10000 }, [tile]);
+    await scheduler.update({ e: tile.centerE + cacheProbeDistance, n: tile.centerN }, [tile]);
     snapshot = await scheduler.whenIdle();
     const outsideEnd = performance.now();
     await waitFrames(2);
     if (snapshot.metrics.cachedCount !== 1 || snapshot.metrics.residentCount !== 0) {
-      throw new Error(`tile did not enter cache after camera exit: ${JSON.stringify(snapshot.metrics)}`);
+      throw new Error(`tile did not enter cache band: ${JSON.stringify({ metrics: snapshot.metrics, records: snapshot.records, cacheProbeDistance })}`);
     }
 
     onPhase('cache-return');
@@ -267,7 +271,7 @@ export async function runTerrainStreamingExperiment({
     const finish = performance.now();
 
     if (snapshot.metrics.loadsStarted !== 1 || snapshot.metrics.cacheHits !== 1 || snapshot.metrics.residentCount !== 1) {
-      throw new Error(`cache return caused unexpected reload/state: ${JSON.stringify(snapshot.metrics)}`);
+      throw new Error(`cache return caused unexpected reload/state: ${JSON.stringify({ metrics: snapshot.metrics, records: snapshot.records })}`);
     }
     if (resolverCalls !== 1) throw new Error(`cache return unexpectedly resolved terrain input again; calls=${resolverCalls}`);
 
@@ -299,6 +303,7 @@ export async function runTerrainStreamingExperiment({
         whole_experiment: summarize(raf.allGaps()),
       },
       resolver_calls: resolverCalls,
+      cache_probe_distance_m: cacheProbeDistance,
       capabilities: {
         worker: typeof Worker === 'function',
         webcrypto: Boolean(globalThis.crypto?.subtle),
