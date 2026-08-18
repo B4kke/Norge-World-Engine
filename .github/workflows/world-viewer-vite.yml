@@ -1,0 +1,45 @@
+name: world-viewer-vite
+
+on:
+  pull_request:
+    paths:
+      - 'apps/world-viewer/**'
+      - 'engine/streaming/runtime_verifier_core.mjs'
+      - 'engine/streaming/runtime_verifier_web.mjs'
+      - 'package.json'
+      - '.github/workflows/world-viewer-vite.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install viewer + shared verifier dependencies
+        run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
+
+      - name: Existing viewer boundary regressions
+        run: |
+          node --check apps/world-viewer/artifact_consumer.mjs
+          node --check apps/world-viewer/benchmark/geometry.mjs
+          node --check apps/world-viewer/benchmark/params.mjs
+          node --check apps/world-viewer/benchmark/benchmark.mjs
+          node --check apps/world-viewer/run_benchmark.mjs
+          node apps/world-viewer/test_artifact_consumer.mjs
+          node apps/world-viewer/test_benchmark_geometry.mjs
+          node apps/world-viewer/test_benchmark_params.mjs
+
+      - name: Build Vite world viewer
+        run: npm run build --workspace @nwe/world-viewer
+
+      - name: Assert static deployment output
+        run: |
+          test -f apps/world-viewer/dist/index.html
+          test -d apps/world-viewer/dist/assets
+          find apps/world-viewer/dist -maxdepth 2 -type f -print
