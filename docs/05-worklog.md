@@ -299,3 +299,29 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Exercise the accepted terrain artifact through `verifyRuntimeBundleWeb -> terrain_tile_loader -> actual module DedicatedWorker -> TileStreamingScheduler` in a real browser harness and instrument verification/decode, worker transfer/startup, apply/GPU upload and rAF gaps.
 - Reuse the harness on Android Chrome before selecting worker pooling, provenance-cache policy, hard GPU/resident budgets or LOD.
 - Keep the real multi-source DTM1 seam fail-closed in parallel; do not use runtime progress as justification for inventing an overlap rule.
+
+## 2026-08-18 — World Viewer Forsøk 18 terrain browser worker
+
+**Gjort**
+- Turned the previously detached/stale browser terrain branch into one visible, deployable World Viewer experiment instead of another one-off HTML prototype.
+- Added a shared compiled terrain runtime-input boundary, a browser-safe synthetic 1000×1000 terrain fixture, and one shared terrain experiment core used by both CI and the Vite app.
+- World Viewer now exposes `Kjør Forsøk 18` in its main viewport and reports provenance, module DedicatedWorker, first-visible, rAF gap, GPU apply, scheduler cache hit and retained bytes.
+- The same app path can accept an explicit hosted `terrainBundle` + tile id/center parameters for later exact-real terrain testing while keeping raw Kartverket/NVDB/OSM acquisition outside the browser.
+- Added a focused Chrome gate to `world-viewer-vite` and corrected two harness bugs without changing engine semantics: relative bundle URL resolution and a camera probe that had incorrectly tested eviction rather than the active→cached retain band.
+
+**Bevist**
+- Exact-head run `32144204222` on `7a371c0359511b111e5d1933d75c3dc4fb22a8fc` is PASS in Chrome 151. The Vite build emits the terrain worker as its own asset and the browser uses the default module `TerrainMeshWorkerClient` path.
+- Full `RUNTIME_VERIFICATION_PASS`, strict NWEHGT01 decode, actual DedicatedWorker mesh generation, scheduler activation/deactivation/cache return and WebGL2 measurement upload/draw compose successfully.
+- Runtime shape: 1000×1000 source grid -> 129×129 mesh, 16,641 vertices, 32,768 triangles, 729,120 B mesh, **4,729,120 B** retained; scheduler reports 1 load completed / 0 failed, 1 cache hit, 0 evictions and only 1 terrain resolver call.
+- Hosted structural timing: ~20.1 ms full provenance, ~137.5 ms strict decode, ~72.2 ms worker RTT / ~49 ms worker CPU, ~290.6 ms input→first-visible, GPU apply p95 ~4.8 ms and **116.7 ms** largest rAF gap during initial load.
+- Full repo baseline and the existing real-vector browser benchmark also passed on the same pre-documentation code head.
+
+**Endret**
+- `docs/proofs/2026-08-18-world-viewer-terrain-worker.md` records the exact browser proof and limitations.
+- `docs/06-task-queue.md` now distinguishes actual module-worker structural PASS from the still-open exact-real Nannestad browser and Android gates.
+- `apps/world-viewer/README.md` documents Forsøk 18 and the real-bundle handoff. No renderer/worker-pool/LOD/cache decision was added to `docs/04-decisions.md`.
+
+**Neste**
+- Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
+- Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
+- Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.

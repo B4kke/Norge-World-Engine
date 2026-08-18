@@ -4,8 +4,7 @@ on:
   pull_request:
     paths:
       - 'apps/world-viewer/**'
-      - 'engine/streaming/runtime_verifier_core.mjs'
-      - 'engine/streaming/runtime_verifier_web.mjs'
+      - 'engine/streaming/**'
       - 'package.json'
       - '.github/workflows/world-viewer-vite.yml'
   workflow_dispatch:
@@ -13,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +34,14 @@ jobs:
           node apps/world-viewer/test_benchmark_geometry.mjs
           node apps/world-viewer/test_benchmark_params.mjs
 
+      - name: Terrain experiment syntax boundary
+        run: |
+          node --check apps/world-viewer/terrain_runtime_input.mjs
+          node --check apps/world-viewer/terrain_fixture.mjs
+          node --check apps/world-viewer/terrain-streaming/experiment.mjs
+          node --check apps/world-viewer/terrain-streaming/benchmark.mjs
+          node --check apps/world-viewer/run_terrain_streaming_benchmark.mjs
+
       - name: Build Vite world viewer
         run: npm run build --workspace @nwe/world-viewer
 
@@ -43,3 +50,22 @@ jobs:
           test -f apps/world-viewer/dist/index.html
           test -d apps/world-viewer/dist/assets
           find apps/world-viewer/dist -maxdepth 2 -type f -print
+
+      - name: Browser environment
+        run: (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+
+      - name: Synthetic 1000x1000 terrain DedicatedWorker gate
+        env:
+          NWE_HEADLESS_DIRECT: '1'
+        run: |
+          node apps/world-viewer/run_terrain_streaming_benchmark.mjs \
+            --output /tmp/nwe-terrain-browser-worker.json \
+            --timeout-ms 60000
+          cat /tmp/nwe-terrain-browser-worker.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-viewer-terrain-worker-${{ github.sha }}
+          path: /tmp/nwe-terrain-browser-worker.json
+          if-no-files-found: error
+          retention-days: 7

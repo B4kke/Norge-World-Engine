@@ -11,12 +11,13 @@
 html, body, #app { margin: 0; width: 100%; min-width: 320px; min-height: 100%; }
 body { min-height: 100dvh; overflow: hidden; background: #05090d; }
 button, input, textarea, select { font: inherit; }
+code { color: #bdd5e0; font: 10px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .shell {
   width: 100vw;
   height: 100dvh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
   grid-template-rows: 72px minmax(0, 1fr);
   background: #05090d;
 }
@@ -82,7 +83,7 @@ h1 {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 42%, transparent 0, transparent 32%, rgba(2, 6, 9, 0.45) 100%);
+  background: radial-gradient(circle at 50% 42%, transparent 0, transparent 38%, rgba(2, 6, 9, 0.35) 100%);
 }
 
 .viewport-message {
@@ -91,34 +92,58 @@ h1 {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(520px, calc(100% - 40px));
+  width: min(560px, calc(100% - 40px));
   display: flex;
   gap: 12px;
   align-items: flex-start;
   padding: 16px;
   border: 1px solid rgba(80, 117, 134, 0.36);
   border-radius: 12px;
-  background: rgba(5, 13, 18, 0.78);
+  background: rgba(5, 13, 18, 0.82);
   backdrop-filter: blur(14px);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.25);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.viewport-message.running {
+  opacity: 0.18;
+  transform: translate(-50%, -50%) scale(0.985);
+  pointer-events: none;
 }
 
 .viewport-message strong { display: block; margin-bottom: 5px; font-size: 14px; }
 .viewport-message p { margin: 0; color: #94aab5; font-size: 12px; line-height: 1.5; }
 .status-dot { width: 8px; height: 8px; margin-top: 5px; flex: 0 0 auto; border-radius: 50%; background: #7de4a6; box-shadow: 0 0 18px rgba(125, 228, 166, 0.55); }
 
-.coordinates {
+.primary-action {
+  margin-top: 13px;
+  padding: 9px 12px;
+  border: 1px solid #3e7f63;
+  border-radius: 8px;
+  color: #dff7e9;
+  background: #123929;
+  font: 800 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.primary-action:hover:not(:disabled) { background: #174a35; }
+.primary-action:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.coordinates, .phase-chip {
   position: absolute;
   z-index: 2;
-  left: 14px;
   bottom: 14px;
   padding: 7px 9px;
   border: 1px solid rgba(73, 103, 118, 0.35);
   border-radius: 7px;
   color: #8299a5;
-  background: rgba(5, 12, 17, 0.78);
+  background: rgba(5, 12, 17, 0.82);
   font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.coordinates { left: 14px; }
+.phase-chip { right: 14px; color: #aac0ca; }
+.pass-chip { color: #7de4a6; border-color: rgba(125, 228, 166, 0.45); }
+.fail-chip { color: #f58d8d; border-color: rgba(245, 141, 141, 0.45); }
 
 .panel {
   min-width: 0;
@@ -130,12 +155,12 @@ h1 {
 
 .panel section { padding: 18px; border-bottom: 1px solid #15222a; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 0; color: #9cb0bb; font-size: 12px; }
-.row strong { color: #d7e4ea; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+.row strong { max-width: 58%; color: #d7e4ea; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; overflow-wrap: anywhere; }
 .pass { color: #7de4a6 !important; }
 .warn { color: #f0c56c !important; }
+.fail { color: #f58d8d !important; }
 .muted { color: #6f838e !important; }
 .copy { margin: 7px 0 0; color: #93a8b3; font-size: 12px; line-height: 1.55; }
-.steps { margin: 8px 0 0; padding-left: 19px; color: #9bb0bb; font-size: 12px; line-height: 1.7; }
 
 @media (max-width: 760px) {
   body { overflow: auto; }
@@ -146,8 +171,9 @@ h1 {
     grid-template-rows: 66px 58dvh auto;
   }
   .topbar { padding: 0 15px; }
+  .mode { max-width: 47%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .viewport { min-height: 58dvh; }
   .panel { border-left: 0; border-top: 1px solid #17242d; overflow: visible; }
   .viewport-message { width: calc(100% - 28px); }
-  .coordinates { max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .coordinates { max-width: calc(100% - 110px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
