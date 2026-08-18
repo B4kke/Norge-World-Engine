@@ -11,6 +11,17 @@ export class TerrainRuntimeInputError extends Error {
   }
 }
 
+function absoluteBundleUrl(bundleUrl) {
+  try {
+    return new URL(bundleUrl, globalThis.location?.href).href;
+  } catch (error) {
+    throw new TerrainRuntimeInputError(
+      'BUNDLE_URL_INVALID',
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 export async function loadTerrainRuntimeInput({
   bundleUrl,
   expectedTileId = null,
@@ -28,9 +39,10 @@ export async function loadTerrainRuntimeInput({
     throw new TerrainRuntimeInputError('TRANSPORT_RESOLVER_REQUIRED', 'resolveTransport must be a function');
   }
 
-  const bundleResponse = await fetchImpl(bundleUrl, { cache: 'no-store', signal });
+  const resolvedBundleUrl = absoluteBundleUrl(bundleUrl);
+  const bundleResponse = await fetchImpl(resolvedBundleUrl, { cache: 'no-store', signal });
   if (!bundleResponse.ok) {
-    throw new TerrainRuntimeInputError('BUNDLE_FETCH_FAILED', `${bundleResponse.status} ${bundleUrl}`);
+    throw new TerrainRuntimeInputError('BUNDLE_FETCH_FAILED', `${bundleResponse.status} ${resolvedBundleUrl}`);
   }
   const bundle = await bundleResponse.json();
   const artifactRef = bundle?.artifact_ref;
@@ -53,7 +65,7 @@ export async function loadTerrainRuntimeInput({
   // Fail before the compiled-artifact request if a bundle tries to point the
   // browser at a raw Norwegian source service.
   const reference = assertCompiledTransport(artifactRef.transport?.reference ?? artifactRef.reference);
-  const artifactUrl = resolveTransport(reference, bundleUrl);
+  const artifactUrl = resolveTransport(reference, resolvedBundleUrl);
   assertCompiledTransport(artifactUrl);
 
   const artifactResponse = await fetchImpl(artifactUrl, { cache: 'force-cache', signal });
@@ -61,5 +73,5 @@ export async function loadTerrainRuntimeInput({
     throw new TerrainRuntimeInputError('ARTIFACT_FETCH_FAILED', `${artifactResponse.status} ${artifactUrl}`);
   }
   const artifactBytes = new Uint8Array(await artifactResponse.arrayBuffer());
-  return { bundle, artifactRef, artifactBytes, artifactUrl };
+  return { bundle, artifactRef, artifactBytes, artifactUrl, bundleUrl: resolvedBundleUrl };
 }
