@@ -31,14 +31,19 @@ jobs:
           python - <<'PY'
           import hashlib
           import json
-          from itertools import combinations
           from urllib.request import Request, urlopen
 
           from pyproj import Transformer
           from shapely.ops import transform as shapely_transform
 
-          from nwe_compiler.dtm1_source_grid_audit import audit_declared_route_pair
+          from nwe_compiler.dtm1_source_grid_audit import (
+              SourceGridAuditError,
+              audit_declared_route_grid,
+              infer_route_extent,
+          )
           from nwe_compiler.sources.dtm1_atom import (
+              DTM1_SOURCE_CRS,
+              category_crs,
               parse_feed,
               select_dataset_sources,
               select_service_dataset,
@@ -47,7 +52,7 @@ jobs:
           from nwe_compiler.tiles import square_tile_grid
 
           NOMINAL_ROUTE_SIZE_M = 15_000.0
-          to_source = Transformer.from_crs('EPSG:4326', 'EPSG:25833', always_xy=True)
+          to_source = Transformer.from_crs('EPSG:4326', DTM1_SOURCE_CRS, always_xy=True)
 
           def get(url):
               req = Request(url, headers={
@@ -65,42 +70,54 @@ jobs:
           dataset_bytes = get(dataset_url)
           entries = parse_feed(dataset_bytes)
 
-          unique = {}
+          # Preserve the accepted Nannestad topology assertion while broadening
+          # the metadata-only audit to the complete EPSG:25833 route catalogue.
+          nannestad_unique = {}
           for tile in square_tile_grid(radius=1):
               plan = select_dataset_sources(entries, target=tile.bounds)
               for source in plan.sources:
-                  unique[source.href] = source
-
-          if len(unique) != 2:
-              raise SystemExit(f'Nannestad 3x3 source topology changed: expected 2 sources, got {len(unique)}')
-
-          rows = []
-          for href, source in sorted(unique.items()):
-              geom = shapely_transform(to_source.transform, source.extent.geometry)
-              rows.append({
-                  'href': href,
-                  'entry_id': source.entry.id,
-                  'entry_updated': source.entry.updated,
-                  'bounds_epsg25833': list(geom.bounds),
-                  'canonical_spatial_geometry_type': source.extent.geometry_type,
-              })
-
-          audits = []
-          for first, second in combinations(rows, 2):
-              audit = audit_declared_route_pair(
-                  tuple(first['bounds_epsg25833']),
-                  tuple(second['bounds_epsg25833']),
-                  nominal_route_size_m=NOMINAL_ROUTE_SIZE_M,
+                  nannestad_unique[source.href] = source
+          if len(nannestad_unique) != 2:
+              raise SystemExit(
+                  f'Nannestad 3x3 source topology changed: expected 2 sources, got {len(nannestad_unique)}'
               )
-              audits.append({
-                  'source_a': first['href'],
-                  'source_b': second['href'],
-                  'audit': audit,
-              })
+
+          declared_routes = {}
+          rejected_routes = []
+          epsg25833_entry_count = 0
+          missing_extent_count = 0
+          for entry in entries:
+              if DTM1_SOURCE_CRS not in category_crs(entry):
+                  continue
+              epsg25833_entry_count += 1
+              if entry.declared_extent is None:
+                  missing_extent_count += 1
+                  continue
+              geom = shapely_transform(to_source.transform, entry.declared_extent.geometry)
+              bounds = tuple(float(value) for value in geom.bounds)
+              try:
+                  infer_route_extent(bounds, nominal_route_size_m=NOMINAL_ROUTE_SIZE_M)
+              except SourceGridAuditError as exc:
+                  rejected_routes.append({
+                      'entry_id': entry.id,
+                      'title': entry.title,
+                      'bounds_epsg25833': list(bounds),
+                      'reason': str(exc),
+                  })
+                  continue
+              route_id = entry.id or entry.title
+              if route_id in declared_routes:
+                  raise SystemExit(f'duplicate route identity in DTM1 Atom feed: {route_id!r}')
+              declared_routes[route_id] = bounds
+
+          grid_audit = audit_declared_route_grid(
+              declared_routes,
+              nominal_route_size_m=NOMINAL_ROUTE_SIZE_M,
+          )
 
           result = {
-              'schema': 'nwe.dtm1-live-source-grid-geometry-proof/0.1',
-              'status': 'HYPOTHESIS_SUPPORTED_NOT_AUTHORITY',
+              'schema': 'nwe.dtm1-live-source-grid-geometry-proof/0.2',
+              'status': 'REGULARITY_MEASURED_NOT_AUTHORITY',
               'nominal_route_size_basis': 'Kartverket/Data.norge DTM1 API description: data split into 15 km routes',
               'nominal_route_size_m': NOMINAL_ROUTE_SIZE_M,
               'service_feed_url': SERVICE_URL,
@@ -108,15 +125,20 @@ jobs:
               'dataset_feed_url': dataset_url,
               'dataset_feed_sha256': hashlib.sha256(dataset_bytes).hexdigest(),
               'dataset_entry_count': len(entries),
-              'sources': rows,
-              'pair_audits': audits,
+              'epsg25833_entry_count': epsg25833_entry_count,
+              'missing_extent_count': missing_extent_count,
+              'audited_route_count': len(declared_routes),
+              'rejected_route_count': len(rejected_routes),
+              'rejected_routes': rejected_routes,
+              'nannestad_unique_source_count': len(nannestad_unique),
+              'grid_audit': grid_audit,
               'production_seam_authority': False,
               'authority_status': 'UNPROVEN',
           }
-          if not all(item['audit']['pair']['hypothesis_supported'] for item in audits):
-              raise SystemExit('current Atom geometry does not support the buffered-route hypothesis')
           if result['production_seam_authority'] is not False:
               raise SystemExit('diagnostic must never promote a seam authority')
+          if grid_audit['claim_calibration']['production_seam_authority'] is not False:
+              raise SystemExit('grid audit must remain non-authoritative')
 
           print(json.dumps(result, indent=2, sort_keys=True))
           with open('/tmp/dtm1-source-grid-geometry-audit.json', 'w', encoding='utf-8') as fh:
