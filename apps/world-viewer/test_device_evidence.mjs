@@ -58,6 +58,7 @@ assert.equal(isRawSourceRuntimeUrl('https://www.vegvesen.no/nvdb'), true);
 assert.equal(classifyBrowserEnvironment(androidNavigator).inferred_android_chrome, true);
 assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0.0.0' }).inferred_android_chrome, false);
 assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (Linux; Android 15) Chrome/140.0.0.0 EdgA/140.0.0.0 Mobile' }).inferred_android_chrome, false);
+assert.equal(classifyBrowserEnvironment({ userAgent: 'Mozilla/5.0 (Linux; Android 15) Chrome/140.0.0.0 Mobile', userAgentData: { mobile: true, platform: 'Android', brands: [{ brand: 'Chromium' }, { brand: 'Microsoft Edge' }] } }).inferred_android_chrome, false);
 
 const webgpuResult = structuredClone(result);
 webgpuResult.renderer.backend = 'webgpu';
