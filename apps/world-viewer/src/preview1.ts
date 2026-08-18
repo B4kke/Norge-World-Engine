@@ -4,6 +4,7 @@ import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifi
 import { TerrainMeshWorkerClient } from '../../../engine/streaming/terrain_mesh_worker_client.mjs';
 import { createTerrainTileLoadFunction } from '../../../engine/streaming/terrain_tile_loader.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
+import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
 
 export const DEFAULT_PREVIEW1_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
@@ -45,6 +46,7 @@ async function loadTerrain(
   manifestUrl: string,
   onPhase: (phase: string) => void,
   fetchImpl: typeof globalThis.fetch,
+  graphicsProfile: any,
 ) {
   const terrainBundleUrl = absoluteUrl(manifest.terrain.bundle, manifestUrl);
   const center = centerFromBounds(manifest.tile.bounds);
@@ -75,7 +77,7 @@ async function loadTerrain(
       },
     },
     meshOptionsForTile: ({ header }: any) => ({
-      outputSize: 129,
+      outputSize: graphicsProfile.terrainOutputSize,
       originE: (header.bounds[0] + header.bounds[2]) / 2,
       originN: (header.bounds[1] + header.bounds[3]) / 2,
       originH: header.elevation_min_m,
@@ -89,7 +91,7 @@ async function loadTerrain(
     retainRadiusMeters: 1200,
     maxConcurrentLoads: 1,
     maxResidentTiles: 1,
-    maxCacheBytes: 16 * 1024 * 1024,
+    maxCacheBytes: 24 * 1024 * 1024,
   });
 
   await scheduler.update({ e: center.e, n: center.n }, [descriptor]);
@@ -107,6 +109,8 @@ export async function runPreview1({
   canvas,
   manifestUrl = DEFAULT_PREVIEW1_MANIFEST,
   fetchImpl = globalThis.fetch,
+  graphicsProfile = 'balanced',
+  rendererPreference = 'auto',
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
@@ -114,12 +118,17 @@ export async function runPreview1({
   canvas: HTMLCanvasElement;
   manifestUrl?: string;
   fetchImpl?: typeof globalThis.fetch;
+  graphicsProfile?: string;
+  rendererPreference?: string;
   onPhase?: (phase: string) => void;
   onReady?: (result: any) => void;
   onFrame?: (frame: any) => void;
 }) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required');
+  const profile = resolveGraphicsProfile(graphicsProfile);
+  const rendererChoice = resolveRendererPreference(rendererPreference);
+
   onPhase('manifest');
   const manifestBase = new URL(manifestUrl, location.href).href;
   const manifest = await fetchPreviewManifest(manifestBase, fetchImpl);
@@ -135,18 +144,29 @@ export async function runPreview1({
     expectedRole: 'building-footprints',
     fetchImpl,
   });
-  const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl);
+  const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
   const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
 
   if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) {
     throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
   }
+
+  let rendererFallback: any = null;
   onPhase('renderer');
-  const renderer = createPreview1Renderer({
+  const renderer = await createPreview1Renderer({
     canvas,
     terrainPayload: terrain.payload,
     roadsArtifact: roads.artifact,
     buildingsArtifact: buildings.artifact,
+    graphicsProfile: profile,
+    backend: rendererChoice,
+    onBackendFallback: (fallback: any) => {
+      rendererFallback = {
+        from: fallback.from,
+        to: fallback.to,
+        reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error),
+      };
+    },
     onFrame,
   });
 
@@ -156,6 +176,8 @@ export async function runPreview1({
     manifest,
     manifestUrl: manifestBase,
     tile_id: manifest.tile.id,
+    graphics_profile: profile.id,
+    renderer_preference: rendererChoice,
     terrain: {
       artifact_sha256: terrain.payload.artifact.sha256,
       verification_code: terrain.payload.verification.code,
@@ -174,7 +196,10 @@ export async function runPreview1({
       verification_code: buildings.verification.code,
       count: buildings.artifact.features?.length ?? 0,
     },
-    renderer: renderer.stats,
+    renderer: {
+      ...renderer.stats,
+      fallback: rendererFallback,
+    },
     attribution: manifest.attribution ?? [],
   };
   onPhase('ready');
