@@ -50,7 +50,9 @@ jobs:
 
       - name: Runtime provenance reconstruction regression
         run: |
+          node --check engine/streaming/runtime_verifier_core.mjs
           node --check engine/streaming/runtime_verifier.mjs
+          node --check engine/streaming/runtime_verifier_web.mjs
           node --check engine/streaming/test_runtime_verifier.mjs
           node engine/streaming/test_runtime_verifier.mjs
 

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, webcrypto } from "node:crypto";
 
 import { canonicalSha256 } from "../schemas/js/src/canonical.mjs";
 import { artifactIdentityPayload, RUNTIME_DECISION, verifyRuntimeBundle } from "./runtime_verifier.mjs";
+import { verifyRuntimeBundleWeb } from "./runtime_verifier_web.mjs";
 
 const bytes = new TextEncoder().encode("compiled-terrain-fixture");
 const artifactSha = createHash("sha256").update(bytes).digest("hex");
@@ -199,19 +200,16 @@ const valid = buildBundle();
 assert.equal(verifyRuntimeBundle(valid, bytes).decision, RUNTIME_DECISION.READY);
 cases += 1;
 
-// Transport relocation must not alter immutable artifact identity.
 const relocated = structuredClone(valid);
 relocated.artifact_ref.transport.reference = "https://cdn.example.invalid/nannestad-terrain.glb";
 assert.equal(verifyRuntimeBundle(relocated, bytes).decision, RUNTIME_DECISION.READY);
 cases += 1;
 
-// 1 m clip mutation must break the reconstructed transform/normalized chain.
 const clipMutation = structuredClone(valid);
 clipMutation.transform_contracts[0].bounds_epsg25832[0] = "611001";
 assert.equal(verifyRuntimeBundle(clipMutation, bytes).decision, RUNTIME_DECISION.REJECTED);
 cases += 1;
 
-// SENTINEL regression: self-reported forged lineage + internally rewritten downstream hashes must still fail.
 const forged = structuredClone(valid);
 forged.lineage_hash = "forged-lineage-not-reconstructed";
 forged.artifact_ref.lineage_hash = forged.lineage_hash;
@@ -237,14 +235,12 @@ assert.equal(verifyRuntimeBundle(multi, bytes).decision, RUNTIME_DECISION.READY)
 assert.equal(verifyRuntimeBundle(multi, bytes).reconstructed.source_snapshot_hashes.length, 2);
 cases += 1;
 
-// A mosaic NormalizedSnapshot must bind the exact same source set as its transform.
 const missingMosaicSource = structuredClone(multi);
 missingMosaicSource.normalized_snapshots[0].source_snapshot_hashes = [multi.source_snapshot_hashes[0]];
 rehashNormalizedAndDownstream(missingMosaicSource);
 assert.equal(verifyRuntimeBundle(missingMosaicSource, bytes).code, "NORMALIZED_SOURCE_SET_MISMATCH");
 cases += 1;
 
-// Extra provenance objects are malleability and must not be accepted as graph closure.
 const unusedSource = structuredClone(multi);
 const sourceC = {
   schema: "nwe.source-snapshot/0.3",
@@ -279,4 +275,29 @@ const unsortedResult = verifyRuntimeBundle(unsortedPlural, bytes);
 assert.equal(unsortedResult.code, "BUNDLE_RECONSTRUCTION_ERROR");
 cases += 1;
 
-console.log(JSON.stringify({ status: "PASS", cases }));
+const parityCases = [
+  ["valid", valid, bytes],
+  ["relocated", relocated, bytes],
+  ["clip-mutation", clipMutation, bytes],
+  ["forged-lineage", forged, bytes],
+  ["raw-source-reference", rawSource, bytes],
+  ["wrong-artifact-bytes", valid, wrongBytes],
+  ["multi-source-valid", multi, bytes],
+  ["multi-source-missing-source", missingMosaicSource, bytes],
+  ["unused-source", unusedSource, bytes],
+  ["unused-transform", unusedTransform, bytes],
+  ["unsorted-plural", unsortedPlural, bytes],
+];
+
+for (const [name, bundle, artifactBytes] of parityCases) {
+  const nodeResult = verifyRuntimeBundle(bundle, artifactBytes);
+  const webResult = await verifyRuntimeBundleWeb(bundle, artifactBytes, { cryptoImpl: webcrypto });
+  assert.equal(webResult.decision, nodeResult.decision, `${name}: decision parity`);
+  assert.equal(webResult.code, nodeResult.code, `${name}: failure/pass code parity`);
+  assert.deepEqual(webResult.reconstructed ?? null, nodeResult.reconstructed ?? null, `${name}: reconstructed hash parity`);
+}
+
+const missingCrypto = await verifyRuntimeBundleWeb(valid, bytes, { cryptoImpl: null });
+assert.equal(missingCrypto.code, "WEBCRYPTO_REQUIRED");
+
+console.log(JSON.stringify({ status: "PASS", cases, browser_parity_cases: parityCases.length, webcrypto_required_case: 1 }));
