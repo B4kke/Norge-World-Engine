@@ -1,14 +1,20 @@
 ---
 name: nwe-github-workflow
-description: Enforces safe branch, commit, PR, CI and project-memory workflow for Norge World Engine repository changes.
+description: Enforces isolated Agent v2 branches, draft PRs, CI evidence, Vercel-preview linkage and conflict-aware project-memory updates for Norge World Engine.
 ---
 
 # NWE GitHub Workflow
 
-GitHub is the implementation surface. Inspect current branch/diff/PR first; do not overwrite unrelated work. Keep changes focused and reversible; never commit credentials, raw bulk geodata, caches or reproducible generated tiles.
+GitHub is the implementation surface. Inspect active branches/PRs/issues for the same P0 gate before writing. Do not overwrite or duplicate another agent's work.
 
-Validate relevant tests/build/schema/skill checks before PR. Report tooling or infrastructure blocks explicitly instead of calling unexecuted checks PASS.
+Use one primary Agent v2 role per branch. Default branch naming is `agent/<role>-<task>`. Keep core-path ownership narrow; cross-role changes should be versioned contract changes or a clearly documented dependency.
 
-Default agent publication is a draft PR unless the user asks otherwise. PR body must state what changed, why, evidence/tests, risks/open points and next step. Never merge without explicit user request.
+Never commit credentials, raw bulk geodata, caches or reproducible generated runtime tiles. Keep generated proof packages short-lived or outside Git unless intentionally small and licensed.
 
-Before handoff update `docs/05-worklog.md` and `docs/06-task-queue.md`; update `docs/04-decisions.md` only for a real decision/contract change.
+Run relevant tests/build/schema/skill checks before handoff. Report tooling/infrastructure blocks explicitly instead of calling unexecuted checks PASS.
+
+Default publication is a **draft PR**. PR body states role/owner, task-queue item, what changed, why, evidence/tests, risks/open points, cross-agent dependencies and next step. Never merge without explicit user request.
+
+For LUMEN viewer branches, require a successful production build and obtain/smoke-check a **Vercel Preview** for the exact branch commit when connector/deployment access is available. Record preview URL/deployment identity in the PR or proof note. Preview success is not permission to promote production.
+
+Before handoff update `docs/05-worklog.md` and `docs/06-task-queue.md`; change `docs/04-decisions.md` only for an evidence-backed decision.

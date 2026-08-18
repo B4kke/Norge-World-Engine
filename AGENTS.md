@@ -5,51 +5,71 @@
 1. Read `.agents/skills/nwe-project-start/SKILL.md`.
 2. Read `README.md`.
 3. Read `docs/03-roadmap.md`, `docs/04-decisions.md`, `docs/05-worklog.md` and `docs/06-task-queue.md`.
-4. Use `docs/drive-index.md` only when long-form Drive research/history is needed.
-5. Pick the highest-priority unresolved P0 task that advances Prototype 0.
-6. Verify time-sensitive software/API/license/geodata claims against current primary sources before relying on them.
-7. Produce concrete work: code, test, benchmark, pipeline, schema, decision record or verified source evidence.
-8. Validate it, then update worklog/task queue and any affected decision/architecture docs in the same PR.
+4. Inspect current GitHub branches/PRs/issues touching the same P0 gate before starting duplicate work.
+5. Select exactly one primary Agent v2 role from `.agents/roles/`.
+6. Use `docs/drive-index.md` only when long-form Drive research/history is needed.
+7. Pick the highest-priority unresolved P0 task that the selected role can advance with concrete evidence now.
+8. Verify time-sensitive software/API/license/geodata claims against current primary sources before relying on them.
+9. Implement a small reversible change, validate it, and update worklog/task queue plus affected decisions/docs in the same PR.
+10. End with **Gjort / Bevist / Endret / Neste**.
+
+GitHub is canonical for implementation state. Current repo/task-queue evidence beats stale historical Drive prose.
+
+## Agent v2 — five active roles
+
+- **LUMEN — Renderer & Web Platform**: `.agents/roles/lumen-renderer.md`. Owns `apps/world-viewer`, renderer experiments, WebGPU/WebGL capability work, browser/GPU instrumentation and Vercel Preview.
+- **STRØM — Runtime Streaming**: `.agents/roles/strom-streaming.md`. Owns `engine/streaming`, tile lifecycle, cache/prioritization, worker boundaries and renderer-neutral runtime metrics.
+- **FORGE — World Compiler & Data Pipeline**: `.agents/roles/forge-compiler.md`. Owns authoritative acquisition, normalization, tiling, deterministic compilation and real-data promotion.
+- **ATLAS — World Model & Coordinates**: `.agents/roles/atlas-world.md`. Owns coordinate/world-state contracts, floating/render origin, temporal origin semantics and the simulation boundary.
+- **SENTINEL — Integration & QA**: `.agents/roles/sentinel-integration.md`. Owns adversarial integration, schemas/contracts, cross-agent acceptance, CI evidence and claim calibration.
+
+These roles are parallel, not a fixed sequence. Dependencies still matter: runtime/render work consumes accepted compiled artifacts and contracts; it does not invent missing world truth.
 
 ## Repo-local skills
 
-Activate only the skills relevant to the current task:
+Load only what the task needs:
 
+- `nwe-project-start` — mandatory startup, role/priority selection and handoff.
 - `nwe-geodata-contracts` — source/CRS/datum/license/provenance gates.
 - `nwe-world-compiler` — raw → normalized → compiled, cache, lineage, promotion.
 - `nwe-geospatial-tooling` — pinned Rasterio/GDAL, pyproj/PROJ, Shapely and RFC8785 usage.
-- `nwe-quality-gates` — negative tests, determinism and evidence-first QA.
-- `nwe-3d-tiles-spike` — only for measured 3D Tiles/Cesium interchange experiments.
-- `nwe-github-workflow` — branch/PR/CI/project-memory publication rules.
+- `nwe-world-model` — high-precision world state, render-local coordinates and origin epochs.
+- `nwe-runtime-streaming` — verified tile lifecycle, scheduler/cache/worker boundaries.
+- `nwe-renderer-platform` — measurable web renderer, WebGPU/WebGL experiments and Vercel Preview.
+- `nwe-quality-gates` — negative tests, determinism, evidence classes and performance QA.
+- `nwe-3d-tiles-spike` — measured 3D Tiles/Cesium interchange experiments only.
+- `nwe-github-workflow` — isolated agent branches, draft PRs, CI and project-memory publication.
 
-Do not load renderer/AI/media context when the active P0 is a compiler/data task.
+## Parallel-work contract
 
-## Canonical work surface
-
-GitHub/repository history is canonical for new code, tests, schemas, CI, implementation docs and tasks. Google Drive remains reference/project memory. Historical Drive text saying “Drive-first” is superseded for new implementation work as of 2026-08-17.
-
-Never make Drive the only copy of new implementation code. Do not commit raw geodata, generated runtime tiles/caches, credentials or proprietary datasets.
+- One primary role owns a branch and its core paths. Branch names should be `agent/<role>-<task>`.
+- Before editing a shared contract or shared doc, inspect active PRs. Prefer additive/narrow changes and avoid rewriting unrelated sections.
+- Cross-agent handoff happens through versioned schemas, verified artifacts, documented metrics and explicit PR dependencies — not copied private assumptions.
+- LUMEN and STRØM may not weaken `RuntimeVerificationBundle` or bypass artifact verification for convenience.
+- FORGE may not encode renderer-specific assumptions into source acquisition or canonical normalized data.
+- ATLAS may prototype coordinate policies but may not mark a whole-Norway policy selected without evidence and `docs/04-decisions.md`.
+- SENTINEL may block a claim/PR on missing evidence; it must distinguish implementation failure from infrastructure/tooling failure.
+- No agent merges its own work unless the user explicitly asks for a merge.
 
 ## Architecture invariants
 
 - Separate geographic correctness from photorealism.
-- Source geodata is input to reproducible preprocessing; normal runtime must consume compiled artifacts, not source APIs.
-- Keep coordinate/datum/provenance explicit. Never interpret anonymous `z` as elevation.
-- Design for tiles/chunks, LOD, streaming, caching and deterministic coordinate handling from the start.
-- Keep renderer/runtime replaceable. WebGPU/WebGL/Unreal/Cesium choices remain evidence-driven until measured.
+- Source geodata is input to reproducible preprocessing; normal runtime consumes compiled artifacts, never Kartverket/NVDB/OSM source APIs.
+- Keep coordinate/datum/provenance explicit. Never interpret anonymous `z` as authoritative elevation.
+- Runtime tile identity is independent from provider/source tiling.
+- Design for tiles/chunks, LOD, streaming, caching, origin shifting and deterministic coordinate handling from the start.
+- Keep renderer/runtime replaceable. WebGPU, WebGL, Cesium/3D Tiles and Unreal remain evidence-driven until measured and recorded.
 - Static geodata and dynamic simulation state are separate layers.
-- Performance is a requirement: measure CPU, GPU, RAM/VRAM, network/cache, tile latency and frame time as soon as the relevant artifact exists.
+- Performance is a requirement: measure CPU, GPU, RAM/VRAM, network/cache, tile latency, worker cost, frame time/rAF gaps and draw calls as soon as relevant.
 - Use the least expensive representation that satisfies the current LOD/accuracy need.
+
+## Current evidence boundary — 2026-08-18
+
+The accepted single-tile Nannestad terrain plus road/building artifacts are real-data and runtime-verification proven. Full browser provenance and an actual module DedicatedWorker path are also proven. Real neighboring DTM1 terrain is still fail-closed on the unresolved source-overlap/seam policy; Android movement/performance and whole-Norway coordinate/LOD choices remain open. The Vite World Viewer is a deployment/measurement shell, not a selected renderer architecture.
 
 ## Prototype vs engine
 
-Experiments and historical implementations belong in `prototypes/`. Production-direction code belongs in `engine/` only when its contract and regressions are satisfied.
-
-The corrected GeoRSS polygon predicate is implemented in `engine/compiler/src/nwe_compiler/`; the legacy v0.2 copy under `prototypes/` remains historical.
-
-Full RuntimeVerificationBundle reconstruction is implemented in `engine/streaming/runtime_verifier.mjs` against the `02.7` semantic contract: runtime recalculates object hashes/edges, treats transport locators as mutable, requires REAL_COMPILED + promotion gates, and verifies artifact bytes before READY_FOR_RUNTIME. Keep the legacy VEKTOR v0.3 gate under `prototypes/` for historical regression only.
-
-`02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` in Drive remains the semantic authority until the complete contract is represented as versioned repo schemas. Do not weaken the engine verifier to match legacy prototype envelopes.
+Experiments and historical implementations belong in `prototypes/`. Production-direction code belongs in `engine/` only when its contract and regressions are satisfied. `apps/world-viewer` is the deployable measurement surface and must remain an artifact consumer rather than a source-data compiler.
 
 ## End every task with
 
