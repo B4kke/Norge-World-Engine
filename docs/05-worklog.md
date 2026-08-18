@@ -202,3 +202,48 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Build the repo-side fixed-camera benchmark required by Issue #5 and compare current per-object rendering against batching while preserving source-debug identity.
 - Instrument first-visible separately and capture p50/p95/p99 frame time rather than one rolling average.
 - Test terrain mesh generation in a worker or incrementally before moving to dynamic multi-tile load/unload/LOD.
+
+## 2026-08-17 — Renderer-independent world tile scheduler
+
+**Gjort**
+- Continued from the DTM1 branch on `agent/world-streaming-scheduler`, intentionally isolated from viewer batching Issue #5.
+- Added `engine/streaming/tile_scheduler.mjs` with deterministic camera-distance priority, active/retain radii, bounded concurrency, resident↔cache lifecycle, failure retry, load aborts, stale-completion rejection and renderer-injected activate/deactivate/dispose boundaries.
+- Added six adversarial lifecycle regressions and a synthetic 3×3 Nannestad descriptor benchmark. The benchmark uses opaque synthetic payloads only and does not claim neighbouring geodata exists.
+- During self-review found and fixed an abort/microtask race by capturing each AbortController locally before asynchronous load execution.
+- Added `docs/proofs/2026-08-17-streaming-scheduler-synthetic.md` and opened stacked draft PR #7 against `agent/dtm1-terrain-vertical`.
+
+**Bevist**
+- Hosted baseline passes scheduler regressions and the full repo baseline.
+- Synthetic camera path `center -> east -> north-east -> center-return`: 9/9 loads complete, peak concurrency 2, 2 cache hits, 4 evictions, final 5 resident / 0 cached, queue/active 0/0 and final retained bytes 22,282,240 B.
+- `maxCacheBytes` is proven to be an inactive-cache budget rather than a hard resident/GPU limit; peak retained bytes reached 26,738,688 B while desired tiles remained resident. This distinction is now explicit instead of hidden.
+
+**Endret**
+- Added P0-STREAMING-01 to the task queue. No final tile-addressing, LOD or renderer decision was made.
+- `engine/streaming/README.md` now defines scheduler ownership and non-decisions.
+
+**Neste**
+- Move terrain mesh work behind a worker/incremental boundary, then materialize real neighbouring terrain artifacts and drive them through the scheduler with device metrics.
+
+## 2026-08-17 — Terrain mesh Dedicated Worker boundary
+
+**Gjort**
+- Continued on `agent/terrain-mesh-worker`, stacked on scheduler PR #7.
+- Added deterministic renderer-independent height-grid → position/normal/UV/index buffer generation with Forsøk-16-compatible pixel-center bilinear sampling and topology.
+- Added versioned Dedicated Worker protocol, worker script and browser client with AbortSignal cancellation.
+- Height-grid input and generated buffers use transferable ArrayBuffer ownership; the original elevation buffer is returned with the mesh result so verified DTM remains available to runtime sampling.
+- Added seven worker/mesh regressions, updated streaming documentation, added `docs/proofs/2026-08-17-terrain-mesh-worker-structural.md`, and opened stacked draft PR #9.
+- Generated the one-file Android Forsøk 17 worker harness for the device gate.
+
+**Bevist**
+- Full hosted baseline passes, including all seven terrain-worker regressions.
+- Real-scale structural job produces 16,641 vertices, 32,768 triangles, 98,304 uint16 indices and 729,120 B of mesh buffers from a 1000×1000 source grid.
+- Hosted Node synthetic CPU time was 50.593 ms; this is structural evidence only and is explicitly not treated as Android performance evidence.
+- Worker ownership/error/cancellation boundaries are deterministic and tested without changing terrain artifact identity, CRS or NN2000 world truth.
+
+**Endret**
+- Added P0-STREAMING-02 to the task queue with status `STRUCTURAL DEDICATED-WORKER PASS / ANDROID DEVICE GATE OPEN`.
+- No worker-pool policy was selected; one worker per job remains an experiment until device startup/transfer cost is measured.
+
+**Neste**
+- Run Forsøk 17 on Android and compare worker CPU, dispatch→result RTT, main-thread geometry apply and largest rAF gap against Forsøk 16's 19.4 ms synchronous mesh build.
+- If the device gate passes, integrate worker preparation behind `TileStreamingScheduler.loadTile()` and move to real 2×2/3×3 terrain artifacts. If worker startup/transfer cost is material, compare a persistent worker/pool first.
