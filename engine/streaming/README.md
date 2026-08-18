@@ -5,24 +5,30 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 ## Current Prototype-0 components
 
 - `runtime_verifier.mjs` — reconstructs provenance and verifies exact compiled artifact bytes before `READY_FOR_RUNTIME`.
-- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, separate inactive-cache/resident payload accounting and stale-load rejection.
+- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, separate inactive-cache/resident payload accounting, update-driven retry controls and stale-load rejection.
 - `test_tile_scheduler.mjs` — scheduler lifecycle/adversarial regressions.
+- `test_tile_scheduler_retry.mjs` — deterministic retry-delay, retry-cap and interest-cycle regressions.
 - `benchmark_tile_scheduler.mjs` — synthetic 3×3 Nannestad scheduler simulation with constrained resident/cache byte stress. It tests runtime scheduling mechanics only and does **not** claim that neighbouring Nannestad geodata/artifacts exist yet or select production budgets.
 - `terrain_mesh_buffers.mjs` — deterministic renderer-independent height-grid → position/normal/UV/index buffer construction using the same pixel-center bilinear sampling semantics as Forsøk 16.
 - `terrain_mesh_worker_protocol.mjs` + `terrain_mesh_worker.mjs` — Dedicated Worker job/result contract for mesh construction.
 - `terrain_mesh_worker_client.mjs` — browser-side one-job worker client with AbortSignal cancellation and typed-buffer rehydration.
+- `terrain_tile_loader.mjs` — full verified terrain runtime path: runtime-input resolve → provenance/byte verification → strict NWEHGT01 decode → mesh worker → renderer-neutral payload with phase timings.
+- `terrain_load_observer.mjs` — non-authoritative wrapper that correlates scheduler load-attempt identity with completed phase timings or failed/aborted attempts without allowing telemetry-sink failure to change tile lifecycle.
+- `streaming_trace_recorder.mjs` — bounded renderer-neutral movement trace that joins scheduler events, scheduler snapshots and terrain load observations for browser/device evidence capture.
 
 ## Scheduler contract
 
 `TileStreamingScheduler` consumes opaque tile descriptors with a stable `id`, `centerE` and `centerN`. It deliberately does not define the final whole-Norway tile-addressing scheme; that remains an open architectural decision.
 
-The injected `loadTile(tile, {signal})` callback must return only after the tile payload has passed whatever artifact verification/decode gate the caller requires. The scheduler never contacts source geodata APIs and never promotes data. It only decides which already-runtime-eligible tile payloads should be loading, resident, cached or evicted.
+The injected `loadTile(tile, {signal, attempt})` callback must return only after the tile payload has passed whatever artifact verification/decode gate the caller requires. The scheduler never contacts source geodata APIs and never promotes data. It only decides which already-runtime-eligible tile payloads should be loading, resident, cached or evicted.
 
 Renderer-specific scene work stays behind injected `activateTile`, `deactivateTile` and `disposeTile` callbacks. This keeps Three.js/WebGPU/Cesium/Unreal choices outside the scheduling core. Activation failure keeps the verified payload cached for a later activation retry instead of forcing a source/runtime-input refetch; disposal failure keeps the payload and byte accounting intact rather than pretending memory was released.
 
 `maxCacheBytes` is specifically an **inactive cached-payload** budget. Resident payload bytes do not consume it. `maxResidentBytes` is an optional hard cap over scheduler-known payload bytes in `resident + activating`; it defaults to `null`, so no production resident-byte budget is selected by the core. This is a CPU/runtime-payload accounting boundary, not a claim about exact GPU/VRAM allocation. LUMEN may enforce renderer-resource budgets through the adapter layer once browser/device measurements justify a policy.
 
 During an asynchronous activation, bytes move through an explicit `activating` bucket. This reserves resident capacity before the adapter awaits GPU/scene work, so concurrent load completions cannot both pass the same resident budget and overcommit it.
+
+Load retry is deliberately **update-driven** rather than timer-owned by the streaming core. `retryDelayMs` gates when a failed desired tile may be re-queued, and optional `maxLoadAttemptsPerInterest` bounds repeated failures while the same tile remains desired. Leaving the interest set resets that failure cycle. Defaults remain `retryDelayMs = 0` and `maxLoadAttemptsPerInterest = null`, preserving the previous behavior and avoiding an unmeasured production retry policy. Runtime snapshots/events expose attempts, retry-not-before, queued retries, deferrals and exhaustion.
 
 ## Terrain mesh job boundary
 
@@ -36,6 +42,12 @@ The browser client transfers ownership of the elevation `ArrayBuffer` into the w
 
 The current client uses a dedicated worker per job because cancellation can then terminate the whole worker deterministically. Worker pooling is deliberately postponed until device evidence shows whether worker creation cost matters for multi-tile streaming.
 
+## Movement evidence trace
+
+`createStreamingTraceRecorder()` accepts the scheduler `onEvent` stream, `terrain_load_observer` observations and explicit scheduler snapshots without learning anything about WebGL/WebGPU scene objects. The exported `nwe.streaming-movement-trace/0.1` trace preserves ordering with a monotonically increasing sequence, carries caller-supplied capture metadata, and has a hard `maxEntries` retention bound. When the trace fills, oldest entries are discarded and `droppedEntries` records the evidence loss instead of allowing telemetry memory to grow without bound.
+
+The trace is an observability artifact, not world truth. LUMEN may add renderer/device measurements beside it in the browser harness, but renderer-specific upload/GPU/rAF data remains outside streaming core.
+
 ## Current observables
 
 Scheduler snapshots report at least:
@@ -47,10 +59,13 @@ Scheduler snapshots report at least:
 - current resident, activating, inactive-cache and total retained payload bytes;
 - peak resident, activating, inactive-cache and retained payload bytes;
 - cache/resident budget overcommit bytes and resident-budget deferrals;
+- load attempts, retry-not-before, retries queued, retry deferrals and retry exhaustion;
 - activations/deactivations/evictions plus activation/deactivation/disposal/lifecycle failures;
 - abort requests and stale completions dropped.
 
-Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte size and worker CPU duration. Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement.
+Successful terrain payloads report runtime-input resolve, verification, strict decode, worker roundtrip, worker-reported CPU and total load timing. `createObservedTerrainTileLoadFunction()` can wrap the loader before it is injected into the scheduler and emits one immutable observation per attempt with `tileId`, scheduler `attempt`, completed/failed/aborted status, wrapper wall time, retained bytes/artifact hash on success, phase timings on success, and original error identity on failure. The observer callback is isolated so telemetry collection cannot convert a successful load into a runtime failure.
+
+Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement. The trace recorder provides a stable bounded handoff for correlating those device traces with scheduler movement/retry/cancellation events; it does not itself prove device performance.
 
 ## Current non-decisions
 
@@ -58,6 +73,8 @@ Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte
 - no accepted LOD metric beyond Prototype-0 distance prioritization;
 - no renderer choice;
 - no production `maxResidentBytes`, inactive-cache size or GPU/VRAM budget selected from the synthetic stress benchmark;
+- no production retry delay or retry-attempt cap selected without real failure/device evidence;
 - no worker-pool size/persistence policy;
+- no production telemetry-retention size selected; recorder limits are caller configuration;
 - no claim that a synthetic 3×3 scheduling test equals real multi-tile streaming;
 - no claim that hosted Node mesh timing equals Android browser worker timing.
