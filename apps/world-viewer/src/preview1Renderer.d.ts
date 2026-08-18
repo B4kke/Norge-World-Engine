@@ -1,5 +1,12 @@
 export function createPreview1Renderer(options: any): Promise<{
   header: any;
+  firstFrame: Promise<{
+    at: number;
+    drawGapMs: number | null;
+    backend: 'webgpu' | 'webgl2';
+    pixelRatio: number;
+    camera: { yaw: number; pitch: number; distance: number };
+  }>;
   stats: {
     terrain_vertices: number;
     terrain_triangles: number;
