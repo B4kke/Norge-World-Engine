@@ -103,10 +103,59 @@ Exact-real smoke result:
 
 The uploaded smoke evidence ZIP SHA-256 is `8cd86866f632d6f192f23ba14e20fac15d7a95c6c239745ad9e7f3ef110249b6`.
 
-Hosted WebGPU remained unavailable in the separate A/B runner, so no WebGPU/WebGL2 performance comparison is claimed.
+## Operator Android Chrome evidence
+
+### Normal Chrome WebGPU availability
+
+On Render build `1ca5ade04fd3b624996f21e01e78f0bdc8600700`, Chrome 151 exposed `navigator.gpu` but returned no adapter for either the normal/core request or `featureLevel: "compatibility"`. This remained true with `graphics=high` / `powerPreference="high-performance"` and with `graphics=balanced` / default power preference. The failure therefore occurred before `GPUDevice`, WGSL, pipeline, resource creation or draw submission.
+
+A separate `chrome://gpu` operator dump showed that the handset GPU stack was present but Dawn classified both the Vulkan Xclipse 960 adapter and OpenGL ES compatibility adapter as blocklisted in that Chrome state. This is environment/capability evidence, not a production renderer failure.
+
+### Unsafe-WebGPU diagnostic run — PASS
+
+After the operator enabled Chrome's Unsafe WebGPU diagnostic flag, the first attempt on build `1ca5ade...` advanced past adapter/device/context/first-frame and exposed a renderer-wrapper contract bug: common benchmark code called `invalidate()` while the WebGPU adapter only exposed `drawForBenchmark()` / `stop()`. The backend contract was normalized on commit `a5f2e65dcd06dda1460cd0ccb44bb8848d9597a7` so both WebGL2 and WebGPU expose `invalidate()` / `dispose()` to Preview 1.
+
+The operator then supplied `nwe.world-viewer-device-evidence/0.1` **PASS** from the same Render deployment on Android Chrome 151:
+
+- build: `a5f2e65dcd06dda1460cd0ccb44bb8848d9597a7`;
+- capture session: `unsafe-webgpu-002`;
+- requested + active backend: **WebGPU**, no fallback;
+- graphics profile: `balanced`, max DPR 1.5, MSAA 1, default power preference;
+- exact accepted terrain/road/building SHAs; all three `RUNTIME_VERIFICATION_PASS`;
+- runtime requests: **7** / raw-source runtime calls: **0**;
+- movement/cache probe: **PASS**, resolver `1 -> 1`, load-start delta `0`, cache-hit delta `1`;
+- streaming trace: **9 retained / 0 dropped**;
+- retained terrain: **4,729,120 B**;
+- terrain: **16,641 vertices / 32,768 triangles**;
+- draw calls/frame: **4**;
+- GPU buffers: **13**, payload **849,566 B**;
+- estimated GPU attachments: **1,386,720 B**;
+- timestamp-query capability reported: **true**;
+- render surface: 360×447 CSS px / 540×642 backing px / renderer pixel ratio 1.5;
+- input -> first-frame-ready: **386.3 ms**;
+- startup rAF p50/p95/p99/max: **16.7 / 16.89 / 23.218 / 25.0 ms**;
+- repeated 90-draw frame-gap p50/p95/p99/max: **16.7 / 18.255 / 20.548 / 35.5 ms**;
+- repeated-draw CPU p50/p95/p99/max: **0.30 / 0.555 / 1.166 / 1.70 ms**;
+- terrain pipeline: **271.8 ms total** = 104.5 resolve + 4.9 verify + 21.0 decode + 141.0 worker roundtrip, worker-reported 28.6 ms;
+- renderer timing: 17.1 ms adapter+device, 14.3 ms scene build, 1.9 ms GPU-resource apply CPU, 33.8 ms renderer init;
+- used JS heap: ~24.5 MB;
+- 246 road paths / 135 building footprints / 15 source-backed building heights / 120 unresolved heights.
+
+This proves that the NWE WebGPU implementation can obtain a device, build the exact-real Preview 1 scene, submit a real first frame and complete the 90-draw measurement loop on the operator handset when Chrome's blocklist is bypassed diagnostically.
+
+### Evidence plumbing correction after the PASS capture
+
+The PASS file exposed a metadata gap: the WebGPU renderer already recorded `webgpu_feature_level`, but `deviceEvidence.mjs` emitted different field names and therefore lost whether the successful adapter came from the core request or compatibility fallback. Subsequent branch changes preserve this value as `renderer.webgpu_feature_level` and `renderer.webgpu_adapter_request_mode`, with a regression test. The `unsafe-webgpu-002` capture must therefore **not** be used to assert core vs compatibility mode; a fresh capture on the corrected evidence head is required for that detail.
 
 ## Acceptance classification
 
-**PASS — exact-real single-tile verified runtime/cache movement is now proven through the same device-evidence application route.** The previous separation between STRØM lifecycle/loader observations and LUMEN browser evidence is closed for this single-tile cache round-trip.
+**PASS — exact-real single-tile verified runtime/cache movement is proven through the same deployed device-evidence application route.** Android Chrome has now executed the exact accepted Nannestad terrain/road/building path with full provenance, real module worker, cache round-trip and measured WebGL2. A diagnostic Unsafe-WebGPU run additionally proves the WebGPU implementation through first frame and 90 repeated draws on the handset.
 
-**Still open:** physical Android Chrome timings; renderer GPU resource unload/reload; real neighbor-tile transitions; 2×2/3×3 streaming; worker-pool/LOD/hard memory policy. Multi-tile terrain remains correctly blocked by DTM1 seam authority.
+**Still open / explicit non-claims:**
+
+- normal Chrome on this handset remains WebGPU-capability blocked in the observed default browser state; the unsafe flag is not a production requirement or acceptance path;
+- the Unsafe-WebGPU PASS is not yet a strict WebGL2/WebGPU A/B because the existing WebGL2 capture used a different commit/profile/session/render surface;
+- the successful capture does not identify core vs compatibility adapter mode because that metadata was dropped before the evidence-plumbing correction;
+- repeated identical-scene draws are not gameplay/camera-motion acceptance;
+- `renderer_resource_lifecycle_observed=false`: GPU resource unload/reload is still not proven;
+- real neighbor-tile transitions, 2×2/3×3 streaming, worker-pool/LOD/hard memory policy and multi-tile DTM1 seam authority remain open.
