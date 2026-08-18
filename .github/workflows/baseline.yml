@@ -91,8 +91,11 @@ jobs:
       - name: Terrain verified-artifact streaming pipeline regressions
         run: |
           node --check engine/streaming/terrain_tile_loader.mjs
+          node --check engine/streaming/terrain_load_observer.mjs
           node --check engine/streaming/test_terrain_tile_loader.mjs
+          node --check engine/streaming/test_terrain_load_observer.mjs
           node engine/streaming/test_terrain_tile_loader.mjs
+          node engine/streaming/test_terrain_load_observer.mjs
 
       - name: Viewer compiled-artifact boundary regression
         run: |

@@ -12,6 +12,8 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 - `terrain_mesh_buffers.mjs` — deterministic renderer-independent height-grid → position/normal/UV/index buffer construction using the same pixel-center bilinear sampling semantics as Forsøk 16.
 - `terrain_mesh_worker_protocol.mjs` + `terrain_mesh_worker.mjs` — Dedicated Worker job/result contract for mesh construction.
 - `terrain_mesh_worker_client.mjs` — browser-side one-job worker client with AbortSignal cancellation and typed-buffer rehydration.
+- `terrain_tile_loader.mjs` — full verified terrain runtime path: runtime-input resolve → provenance/byte verification → strict NWEHGT01 decode → mesh worker → renderer-neutral payload with phase timings.
+- `terrain_load_observer.mjs` — non-authoritative wrapper that correlates scheduler load-attempt identity with completed phase timings or failed/aborted attempts without allowing telemetry-sink failure to change tile lifecycle.
 
 ## Scheduler contract
 
@@ -54,7 +56,9 @@ Scheduler snapshots report at least:
 - activations/deactivations/evictions plus activation/deactivation/disposal/lifecycle failures;
 - abort requests and stale completions dropped.
 
-Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte size and worker CPU duration. Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement.
+Successful terrain payloads report runtime-input resolve, verification, strict decode, worker roundtrip, worker-reported CPU and total load timing. `createObservedTerrainTileLoadFunction()` can wrap the loader before it is injected into the scheduler and emits one immutable observation per attempt with `tileId`, scheduler `attempt`, completed/failed/aborted status, wrapper wall time, retained bytes/artifact hash on success, phase timings on success, and original error identity on failure. The observer callback is isolated so telemetry collection cannot convert a successful load into a runtime failure.
+
+Device-level main-thread hitch, worker startup/transfer cost and GPU upload still require Android/browser measurement. The observer provides a stable renderer-neutral handoff for correlating those device traces with scheduler retry/cancellation events; it does not itself prove device performance.
 
 ## Current non-decisions
 
