@@ -325,3 +325,24 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
 - Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
 - Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.
+
+## 2026-08-18 — FORGE DTM1 source-grid geometry audit
+
+**Gjort**
+- Read the current P0/compiler state and kept `P0-MULTITILE-TERRAIN-01` as the highest open FORGE gate.
+- Recovered the retained exact Nannestad 3×3 source-plan artifact and compared the official Atom source geometry to Kartverket/Data.norge's documented nominal 15 km route size.
+- Added `nwe_compiler.dtm1_source_grid_audit`, focused positive/negative regressions and a lightweight live-Atom workflow that performs no raw GeoTIFF download or terrain promotion.
+- Added `docs/proofs/2026-08-18-dtm1-source-grid-geometry-audit.md`; production `terrain_mosaic.py` remains unchanged and fail-closed.
+
+**Bevist**
+- The exact declared EPSG:25833 extents for `33-125-116.tif` and `33-125-117.tif` are each ~15,010 m, their centers are ~15,000 m apart and their declared overlap is ~10 m.
+- Given the provider-documented nominal 15 km route size, those extents are geometrically consistent with ~5 m symmetric padding around nominal 15 km cores; focused local regression result is `3 passed`.
+- This does **not** prove the inferred padding is a disposable processing halo. No provider rule was found authorizing first/newest/mean/min/max/tolerance or inferred-core clipping. Audit output therefore fixes `production_seam_authority=false` and `authority_status=UNPROVEN`.
+
+**Endret**
+- Branch `agent/forge-dtm1-source-grid-audit`; draft PR #24. No merge.
+- `docs/06-task-queue.md` now records the supported buffered-route geometry hypothesis while keeping real seam authority open.
+- `docs/04-decisions.md` intentionally unchanged because no production seam transform is proven.
+
+**Neste**
+- Seek provider-authoritative DTM1 route-edge/buffer semantics. If unavailable, expand the metadata-only audit across many adjacent source pairs to test whether the 15010/15000/10 m pattern is universal; treat regularity as uncertainty reduction, not authority.
