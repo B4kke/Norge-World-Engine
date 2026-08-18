@@ -54,6 +54,15 @@ jobs:
           node --check engine/streaming/test_runtime_verifier.mjs
           node engine/streaming/test_runtime_verifier.mjs
 
+      - name: World streaming scheduler regressions
+        run: |
+          node --check engine/streaming/tile_scheduler.mjs
+          node --check engine/streaming/test_tile_scheduler.mjs
+          node --check engine/streaming/benchmark_tile_scheduler.mjs
+          node engine/streaming/test_tile_scheduler.mjs
+          node engine/streaming/benchmark_tile_scheduler.mjs | tee /tmp/nwe-streaming-scheduler-benchmark.json
+          python -m json.tool /tmp/nwe-streaming-scheduler-benchmark.json > /dev/null
+
       - name: Viewer compiled-artifact boundary regression
         run: |
           node --check apps/world-viewer/artifact_consumer.mjs
