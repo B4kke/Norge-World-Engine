@@ -247,3 +247,29 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 **Neste**
 - Run Forsøk 17 on Android and compare worker CPU, dispatch→result RTT, main-thread geometry apply and largest rAF gap against Forsøk 16's 19.4 ms synchronous mesh build.
 - If the device gate passes, integrate worker preparation behind `TileStreamingScheduler.loadTile()` and move to real 2×2/3×3 terrain artifacts. If worker startup/transfer cost is material, compare a persistent worker/pool first.
+
+## 2026-08-18 — PR consolidation + verified terrain runtime pipeline
+
+**Gjort**
+- Collapsed the accumulated stacked/parallel PR queue instead of carrying historical branch chains forward. PRs #6, #11, #7, #12, #9, #10, #14, #13 and #8 were rebased/flattened as needed, revalidated on current `main` and merged. Open PR count ended at **0**.
+- Corrected an earlier overclaim during multi-tile work: the real DTM1 3×3 terrain pass is **not** complete. The multi-tile foundation is merged, but the 10 m overlap between `33-125-116.tif` and `33-125-117.tif` remains fail-closed because the two valid surfaces differ and no authoritative Kartverket overlap-priority rule has been found.
+- Added strict provenance JSON Schemas, the terrain Dedicated Worker boundary, Float32/local-origin precision evidence, render-origin temporal invariants and the fixed-camera vector batching harness to `main`.
+- Added `terrain_tile_loader.mjs`, composing full RuntimeVerificationBundle verification, strict NWEHGT01 semantic decode, terrain mesh worker output and `TileStreamingScheduler` lifecycle without selecting a renderer or hidden origin policy.
+- Reused the existing DTM1 real-data workflow after PR #14 merge so the exact accepted terrain artifact was exercised through the new loader/worker/scheduler path without adding a second ~1.1 GB acquisition workflow.
+
+**Bevist**
+- Exact main real-data run `32134507528` on commit `909cf5d0cdf7489feff7f44ba12983a051e5affe` is PASS. Artifact `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` remains 4,000,382 B and returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.
+- The same real artifact produces 1,000,000 retained elevation samples and a 129×129 renderer-neutral mesh with 16,641 vertices, 32,768 triangles and 729,120 B; scheduler retained bytes are exactly 4,729,120 B, with one completed load and zero failures/budget overcommit.
+- Hosted runtime-path timing for this exact artifact: ~4.0 ms full provenance verification, ~29.8 ms strict decode/validation, ~44.7 ms worker-client/protocol path, ~82.3 ms total. This is hosted/in-process-worker-shim evidence, not Android/browser thread/GPU timing.
+- Final viewer batching run `32135092313` on the clean #8 composition is PASS: 246 roads + 135 footprints = 381 logical objects, **381 -> 2 draw calls**, frame p95 **50.0 -> 16.7 ms**, render-sync p95 **0.4 -> 0.2 ms**, raw-source runtime calls 0. This remains headless-hosted comparative evidence.
+- Final origin-shift run `32134861850` is PASS: 2,048 entities, 3,600 ticks, 29 shifts, identical authoritative Float64 world state, max local reconstruction error 0.244141 mm and max origin-compensated temporal displacement error 0.04883 mm.
+
+**Endret**
+- `docs/06-task-queue.md` now separates the proven single-tile runtime pipeline from the still-open real multi-source seam gate and tracks browser provenance parity/device movement as the next streaming gates.
+- `docs/proofs/2026-08-18-terrain-runtime-pipeline.md` now records both the synthetic adversarial regression and exact accepted real-artifact proof.
+- Historical 17 August stacked-branch notes above are intentionally retained as history; their PR/status statements are superseded by this handoff.
+
+**Neste**
+- Highest value runtime task: remove the Node-only `crypto` dependency from the full graph-reconstructing provenance path by introducing a browser-compatible RFC 8785/JCS + WebCrypto verifier with parity regressions against the existing Node verifier.
+- Then exercise the accepted terrain artifact through a real browser Dedicated Worker and instrument transfer/startup, GPU apply/upload, rAF gaps and camera movement on Android.
+- In parallel, keep `P0-MULTITILE-TERRAIN-01` fail-closed until an evidence-backed DTM1 overlap transform is documented; do not infer a whole-Norway seam rule from file order, timestamp, averaging or tolerance.
