@@ -16,6 +16,68 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
 };
 
+const WEBGPU_PROBE_HTML = `<!doctype html>
+<meta charset="utf-8">
+<title>NWE WebGPU capability probe</title>
+<script type="module">
+const reportUrl = new URLSearchParams(location.search).get('report');
+const send = async (payload) => fetch(reportUrl, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(payload),
+  cache: 'no-store',
+});
+try {
+  if (!navigator.gpu) throw new Error('WEBGPU_UNAVAILABLE');
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('WEBGPU_ADAPTER_UNAVAILABLE');
+  const device = await adapter.requestDevice();
+  let lostInfo = null;
+  device.lost.then((info) => { lostInfo = { reason: info?.reason ?? 'unknown', message: info?.message ?? '' }; });
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  document.body.append(canvas);
+  const context = canvas.getContext('webgpu');
+  if (!context) throw new Error('WEBGPU_CANVAS_CONTEXT_UNAVAILABLE');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({ device, format, alphaMode: 'opaque' });
+  const encoder = device.createCommandEncoder({ label: 'nwe-capability-probe' });
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.02, g: 0.03, b: 0.04, a: 1 },
+      loadOp: 'clear',
+      storeOp: 'store',
+    }],
+  });
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  await device.queue.onSubmittedWorkDone();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  if (lostInfo) throw new Error('WEBGPU_DEVICE_LOST_' + lostInfo.reason + ': ' + lostInfo.message);
+  const info = adapter.info ?? {};
+  await send({
+    schema: 'nwe.webgpu-capability-probe/0.1',
+    status: 'PASS',
+    adapter_info: {
+      vendor: info.vendor ?? '',
+      architecture: info.architecture ?? '',
+      device: info.device ?? '',
+      description: info.description ?? '',
+    },
+    preferred_canvas_format: format,
+    timestamp_query_supported: adapter.features?.has?.('timestamp-query') ?? false,
+  });
+} catch (error) {
+  await send({
+    schema: 'nwe.webgpu-capability-probe/0.1',
+    status: 'FAIL',
+    error: error instanceof Error ? error.message : String(error),
+  });
+}
+</script>`;
+
 function parseArgs(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -60,9 +122,7 @@ function summarizeReport(report, requestedBackend) {
   if (report?.status === 'FAIL') {
     const text = `${report.code ?? ''} ${report.error ?? ''}`;
     const capabilityFailure = requestedBackend === 'webgpu' && /WEBGPU_(UNAVAILABLE|ADAPTER_UNAVAILABLE|CANVAS_CONTEXT_UNAVAILABLE)|CLIENT_CAPABILITY_BLOCKED/.test(text);
-    if (capabilityFailure) {
-      return { status: 'UNAVAILABLE', requested_backend: requestedBackend, detail: text.trim() };
-    }
+    if (capabilityFailure) return { status: 'UNAVAILABLE', requested_backend: requestedBackend, detail: text.trim() };
     throw new Error(`${requestedBackend}: browser report failed: ${text}`);
   }
   if (!report || report.schema !== 'nwe.world-preview-browser-smoke/0.1' || report.status !== 'PASS') {
@@ -162,6 +222,28 @@ async function stopChrome(child, profile) {
   }
 }
 
+function chromeArgs({ profile, webgpu }) {
+  const args = [
+    '--headless=new',
+    '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
+    '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
+    '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+    '--window-size=1280,800',
+    `--user-data-dir=${profile}`,
+  ];
+  if (webgpu) {
+    // Mirrors Chromium's webgpu-swiftshader test adapter strategy. Hosted evidence remains directional.
+    args.push(
+      '--enable-unsafe-webgpu',
+      '--use-webgpu-adapter=swiftshader',
+      '--disable-dawn-features=disallow_unsafe_apis',
+      '--use-gpu-in-tests',
+      '--enable-accelerated-2d-canvas',
+    );
+  }
+  return args;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const distRoot = resolve(args['dist-root'] ?? DEFAULT_DIST_ROOT);
@@ -180,6 +262,11 @@ async function main() {
       const reportHandler = reportHandlers.get(url.pathname);
       if (req.method === 'POST' && reportHandler) {
         reportHandler(req, res);
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/__webgpu_probe.html') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(WEBGPU_PROBE_HTML);
         return;
       }
       const relative = url.pathname === '/' ? 'index.html' : url.pathname;
@@ -211,9 +298,11 @@ async function main() {
   if (!port) throw new Error('benchmark server did not expose a port');
   const origin = `http://127.0.0.1:${port}`;
   const chrome = findChrome();
+  let reportSequence = 0;
 
-  async function execute(backend) {
-    const reportPath = `/__renderer_report/${backend}`;
+  async function executeBrowser({ label, webgpu = false, buildUrl }) {
+    reportSequence += 1;
+    const reportPath = `/__browser_report/${reportSequence}-${label}`;
     let resolveReport;
     let rejectReport;
     const reportPromise = new Promise((resolvePromise, rejectPromise) => {
@@ -234,33 +323,13 @@ async function main() {
       });
     });
 
-    const profile = mkdtempSync(resolve(tmpdir(), `nwe-${backend}-${Date.now()}-`));
-    const query = new URLSearchParams({
-      renderer: backend,
-      graphics,
-      previewManifest: manifestUrl,
-      previewReport: `${origin}${reportPath}`,
-      previewBenchmarkFrames: String(frameCount),
+    const profile = mkdtempSync(resolve(tmpdir(), `nwe-${label}-${Date.now()}-`));
+    const reportUrl = `${origin}${reportPath}`;
+    const targetUrl = buildUrl(reportUrl);
+    const child = spawn(chrome, [...chromeArgs({ profile, webgpu }), targetUrl], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
     });
-    const chromeArgs = [
-      '--headless=new',
-      '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
-      '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-      '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
-      '--window-size=1280,800',
-      `--user-data-dir=${profile}`,
-    ];
-    if (backend === 'webgpu') {
-      chromeArgs.push(
-        '--enable-unsafe-webgpu',
-        '--use-webgpu-adapter=swiftshader',
-        '--disable-dawn-features=disallow_unsafe_apis',
-        '--use-gpu-in-tests',
-        '--enable-accelerated-2d-canvas',
-      );
-    }
-    chromeArgs.push(`${origin}/?${query}`);
-    const child = spawn(chrome, chromeArgs, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     let chromeLog = '';
     child.stdout.on('data', (chunk) => { chromeLog += chunk.toString(); });
     child.stderr.on('data', (chunk) => { chromeLog += chunk.toString(); });
@@ -268,7 +337,7 @@ async function main() {
     let timeoutHandle;
     const timeoutPromise = new Promise((_, rejectPromise) => {
       timeoutHandle = setTimeout(() => {
-        rejectPromise(new Error(`${backend} timed out after ${timeoutMs} ms\n${chromeLog.slice(-5000)}`));
+        rejectPromise(new Error(`${label} timed out after ${timeoutMs} ms\n${chromeLog.slice(-5000)}`));
       }, timeoutMs);
     });
 
@@ -281,9 +350,47 @@ async function main() {
     }
   }
 
+  function previewUrl(backend, reportUrl) {
+    const query = new URLSearchParams({
+      renderer: backend,
+      graphics,
+      previewManifest: manifestUrl,
+      previewReport: reportUrl,
+      previewBenchmarkFrames: String(frameCount),
+    });
+    return `${origin}/?${query}`;
+  }
+
   try {
-    const webgl2 = summarizeReport(await execute('webgl2'), 'webgl2');
-    const webgpu = summarizeReport(await execute('webgpu'), 'webgpu');
+    const webgl2 = summarizeReport(await executeBrowser({
+      label: 'webgl2',
+      buildUrl: (reportUrl) => previewUrl('webgl2', reportUrl),
+    }), 'webgl2');
+
+    const webgpuProbe = await executeBrowser({
+      label: 'webgpu-probe',
+      webgpu: true,
+      buildUrl: (reportUrl) => `${origin}/__webgpu_probe.html?report=${encodeURIComponent(reportUrl)}`,
+    });
+    if (webgpuProbe?.schema !== 'nwe.webgpu-capability-probe/0.1') {
+      throw new Error(`invalid WebGPU capability probe: ${JSON.stringify(webgpuProbe)}`);
+    }
+
+    let webgpu;
+    if (webgpuProbe.status === 'PASS') {
+      webgpu = summarizeReport(await executeBrowser({
+        label: 'webgpu',
+        webgpu: true,
+        buildUrl: (reportUrl) => previewUrl('webgpu', reportUrl),
+      }), 'webgpu');
+    } else {
+      webgpu = {
+        status: 'UNAVAILABLE',
+        requested_backend: 'webgpu',
+        detail: `minimal hosted WebGPU probe failed: ${webgpuProbe.error ?? 'unknown error'}`,
+      };
+    }
+
     const sameInputs = assertComparable(webgl2, webgpu);
     const report = {
       schema: 'nwe.world-preview-renderer-benchmark/0.1',
@@ -294,8 +401,11 @@ async function main() {
       requested_repeated_draw_frames: frameCount,
       camera_contract: 'apps/world-viewer/src/preview1SceneGeometry.mjs#createPreviewCamera',
       same_inputs_proven: sameInputs,
+      hosted_webgpu_probe: webgpuProbe,
       runs: { webgl2, webgpu },
-      interpretation: 'Directional hosted browser evidence only. Do not use this result to select WebGPU/WebGL2 or claim Android GPU performance.',
+      interpretation: sameInputs
+        ? 'Same-artifact hosted comparison completed. Still do not select WebGPU/WebGL2 or claim Android GPU performance from this runner.'
+        : 'Hosted WebGPU control capability was unavailable, so no WebGPU/WebGL2 performance comparison is claimed. WebGL2 evidence remains valid; use a real WebGPU-capable device next.',
     };
     writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
     console.log(JSON.stringify(report, null, 2));
