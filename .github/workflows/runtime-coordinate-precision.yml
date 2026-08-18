@@ -1,0 +1,32 @@
+name: Runtime coordinate precision
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'prototypes/runtime-coordinate-precision/**'
+      - '.github/workflows/runtime-coordinate-precision.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deterministic precision regressions
+        run: node prototypes/runtime-coordinate-precision/test_precision.mjs
+      - name: Host benchmark
+        run: |
+          node prototypes/runtime-coordinate-precision/benchmark.mjs | tee runtime-coordinate-precision.json
+          {
+            echo '## VEKTOR runtime coordinate precision'
+            echo
+            echo '```json'
+            cat runtime-coordinate-precision.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
