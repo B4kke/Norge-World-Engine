@@ -6,6 +6,8 @@ import {
 } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 
+const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
+
 function compileShader(gl, type, source) {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('WebGL shader allocation failed');
@@ -118,6 +120,18 @@ function destroyMesh(gl, mesh) {
   gl.deleteVertexArray(mesh.vao);
 }
 
+function assertTerrainPayloadIdentity(payload, expectedTileId, expectedArtifactSha) {
+  if (!payload?.mesh?.positions || !payload?.mesh?.indices || !payload?.mesh?.normals) {
+    throw new Error('PREVIEW_TERRAIN_RESOURCE_PAYLOAD_INVALID');
+  }
+  if (payload?.artifact?.header?.tile_id !== expectedTileId) {
+    throw new Error(`PREVIEW_TERRAIN_RESOURCE_TILE_MISMATCH: ${payload?.artifact?.header?.tile_id ?? 'missing'} != ${expectedTileId}`);
+  }
+  if (payload?.artifact?.sha256 !== expectedArtifactSha) {
+    throw new Error(`PREVIEW_TERRAIN_RESOURCE_ARTIFACT_MISMATCH: ${payload?.artifact?.sha256 ?? 'missing'} != ${expectedArtifactSha}`);
+  }
+}
+
 export function createPreview1WebGl2Renderer({
   canvas,
   terrainPayload,
@@ -143,19 +157,30 @@ export function createPreview1WebGl2Renderer({
   const sceneStartedAt = monotonicNow();
   const scene = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
+  const expectedTerrainTileId = terrainPayload?.artifact?.header?.tile_id;
+  const expectedTerrainArtifactSha = terrainPayload?.artifact?.sha256;
+  if (!expectedTerrainTileId || !expectedTerrainArtifactSha) throw new Error('PREVIEW_TERRAIN_RESOURCE_IDENTITY_MISSING');
+
+  const terrainLifecycle = {
+    creates: 0,
+    destroys: 0,
+    createTimingMs: [],
+    destroyTimingMs: [],
+  };
 
   const resourceStartedAt = monotonicNow();
   const terrainProgram = createTerrainProgram(gl);
   const flatProgram = createFlatProgram(gl);
-  const terrainMesh = createIndexedMesh(gl, scene.terrain.positions, scene.terrain.indices, scene.terrain.normals);
+  const initialTerrainStartedAt = monotonicNow();
+  let terrainMesh = createIndexedMesh(gl, scene.terrain.positions, scene.terrain.indices, scene.terrain.normals);
+  terrainLifecycle.creates += 1;
+  terrainLifecycle.createTimingMs.push(monotonicNow() - initialTerrainStartedAt);
   const roadMesh = createIndexedMesh(gl, scene.roads.positions, scene.roads.indices);
   const resolvedMesh = createIndexedMesh(gl, scene.buildingsResolved.positions, scene.buildingsResolved.indices);
   const fallbackMesh = createIndexedMesh(gl, scene.buildingsFallback.positions, scene.buildingsFallback.indices);
   const gpuResourceApplyCpuMs = monotonicNow() - resourceStartedAt;
-  const gpuBufferPayloadBytes = byteLengthOf(
-    scene.terrain.positions,
-    scene.terrain.normals,
-    scene.terrain.indices,
+  const terrainGpuPayloadBytes = byteLengthOf(scene.terrain.positions, scene.terrain.normals, scene.terrain.indices);
+  const vectorGpuPayloadBytes = byteLengthOf(
     scene.roads.positions,
     scene.roads.indices,
     scene.buildingsResolved.positions,
@@ -163,13 +188,11 @@ export function createPreview1WebGl2Renderer({
     scene.buildingsFallback.positions,
     scene.buildingsFallback.indices,
   );
-  const gpuBufferCount = [
-    terrainMesh.positionBuffer, terrainMesh.normalBuffer, terrainMesh.indexBuffer,
+  const vectorGpuBufferCount = [
     roadMesh.positionBuffer, roadMesh.indexBuffer,
     resolvedMesh.positionBuffer, resolvedMesh.indexBuffer,
     fallbackMesh.positionBuffer, fallbackMesh.indexBuffer,
   ].filter(Boolean).length;
-  const drawCallsPerFrame = [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
 
   const camera = createPreviewCamera();
   let dirty = true;
@@ -183,6 +206,47 @@ export function createPreview1WebGl2Renderer({
     firstFrameResolve = resolve;
     firstFrameReject = reject;
   });
+
+  function terrainResourceSnapshot() {
+    return {
+      schema: TERRAIN_RESOURCE_SCHEMA,
+      backend: 'webgl2',
+      tile_id: expectedTerrainTileId,
+      artifact_sha256: expectedTerrainArtifactSha,
+      active: Boolean(terrainMesh),
+      creates: terrainLifecycle.creates,
+      destroys: terrainLifecycle.destroys,
+      create_timing_ms: [...terrainLifecycle.createTimingMs],
+      destroy_timing_ms: [...terrainLifecycle.destroyTimingMs],
+      current_buffer_count: terrainMesh ? 3 : 0,
+      current_payload_bytes: terrainMesh ? terrainGpuPayloadBytes : 0,
+      physical_vram_release_observed: false,
+    };
+  }
+
+  function activateTerrainResource(payload) {
+    if (stopped) throw new Error('PREVIEW_TERRAIN_RESOURCE_RENDERER_STOPPED');
+    assertTerrainPayloadIdentity(payload, expectedTerrainTileId, expectedTerrainArtifactSha);
+    if (terrainMesh) throw new Error('PREVIEW_TERRAIN_RESOURCE_ALREADY_ACTIVE');
+    const startedAt = monotonicNow();
+    terrainMesh = createIndexedMesh(gl, payload.mesh.positions, payload.mesh.indices, payload.mesh.normals);
+    terrainLifecycle.creates += 1;
+    terrainLifecycle.createTimingMs.push(monotonicNow() - startedAt);
+    dirty = true;
+    return terrainResourceSnapshot();
+  }
+
+  function deactivateTerrainResource() {
+    if (stopped) throw new Error('PREVIEW_TERRAIN_RESOURCE_RENDERER_STOPPED');
+    if (!terrainMesh) throw new Error('PREVIEW_TERRAIN_RESOURCE_NOT_ACTIVE');
+    const startedAt = monotonicNow();
+    destroyMesh(gl, terrainMesh);
+    terrainMesh = null;
+    terrainLifecycle.destroys += 1;
+    terrainLifecycle.destroyTimingMs.push(monotonicNow() - startedAt);
+    dirty = true;
+    return terrainResourceSnapshot();
+  }
 
   function resize() {
     actualPixelRatio = Math.min(window.devicePixelRatio || 1, profile.maxDpr ?? 1.5);
@@ -210,6 +274,10 @@ export function createPreview1WebGl2Renderer({
   const resolvedColor = new Float32Array([0.66, 0.73, 0.77, 1]);
   const fallbackColor = new Float32Array([0.48, 0.53, 0.56, 1]);
 
+  function currentDrawCallsPerFrame() {
+    return [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
+  }
+
   function draw(now) {
     if (stopped) return;
     resize();
@@ -230,7 +298,7 @@ export function createPreview1WebGl2Renderer({
           at: now,
           drawGapMs: lastDrawAt ? now - lastDrawAt : null,
           drawCpuMs: monotonicNow() - drawStartedAt,
-          drawCalls: drawCallsPerFrame,
+          drawCalls: currentDrawCallsPerFrame(),
           backend: 'webgl2',
           pixelRatio: actualPixelRatio,
           camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
@@ -270,9 +338,9 @@ export function createPreview1WebGl2Renderer({
       get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: profile.webglAntialias === false ? 1 : null,
       power_preference: profile.powerPreference ?? 'default',
-      draw_calls_per_frame: drawCallsPerFrame,
-      gpu_buffer_count: gpuBufferCount,
-      gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
+      get draw_calls_per_frame() { return currentDrawCallsPerFrame(); },
+      get gpu_buffer_count() { return vectorGpuBufferCount + (terrainMesh ? 3 : 0); },
+      get gpu_buffer_payload_bytes() { return vectorGpuPayloadBytes + (terrainMesh ? terrainGpuPayloadBytes : 0); },
       timestamp_query_supported: false,
       timing_ms: {
         scene_build_cpu_ms: sceneBuildCpuMs,
@@ -280,6 +348,9 @@ export function createPreview1WebGl2Renderer({
         renderer_init_cpu_ms: rendererInitCpuMs,
       },
     },
+    getTerrainResourceLifecycle: terrainResourceSnapshot,
+    activateTerrainResource,
+    deactivateTerrainResource,
     invalidate() { dirty = true; },
     dispose() {
       stopped = true;
@@ -289,7 +360,10 @@ export function createPreview1WebGl2Renderer({
         firstFrameSettled = true;
         firstFrameReject(new Error('WEBGL2_DISPOSED_BEFORE_FIRST_FRAME'));
       }
-      destroyMesh(gl, terrainMesh);
+      if (terrainMesh) {
+        destroyMesh(gl, terrainMesh);
+        terrainMesh = null;
+      }
       destroyMesh(gl, roadMesh);
       destroyMesh(gl, resolvedMesh);
       destroyMesh(gl, fallbackMesh);
