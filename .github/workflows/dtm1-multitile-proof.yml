@@ -1,0 +1,14 @@
+name: dtm1-multitile-proof
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seam-policy-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain blocked real-data gate
+        run: |
+          echo 'The two official DTM1 source objects required by the Nannestad 3x3 runtime grid overlap but disagree by up to 0.241989136 m in raw EPSG:25833 cells.'
+          echo 'No seam selection/blending/tolerance policy is accepted yet.'
+          echo 'Run the dedicated DTM1 seam diagnostic first; only re-enable this 3x3 proof after that evidence is documented in the transform/provenance contract.'
