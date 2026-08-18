@@ -1,0 +1,221 @@
+name: dtm1-extent-crosscheck
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_extent_crosscheck.py'
+      - 'engine/compiler/tests/test_dtm1_extent_crosscheck.py'
+      - '.github/workflows/dtm1-extent-crosscheck.yml'
+  workflow_dispatch:
+
+jobs:
+  crosscheck-live-provider-extents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run focused extent crosscheck tests
+        run: pytest -q engine/compiler/tests/test_dtm1_extent_crosscheck.py
+
+      - name: Compare rejected Atom extents with NHM ImageServer catalog
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from collections import Counter
+          from pathlib import PurePosixPath
+          from urllib.parse import urlencode, urlparse
+          from urllib.request import Request, urlopen
+
+          from pyproj import Transformer
+          from shapely.ops import transform as shapely_transform
+
+          from nwe_compiler.dtm1_extent_crosscheck import classify_declared_vs_catalog_extent
+          from nwe_compiler.dtm1_source_grid_audit import SourceGridAuditError, infer_route_extent
+          from nwe_compiler.sources.dtm1_atom import (
+              DTM1_SOURCE_CRS,
+              category_crs,
+              geotiff_href,
+              parse_feed,
+              select_service_dataset,
+          )
+          from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
+
+          IMAGE_SERVER = 'https://hoydedata.no/arcgis/rest/services/NHM_DTM_25833/ImageServer'
+          NOMINAL_ROUTE_SIZE_M = 15_000.0
+          NOMINAL_OVERLAP_M = 10.0
+          TOLERANCE_M = 0.25
+          PAGE_SIZE = 1000
+          to_source = Transformer.from_crs('EPSG:4326', DTM1_SOURCE_CRS, always_xy=True)
+
+          def get_bytes(url, accept='application/json, application/xml;q=0.9'):
+              req = Request(url, headers={'User-Agent': USER_AGENT, 'Accept': accept})
+              with urlopen(req, timeout=60) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.read()
+
+          def catalog_bounds(geometry):
+              rings = geometry.get('rings') or []
+              coords = [point for ring in rings for point in ring]
+              if not coords:
+                  raise SystemExit('ImageServer catalog item returned no polygon rings')
+              xs = [float(point[0]) for point in coords]
+              ys = [float(point[1]) for point in coords]
+              return (min(xs), min(ys), max(xs), max(ys))
+
+          service_bytes = get_bytes(SERVICE_URL, 'application/atom+xml, application/xml;q=0.9')
+          service_entries = parse_feed(service_bytes)
+          _, dataset_url = select_service_dataset(service_entries, 'DTM1')
+          dataset_bytes = get_bytes(dataset_url, 'application/atom+xml, application/xml;q=0.9')
+          entries = parse_feed(dataset_bytes)
+
+          rejected = []
+          for entry in entries:
+              if DTM1_SOURCE_CRS not in category_crs(entry) or entry.declared_extent is None:
+                  continue
+              declared_geom = shapely_transform(to_source.transform, entry.declared_extent.geometry)
+              declared_bounds = tuple(float(value) for value in declared_geom.bounds)
+              try:
+                  infer_route_extent(
+                      declared_bounds,
+                      nominal_route_size_m=NOMINAL_ROUTE_SIZE_M,
+                      tolerance_m=TOLERANCE_M,
+                  )
+                  continue
+              except SourceGridAuditError as exc:
+                  source_href = geotiff_href(entry)
+                  logical_name = PurePosixPath(urlparse(source_href).path).stem
+                  rejected.append({
+                      'entry_id': entry.id,
+                      'entry_title': entry.title,
+                      'logical_name_from_explicit_geotiff_href': logical_name,
+                      'declared_bounds_epsg25833': list(declared_bounds),
+                      'reject_reason': str(exc),
+                  })
+
+          catalog_items = {}
+          catalog_page_hashes = []
+          offset = 0
+          while True:
+              params = {
+                  'where': 'CATEGORY=1',
+                  'outFields': 'OBJECTID,NAME,CATEGORY,LOWPS,HIGHPS,ZORDER',
+                  'returnGeometry': 'true',
+                  'outSR': '25833',
+                  'resultOffset': str(offset),
+                  'resultRecordCount': str(PAGE_SIZE),
+                  'orderByFields': 'OBJECTID ASC',
+                  'f': 'json',
+              }
+              url = IMAGE_SERVER + '/query?' + urlencode(params)
+              page_bytes = get_bytes(url)
+              catalog_page_hashes.append(hashlib.sha256(page_bytes).hexdigest())
+              payload = json.loads(page_bytes)
+              if 'error' in payload:
+                  raise SystemExit(f'ImageServer query error: {payload["error"]}')
+              features = payload.get('features') or []
+              for feature in features:
+                  attrs = feature.get('attributes') or {}
+                  name = str(attrs.get('NAME') or '')
+                  if not name:
+                      continue
+                  if name in catalog_items:
+                      raise SystemExit(f'duplicate primary ImageServer NAME: {name}')
+                  catalog_items[name] = {
+                      'attributes': attrs,
+                      'bounds_epsg25833': list(catalog_bounds(feature.get('geometry') or {})),
+                  }
+              if len(features) < PAGE_SIZE:
+                  break
+              offset += PAGE_SIZE
+
+          comparisons = []
+          missing_catalog = []
+          classes = Counter()
+          for item in rejected:
+              logical_name = item['logical_name_from_explicit_geotiff_href']
+              catalog = catalog_items.get(logical_name)
+              if catalog is None:
+                  missing_catalog.append(logical_name)
+                  continue
+              crosscheck = classify_declared_vs_catalog_extent(
+                  tuple(item['declared_bounds_epsg25833']),
+                  tuple(catalog['bounds_epsg25833']),
+                  nominal_route_size_m=NOMINAL_ROUTE_SIZE_M,
+                  nominal_overlap_m=NOMINAL_OVERLAP_M,
+                  tolerance_m=TOLERANCE_M,
+              )
+              classification = crosscheck['audit']['classification']
+              classes[classification] += 1
+              comparisons.append({
+                  **item,
+                  'catalog': catalog,
+                  'crosscheck': crosscheck,
+              })
+
+          result = {
+              'schema': 'nwe.dtm1-live-declared-catalog-extent-proof/0.1',
+              'status': 'EXTENTS_CLASSIFIED_NOT_AUTHORITY',
+              'service_feed_url': SERVICE_URL,
+              'service_feed_sha256': hashlib.sha256(service_bytes).hexdigest(),
+              'dataset_feed_url': dataset_url,
+              'dataset_feed_sha256': hashlib.sha256(dataset_bytes).hexdigest(),
+              'image_server_url': IMAGE_SERVER,
+              'catalog_page_sha256': catalog_page_hashes,
+              'dataset_entry_count': len(entries),
+              'rejected_declared_extent_count': len(rejected),
+              'primary_catalog_item_count': len(catalog_items),
+              'matched_rejected_count': len(comparisons),
+              'missing_catalog_count': len(missing_catalog),
+              'missing_catalog_names': sorted(missing_catalog),
+              'classification_counts': dict(sorted(classes.items())),
+              'comparisons': comparisons,
+              'claim_calibration': {
+                  'fact': 'rejected Atom GeoRSS extents were compared with provider ImageServer primary catalog footprints',
+                  'inference': 'a regular catalog footprint can show that a transformed GeoRSS deviation is not repeated by that catalog footprint',
+                  'not_proven': 'ImageServer catalog footprint equals downloadable GeoTIFF raster bounds or defines a seam winner',
+                  'production_seam_authority': False,
+                  'authority_status': 'UNPROVEN',
+              },
+          }
+          if result['claim_calibration']['production_seam_authority'] is not False:
+              raise SystemExit('crosscheck must never promote seam authority')
+
+          print(json.dumps({
+              'status': result['status'],
+              'dataset_entry_count': result['dataset_entry_count'],
+              'rejected_declared_extent_count': result['rejected_declared_extent_count'],
+              'primary_catalog_item_count': result['primary_catalog_item_count'],
+              'matched_rejected_count': result['matched_rejected_count'],
+              'missing_catalog_count': result['missing_catalog_count'],
+              'classification_counts': result['classification_counts'],
+              'production_seam_authority': False,
+          }, indent=2, sort_keys=True))
+          with open('/tmp/dtm1-extent-crosscheck.json', 'w', encoding='utf-8') as fh:
+              json.dump(result, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          PY
+
+      - name: Assert evidence artifact contains no raw raster data
+        run: |
+          if find /tmp -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'raw geodata unexpectedly present in evidence workspace'
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-extent-crosscheck-${{ github.sha }}
+          path: /tmp/dtm1-extent-crosscheck.json
+          if-no-files-found: error
+          retention-days: 7
