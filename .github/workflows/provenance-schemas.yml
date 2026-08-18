@@ -1,0 +1,29 @@
+name: provenance-schemas
+
+on:
+  push:
+    branches:
+      - agent/provenance-schema-contracts
+    paths:
+      - 'engine/schemas/provenance/**'
+      - '.github/workflows/provenance-schemas.yml'
+  pull_request:
+    paths:
+      - 'engine/schemas/provenance/**'
+      - '.github/workflows/provenance-schemas.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install compiler and isolated schema-test dependency
+        run: python -m pip install -r requirements-dev.txt 'jsonschema==4.26.0'
+      - name: Validate provenance schema contracts and producer compatibility
+        run: pytest -q engine/schemas/provenance

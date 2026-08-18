@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nwe:schema:runtime-verification-bundle:0.1",
+  "title": "Norge World Engine RuntimeVerificationBundle 0.1",
+  "description": "Structural contract for the provenance objects reconstructed by engine/streaming/runtime_verifier.mjs. Cross-object hash equality, graph closure, canonicalization, byte verification and raw-source transport rejection remain runtime verifier responsibilities.",
+  "type": "object",
+  "required": [
+    "bundle_schema",
+    "canonicalization_id",
+    "hash_algorithm",
+    "source_snapshots",
+    "source_snapshot_hashes",
+    "transform_contracts",
+    "transform_contract_hashes",
+    "normalized_snapshots",
+    "normalized_snapshot_hashes",
+    "compiler_config",
+    "compiler_config_hash",
+    "compile_lineage",
+    "lineage_hash",
+    "artifact_ref",
+    "artifact_ref_hash",
+    "promotion_record",
+    "promotion_record_hash"
+  ],
+  "properties": {
+    "bundle_schema": {"const": "nwe.runtime-verification-bundle/0.1"},
+    "canonicalization_id": {"const": "urn:ietf:rfc:8785"},
+    "hash_algorithm": {"const": "sha-256"},
+    "source_snapshots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/sourceSnapshot"}
+    },
+    "source_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+    "transform_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/transformContract"}
+    },
+    "transform_contract_hashes": {"$ref": "#/$defs/hashArray"},
+    "normalized_snapshots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/normalizedSnapshot"}
+    },
+    "normalized_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+    "compiler_config": {"$ref": "#/$defs/compilerConfig"},
+    "compiler_config_hash": {"$ref": "#/$defs/sha256"},
+    "compile_lineage": {"$ref": "#/$defs/compileLineage"},
+    "lineage_hash": {"$ref": "#/$defs/sha256"},
+    "artifact_ref": {"$ref": "#/$defs/artifactRef"},
+    "artifact_ref_hash": {"$ref": "#/$defs/sha256"},
+    "promotion_record": {"$ref": "#/$defs/promotionRecord"},
+    "promotion_record_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hashArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/sha256"}
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decimalString": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "required": [
+        "schema",
+        "source_id",
+        "raw_sha256",
+        "raw_byte_size",
+        "source_crs",
+        "source_vertical_datum",
+        "z_semantics"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.source-snapshot/0.3"},
+        "source_id": {"$ref": "#/$defs/nonEmptyString"},
+        "retrieval_identity": {
+          "type": "object",
+          "properties": {
+            "request_url": {"$ref": "#/$defs/nonEmptyString"},
+            "query_bounds": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {"$ref": "#/$defs/nonEmptyString"}
+            },
+            "tile_id": {"$ref": "#/$defs/nonEmptyString"}
+          },
+          "additionalProperties": true
+        },
+        "raw_sha256": {"$ref": "#/$defs/sha256"},
+        "raw_byte_size": {"type": "integer", "minimum": 0},
+        "source_crs": {"$ref": "#/$defs/nonEmptyString"},
+        "source_vertical_datum": {"type": ["string", "null"]},
+        "z_semantics": {"$ref": "#/$defs/nonEmptyString"},
+        "pixel_size": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/decimalString"}
+        },
+        "source_bounds": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/decimalString"}
+        },
+        "nodata": {
+          "anyOf": [
+            {"$ref": "#/$defs/decimalString"},
+            {"type": "null"}
+          ]
+        },
+        "license_profile": {"$ref": "#/$defs/nonEmptyString"},
+        "attribution": {"$ref": "#/$defs/nonEmptyString"},
+        "promotion_state": {"const": "VALIDATED_SOURCE"}
+      },
+      "additionalProperties": false
+    },
+    "transformContract": {
+      "type": "object",
+      "required": [
+        "schema",
+        "operation",
+        "bounds_epsg25832",
+        "horizontal_crs"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.transform-contract/0.1"},
+        "source_snapshot_hash": {"$ref": "#/$defs/sha256"},
+        "source_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+        "operation": {"$ref": "#/$defs/nonEmptyString"},
+        "bounds_epsg25832": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/$defs/decimalString"}
+        },
+        "horizontal_crs": {"$ref": "#/$defs/nonEmptyString"},
+        "source_crs": {"$ref": "#/$defs/nonEmptyString"},
+        "vertical_datum": {"type": ["string", "null"]},
+        "vertical_operation": {"$ref": "#/$defs/nonEmptyString"},
+        "resampling": {"$ref": "#/$defs/nonEmptyString"},
+        "pixel_size_m": {"$ref": "#/$defs/decimalString"},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "num_threads": {"type": "integer", "minimum": 1},
+        "mosaic_source_count": {"type": "integer", "minimum": 2},
+        "mosaic_overlap_policy": {"const": "require-match-before-reproject"},
+        "mosaic_overlap_tolerance_m": {"$ref": "#/$defs/decimalString"}
+      },
+      "oneOf": [
+        {
+          "required": ["source_snapshot_hash"],
+          "not": {"required": ["source_snapshot_hashes"]}
+        },
+        {
+          "required": ["source_snapshot_hashes"],
+          "not": {"required": ["source_snapshot_hash"]}
+        }
+      ],
+      "additionalProperties": false
+    },
+    "normalizedSnapshot": {
+      "type": "object",
+      "required": [
+        "schema",
+        "transform_contract_hash",
+        "sha256",
+        "byte_size",
+        "media_type"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.normalized-snapshot/0.1"},
+        "source_snapshot_hash": {"$ref": "#/$defs/sha256"},
+        "source_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+        "transform_contract_hash": {"$ref": "#/$defs/sha256"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "media_type": {"$ref": "#/$defs/nonEmptyString"},
+        "feature_count": {"type": "integer", "minimum": 0},
+        "sample_count": {"type": "integer", "minimum": 0},
+        "horizontal_crs": {"$ref": "#/$defs/nonEmptyString"},
+        "vertical_datum": {"type": ["string", "null"]}
+      },
+      "oneOf": [
+        {
+          "required": ["source_snapshot_hash"],
+          "not": {"required": ["source_snapshot_hashes"]}
+        },
+        {
+          "required": ["source_snapshot_hashes"],
+          "not": {"required": ["source_snapshot_hash"]}
+        }
+      ],
+      "additionalProperties": false
+    },
+    "compilerConfig": {
+      "type": "object",
+      "required": ["schema", "compiler_id", "compiler_version"],
+      "properties": {
+        "schema": {"const": "nwe.compiler-config/0.1"},
+        "compiler_id": {"$ref": "#/$defs/nonEmptyString"},
+        "compiler_version": {"$ref": "#/$defs/nonEmptyString"}
+      },
+      "additionalProperties": true
+    },
+    "compileLineage": {
+      "type": "object",
+      "required": [
+        "schema",
+        "tile_id",
+        "artifact_role",
+        "source_snapshot_hashes",
+        "normalized_snapshot_hashes",
+        "compiler_config_hash"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.compile-lineage/0.1"},
+        "tile_id": {"$ref": "#/$defs/nonEmptyString"},
+        "artifact_role": {"$ref": "#/$defs/nonEmptyString"},
+        "source_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+        "normalized_snapshot_hashes": {"$ref": "#/$defs/hashArray"},
+        "compiler_config_hash": {"$ref": "#/$defs/sha256"}
+      },
+      "additionalProperties": false
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": [
+        "schema",
+        "artifact_role",
+        "tile_id",
+        "sha256",
+        "byte_size",
+        "media_type",
+        "lineage_hash",
+        "artifact_status"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.artifact-ref/0.1"},
+        "artifact_role": {"$ref": "#/$defs/nonEmptyString"},
+        "tile_id": {"$ref": "#/$defs/nonEmptyString"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_size": {"type": "integer", "minimum": 0},
+        "media_type": {"$ref": "#/$defs/nonEmptyString"},
+        "lineage_hash": {"$ref": "#/$defs/sha256"},
+        "artifact_status": {"const": "REAL_COMPILED"},
+        "transport": {
+          "type": "object",
+          "required": ["reference"],
+          "properties": {
+            "reference": {"$ref": "#/$defs/nonEmptyString"}
+          },
+          "additionalProperties": true
+        },
+        "reference": {"$ref": "#/$defs/nonEmptyString"},
+        "transport_mutable": {"type": "boolean"}
+      },
+      "anyOf": [
+        {"required": ["transport"]},
+        {"required": ["reference"]}
+      ],
+      "additionalProperties": false
+    },
+    "promotionGates": {
+      "type": "object",
+      "required": [
+        "source_validated",
+        "transform_validated",
+        "normalized_bytes_verified",
+        "compiler_identity_bound",
+        "artifact_bytes_verified",
+        "lineage_reconstructed",
+        "determinism_policy_satisfied"
+      ],
+      "properties": {
+        "source_validated": {"const": "PASS"},
+        "transform_validated": {"const": "PASS"},
+        "normalized_bytes_verified": {"const": "PASS"},
+        "compiler_identity_bound": {"const": "PASS"},
+        "artifact_bytes_verified": {"const": "PASS"},
+        "lineage_reconstructed": {"const": "PASS"},
+        "determinism_policy_satisfied": {"const": "PASS"}
+      },
+      "additionalProperties": false
+    },
+    "promotionRecord": {
+      "type": "object",
+      "required": [
+        "schema",
+        "lineage_hash",
+        "artifact_ref_hash",
+        "from_state",
+        "to_state",
+        "gates"
+      ],
+      "properties": {
+        "schema": {"const": "nwe.promotion-record/0.1"},
+        "lineage_hash": {"$ref": "#/$defs/sha256"},
+        "artifact_ref_hash": {"$ref": "#/$defs/sha256"},
+        "from_state": {"const": "NORMALIZED"},
+        "to_state": {"const": "REAL_COMPILED"},
+        "gates": {"$ref": "#/$defs/promotionGates"}
+      },
+      "additionalProperties": false
+    }
+  }
+}
