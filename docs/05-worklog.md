@@ -325,3 +325,25 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
 - Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
 - Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.
+
+## 2026-08-18 — Agent v2 roles and project-specific skills
+
+**Gjort**
+- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data), ATLAS (world/coordinates) and SENTINEL (integration/QA).
+- Upgraded all seven existing repo-local Agent Skills to the current project evidence instead of early-P0 assumptions.
+- Added three missing skills: `nwe-renderer-platform`, `nwe-runtime-streaming` and `nwe-world-model`.
+- Updated `AGENTS.md` and `README.md` so role selection, branch isolation, artifact-only runtime, evidence classes and current P0 boundaries are explicit.
+- LUMEN now has a concrete deployment contract: production build + exact-branch Vercel Preview/smoke check when deployment access exists, with no production promotion unless explicitly requested.
+
+**Bevist**
+- The current task queue decomposes cleanly across the five ownership areas without requiring renderer code to own source acquisition or compiler code to own GPU behavior.
+- Renderer/WebGPU work can proceed in parallel with terrain-seam research because both meet at verified compiled-artifact/runtime contracts rather than shared raw data.
+- Vercel deployability is explicitly classified as deployment evidence, not world-truth or Android performance evidence.
+
+**Endret**
+- Branch: `agent/agent-system-v2`; `main` remains untouched.
+- `.agents/skills/*`, `.agents/roles/*`, `AGENTS.md`, `README.md`, worklog and task queue now describe Agent v2.
+- No engine/runtime/renderer architecture decision was added to `docs/04-decisions.md`.
+
+**Neste**
+- Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.

@@ -1,14 +1,23 @@
 ---
 name: nwe-quality-gates
-description: Enforces evidence-first testing, determinism, observability and adversarial QA for NWE compiler, streaming, source adapters, schemas and performance-sensitive code.
+description: Enforces evidence classes, determinism, observability and adversarial QA across NWE compiler, provenance, streaming, browser renderer, Vercel preview and device performance.
 ---
 
 # NWE Quality Gates
 
-Separate FACT, ASSUMPTION and EXPERIMENT. Viewer appearance cannot upgrade an assumption to fact.
+Separate **FACT**, **ASSUMPTION** and **EXPERIMENT**. Viewer appearance cannot upgrade an assumption to fact.
 
-Before implementation define concrete observables: hashes, bytes, feature counts, cache hit/miss, compile/decode/upload time, frame time or memory as appropriate. Prefer negative tests at dangerous boundaries: corrupt format, unknown CRS/datum, sentinel Z, mismatched digest/size, forged lineage, bbox false positives and promotion gate failure.
+Classify evidence before claiming PASS:
+1. unit/structural or synthetic regression;
+2. hosted Node/CI runtime;
+3. real desktop Chrome/browser path;
+4. real Android/device path.
+Do not promote one class into another. A Vercel Preview proves deployability/smoke behavior, not Android GPU performance or world-data correctness.
 
-Fail closed for unknown CRS, unknown vertical datum on authoritative Z, invalid file signature, missing hashes, invalid lineage or failed promotion. Fallback may render only when status/provenance remains visibly non-authoritative.
+Before implementation define observables: hashes, bytes, source/feature counts, cache hit/miss, verification/decode/worker/upload timings, first-visible, frame p50/p95/p99, largest rAF gap, draw calls, retained RAM/VRAM estimate and raw-source request count as relevant.
 
-Before closing a P0 gate, try to disprove the strongest claim with a cheap adversarial regression. Optimize only after measurement.
+Prefer negative tests at dangerous boundaries: corrupt format, unknown CRS/datum, sentinel Z, conflicting multi-source overlap, mismatched digest/size, forged lineage, raw-source transport, bbox false positive, stale worker completion, cancellation race and failed promotion.
+
+Fail closed for unknown authority or invalid lineage. Visual/debug fallback may render only if it remains explicitly non-authoritative.
+
+For renderer comparisons use the same accepted artifact, camera path, device/browser and measurement window. Before closing a P0 gate, try to disprove the strongest claim with a cheap adversarial regression.
