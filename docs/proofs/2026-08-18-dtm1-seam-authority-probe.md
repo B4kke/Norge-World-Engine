@@ -45,7 +45,20 @@ Added `nwe_compiler.nhm_mosaic_authority` to classify provider-published service
 - records logical source linkage separately from byte identity;
 - returns `FAIL_CLOSED_UNPROVEN` with explicit blockers and `production_transform_authorized=false`.
 
-Added `tools/geo/dtm1_nhm_mosaic_authority_probe.py` and manual workflow `dtm1-seam-authority-probe.yml`. The live workflow hashes the exact small JSON metadata/catalog responses, asserts the known 10 m overlap and current provider configuration, requires the result to remain fail-closed, and rejects TIFF/LAS/LAZ evidence artifacts.
+Added `tools/geo/dtm1_nhm_mosaic_authority_probe.py` and `dtm1-seam-authority-probe.yml`. The workflow is both manually dispatchable and PR-triggered for the probe/classifier paths. It hashes the exact small JSON metadata/catalog responses, asserts the known 10 m overlap and current provider configuration, requires the result to remain fail-closed, and rejects TIFF/LAS/LAZ evidence artifacts.
+
+## Exact live validation
+
+GitHub Actions run `32166309683` (`dtm1-seam-authority-probe`, run 1) passed on the PR merge ref containing FORGE head `f89bc1362577134b524b1a483511641dc03b0cdc`.
+
+The live provider responses captured in that run were:
+
+- ImageServer metadata: **4,447 B**, SHA-256 `83cead22f921236c76405e02f4251953387a71bb52cfb861b97dc3bcff793994`;
+- exact catalog query for `33-125-116` + `33-125-117`: **2,947 B**, SHA-256 `f49f9c70a76f069e0d617c3689a93b7dc2864994266d24bba4a4f1e6e10ebe76`.
+
+The workflow re-observed object IDs 854/855, EPSG:25833, the exact 10 m overlap, `ByAttribute` / `NAME` / `First` / bilinear configuration, and returned `FAIL_CLOSED_UNPROVEN`. The evidence directory contained only the JSON proof; TIFF/LAS/LAZ exclusion passed. Uploaded proof ZIP SHA-256 was `b40009b6da4460cc7113c23eb8bbb5cedc81f5d7c5426d0a476c4bd49643d03a`.
+
+The full repository baseline and the live Atom multi-tile source-plan also passed on the immediately preceding FORGE code/docs head before the PR-trigger addition. This validates that the new diagnostic boundary does not weaken the existing compiler/source-selection contracts.
 
 ## Primary sources checked
 
