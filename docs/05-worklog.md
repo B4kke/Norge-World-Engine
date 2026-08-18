@@ -325,3 +325,29 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
 - Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
 - Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.
+
+## 2026-08-18 — STRØM resident/cache budget accounting
+
+**Gjort**
+- Started from the current Preview-1 runtime branch on isolated `agent/strom-budget-accounting`; no merge performed.
+- Audited `TileStreamingScheduler` against the documented lifecycle contract and found that `maxCacheBytes` was described as inactive-cache-only while `bytesCached` actually counted both resident and cached payloads.
+- Split scheduler accounting into `bytesResident`, `bytesActivating`, `bytesCached` and `retainedBytes`; kept `maxCacheBytes` scoped to inactive cache and added opt-in `maxResidentBytes=null` so no production memory value is selected.
+- Added activation-time byte reservation before awaiting renderer/resource adapters, budget deferral without refetch, activation retry from verified cache, and explicit activation/deactivation/disposal/lifecycle failure observability.
+- Added 11 focused scheduler regressions and upgraded the synthetic 3×3 benchmark to a constrained resident/cache pressure profile.
+- Updated `engine/streaming/README.md`, `docs/06-task-queue.md` and `docs/proofs/2026-08-18-strom-streaming-budget-accounting.md`. `docs/04-decisions.md` was intentionally unchanged because no device budget/LOD/worker-pool policy was selected.
+
+**Bevist**
+- Local Node `v22.16.0` scheduler suite: `tile scheduler regressions: PASS (11 cases)`.
+- Regression proves one 100 B resident + one 100 B cached tile does not evict the warm cache under a 150 B inactive-cache cap; the previous accounting would evict it.
+- Budget-deferred desired payloads activate from cache without a second load once resident space becomes available; an activation adapter failure likewise retries from the verified cached payload rather than reloading it.
+- A failed disposal does not decrement bytes or erase payload state; the snapshot exposes the resulting cache overcommit instead of claiming memory was freed.
+- Synthetic 3×3 stress with test-only 8,912,896 B resident and 8,912,896 B inactive-cache caps records peak concurrency 2, 4 cache hits, 9 resident-budget deferrals, 6 evictions and final resident/cache overcommit 0 B. Peak retained bytes reach 22,282,240 B during load/transition, so this does not claim a no-transient-allocation total-RAM cap.
+
+**Endret**
+- Runtime core remains renderer-independent; `byteSize` is scheduler-known retained payload memory, not an exact WebGPU/WebGL VRAM measurement.
+- `budgetOvercommitBytes` remains as a backward-compatible inactive-cache alias while explicit cache/resident overcommit metrics are added.
+- No RuntimeVerificationBundle semantics, DTM1 seam contract or source-runtime boundary changed.
+
+**Neste**
+- Run the same scheduler regressions/benchmark in GitHub CI on the exact branch head and review any integration failures.
+- Highest-value device gate remains controlled movement/exit/return on the exact-real Preview-1 path in Android Chrome, capturing verification/decode/worker/GPU/rAF plus resident/cached/retained bytes. Use that evidence before choosing production resident/cache/GPU values or a worker pool.
