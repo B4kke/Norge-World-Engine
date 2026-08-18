@@ -1,0 +1,1 @@
+Preview 1 does not select the final renderer, terrain format, object store/CDN, road-surface model, building-height model, LOD policy or whole-Norway tile policy.
