@@ -1,52 +1,64 @@
 # Norge World Engine
 
-A geospatial world-engine project whose long-term target is to treat Norway as the world: real geographic data is normalized and compiled into deterministic, streamable runtime tiles rather than hand-building a fictional map.
+A geospatial world-engine project whose long-term target is to treat Norway as the world: real geographic data is normalized and compiled into deterministic, streamable runtime artifacts rather than hand-building a fictional map.
 
 ## Current proof target
 
-**Prototype 0: Nannestad, 1 × 1 km.** A coordinate should reproducibly produce a scene with georeferenced terrain, primary roads, building volumes, provenance, cacheable artifacts and a measurable viewer.
+**Prototype 0: Nannestad.** Build a reproducible vertical slice that proves real terrain, roads and building geometry can move from authoritative source snapshots through deterministic compilation/provenance into a measurable browser runtime.
 
-The project deliberately separates geographic correctness from photorealism, source geodata from runtime artifacts, preprocessing from rendering, static world content from dynamic simulation state, and experiments from production-direction modules.
+Geographic/geometric correctness and photorealism are separate goals. Raw geodata, canonical world data, runtime artifacts, rendering and dynamic simulation are separate layers.
 
-## Working model from 2026-08-17
+## Current evidence state — 2026-08-18
 
-**GitHub is the canonical work surface for code, tests, schemas, CI, issues and implementation history.** Google Drive remains long-form research/history/reference. Do not put raw Norwegian geodata, generated tiles/caches, credentials or proprietary datasets in Git.
+The single-tile Nannestad vertical is no longer source/terrain-blocked: accepted real DTM1 terrain plus NVDB road and OSM building artifacts have deterministic cold/offline proof and pass runtime verification. Browser full-graph provenance, vector batching, renderer-neutral tile scheduling and an actual browser module DedicatedWorker terrain path are also proven.
+
+Important open P0 gates remain:
+- real neighboring DTM1 terrain is fail-closed until an evidence-backed overlap/seam transform exists;
+- exact-real browser/Android movement and performance evidence is still needed before worker/cache/LOD/backend policy is selected;
+- whole-Norway coordinate/indexing/render-origin policy remains open;
+- final WebGPU/WebGL/Cesium/3D Tiles/Unreal roles remain evidence-driven.
+
+`apps/world-viewer` is the deployable Vite/Vercel measurement shell. Its existence does not select the final renderer.
+
+## Working model
+
+**GitHub is the canonical work surface for code, tests, schemas, CI, issues, implementation history and tasks.** Google Drive remains long-form research/history/reference. Do not put raw Norwegian geodata, generated tiles/caches, credentials or proprietary datasets in Git.
 
 ## Repository map
 
 ```text
-.agents/skills/             Repo-local AI-agent operating skills
-apps/                       User-facing/runtime applications
-engine/                     Production-direction modules
-  compiler/                 Raw -> normalized -> compiled world artifacts
-  geo/                      CRS, coordinates, tiling and spatial rules
-  schemas/                  Versioned interchange/runtime contracts
-  streaming/                Provenance gate, tile loading/cache/LOD/observability
-  simulation/               Future deterministic simulation foundation
+.agents/skills/             Repo-local NWE operating skills
+.agents/roles/              Five Agent v2 ownership charters
+apps/world-viewer/          Deployable browser measurement/viewer surface
+engine/compiler/            Raw -> normalized -> compiled world artifacts
+engine/geo/                 CRS, coordinates, tiling and spatial rules
+engine/schemas/             Versioned interchange/runtime contracts
+engine/streaming/           Provenance, tile lifecycle, cache/workers/observability
+engine/simulation/          Future deterministic simulation foundation
 tools/                      Data verification and runtime packaging tools
-prototypes/nannestad/       Historical Nannestad experiments
-prototypes/cesium-baseline/ 3D Tiles/Cesium benchmark only
+prototypes/                 Isolated/historical experiments, including Cesium baseline
 tests/fixtures/             Small deterministic proof fixtures
-docs/                       Decisions, roadmap, worklog and queue
+docs/                       Decisions, roadmap, worklog, proofs and queue
 data/                       README only; raw/generated data stays untracked
 ```
 
 ## Compiler and runtime foundation
 
-NWE reuses mature generic libraries instead of maintaining custom replacements:
+NWE reuses mature generic libraries instead of maintaining custom replacements: Rasterio/GDAL for raster I/O/transforms, pyproj/PROJ for CRS transforms, Shapely for topology/predicates, RFC 8785 implementations for canonical provenance hashing, glTF-Transform/meshoptimizer for render-asset experiments and CesiumGS validation/tools for the 3D Tiles spike.
 
-- Rasterio/GDAL for raster I/O and deterministic windows;
-- pyproj/PROJ for CRS transforms;
-- Shapely for topology/predicates;
-- RFC 8785 implementations for canonical provenance hashing;
-- glTF-Transform/meshoptimizer for render-asset optimization;
-- CesiumGS 3D Tiles validator/tools for the runtime-format spike.
+`engine/streaming/runtime_verifier_core.mjs` holds shared provenance semantics; Node and browser adapters reconstruct the versioned provenance graph and verify compiled artifact bytes before runtime use. Normal runtime does not contact Kartverket/NVDB/OSM raw source endpoints.
 
-Exact versions are pinned in `engine/compiler/pyproject.toml` and Node workspace `package.json` files. `engine/streaming/runtime_verifier.mjs` reconstructs the versioned provenance chain and verifies compiled artifact bytes before runtime use. 3D Tiles/CesiumJS remains an experiment, not a selected runtime architecture.
+## Agent v2
 
-## Repo-local Agent Skills
+Every task starts with `AGENTS.md` and `.agents/skills/nwe-project-start/SKILL.md`. Five parallel roles divide ownership:
 
-Start agent work via `.agents/skills/nwe-project-start/SKILL.md`. `AGENTS.md` routes geodata/compiler/tooling/QA/3D-Tiles/GitHub tasks to focused NWE skills. Validate them with:
+- **LUMEN** — renderer/WebGPU-WebGL experiments, browser metrics and Vercel Preview.
+- **STRØM** — verified runtime streaming, scheduler/cache/workers.
+- **FORGE** — real-data acquisition, normalization, compiler and multi-source promotion.
+- **ATLAS** — world coordinates, render origin and simulation-facing world contract.
+- **SENTINEL** — integration, schemas, adversarial QA, CI and claim calibration.
+
+Skills remain reusable capabilities; role charters live in `.agents/roles/`. Validate skill structure with:
 
 ```bash
 python scripts/validate_agent_skills.py
@@ -54,25 +66,12 @@ python scripts/validate_agent_skills.py
 
 ## Baseline checks
 
-```bash
-python -m pip install -r requirements-dev.txt
-python scripts/validate_agent_skills.py
-python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
-pytest -q engine/compiler/tests
+Run the narrow checks relevant to the active task, then the repository baseline/CI before handoff. Node workspace and browser checks require installed dependencies.
 
-# Node workspaces require package install/network access.
-npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
-npm run test:schemas
+```bash
+python scripts/validate_agent_skills.py
+pytest -q engine/compiler/tests
 node engine/streaming/test_runtime_verifier.mjs
-npm run build:cesium-baseline
 ```
 
-Legacy SMIA/VEKTOR files remain under `prototypes/` where their known historical defects can be reproduced. Production-direction GeoRSS geometry is under `engine/compiler`; runtime lineage reconstruction is under `engine/streaming`. Full package-installed CI remains blocked by the hosted runner, so the task queue keeps that execution gate explicit.
-
-## Highest-value next work
-
-1. Execute the complete dependency-installed baseline when a runner is available.
-2. Materialize the production DTM1 Nannestad source: raw 15 km GeoTIFF -> hash/metadata -> deterministic 1 km normalized clip -> persisted lineage-bound compiled artifact/cache.
-3. Only after the same compiled render artifact exists, validate/package it and compare the CesiumJS 3D Tiles baseline against the custom viewer on the same device/data.
-
-See [`docs/06-task-queue.md`](docs/06-task-queue.md).
+See `docs/06-task-queue.md` for the current evidence-driven priority. Do not use this README as a substitute for the task queue when statuses diverge.
