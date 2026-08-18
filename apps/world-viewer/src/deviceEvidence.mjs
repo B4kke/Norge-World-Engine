@@ -43,10 +43,9 @@ export function classifyBrowserEnvironment(navigatorLike = {}) {
     : [];
   const android = /android/i.test(uaPlatform ?? '') || /android/i.test(userAgent);
   const explicitChromeBrand = brands.some((brand) => /google chrome/i.test(brand));
-  const chromiumBrand = brands.some((brand) => /^chromium$/i.test(brand));
   const chromeUa = /(?:chrome|crios)\//i.test(userAgent)
     && !/(?:edga|edgios|opr|opera|samsungbrowser)\//i.test(userAgent);
-  const chromiumFamily = explicitChromeBrand || chromiumBrand || chromeUa;
+  const chromiumFamily = brands.length > 0 ? explicitChromeBrand : chromeUa;
   const androidChrome = android && chromiumFamily && uaMobile !== false;
   return {
     user_agent_data_mobile: uaMobile,
