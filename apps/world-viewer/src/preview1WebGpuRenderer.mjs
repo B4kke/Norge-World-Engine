@@ -4,6 +4,7 @@ import {
   createPreviewSceneGeometry,
   installPreviewSceneControls,
 } from './preview1SceneGeometry.mjs';
+import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 
 const TERRAIN_WGSL = `
 struct Uniforms { viewProj: mat4x4<f32>, color: vec4<f32>, };
@@ -36,9 +37,23 @@ struct Uniforms { viewProj: mat4x4<f32>, color: vec4<f32>, };
 
 function aligned4(value) { return Math.max(4, Math.ceil(value / 4) * 4); }
 
+export function gpuUploadBytes4(data) {
+  if (!data?.byteLength) return null;
+  const raw = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (raw.byteLength % 4 === 0) return raw;
+  const padded = new Uint8Array(aligned4(raw.byteLength));
+  padded.set(raw);
+  return padded;
+}
+
 function createGpuBuffer(device, data, usage, label) {
-  const buffer = device.createBuffer({ label, size: aligned4(data?.byteLength ?? 0), usage: usage | GPUBufferUsage.COPY_DST });
-  if (data?.byteLength) device.queue.writeBuffer(buffer, 0, data.buffer, data.byteOffset, data.byteLength);
+  const upload = gpuUploadBytes4(data);
+  const buffer = device.createBuffer({
+    label,
+    size: upload?.byteLength ?? 4,
+    usage: usage | GPUBufferUsage.COPY_DST,
+  });
+  if (upload) device.queue.writeBuffer(buffer, 0, upload);
   return buffer;
 }
 
@@ -95,13 +110,16 @@ export async function createPreview1WebGpuRenderer({
   graphicsProfile,
   onFrame = () => {},
 } = {}) {
+  const initStartedAt = monotonicNow();
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   if (!navigator.gpu) throw new Error('WEBGPU_UNAVAILABLE');
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, msaaSamples: 1 };
+  const adapterStartedAt = monotonicNow();
   const adapterOptions = profile.powerPreference ? { powerPreference: profile.powerPreference } : undefined;
   const adapter = await navigator.gpu.requestAdapter(adapterOptions);
   if (!adapter) throw new Error('WEBGPU_ADAPTER_UNAVAILABLE');
   const device = await adapter.requestDevice();
+  const adapterDeviceCpuMs = monotonicNow() - adapterStartedAt;
   const context = canvas.getContext('webgpu');
   if (!context) {
     device.destroy?.();
@@ -110,7 +128,11 @@ export async function createPreview1WebGpuRenderer({
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: 'opaque' });
 
+  const sceneStartedAt = monotonicNow();
   const scene = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
+  const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
+
+  const resourceStartedAt = monotonicNow();
   const sampleCount = profile.msaaSamples === 4 ? 4 : 1;
   const terrainPipeline = createPipeline(device, { code: TERRAIN_WGSL, format, sampleCount, terrain: true });
   const flatPipeline = createPipeline(device, { code: FLAT_WGSL, format, sampleCount, terrain: false });
@@ -127,6 +149,26 @@ export async function createPreview1WebGpuRenderer({
   const roadBindGroup = device.createBindGroup({ layout: flatPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: roadUniform } }] });
   const resolvedBindGroup = device.createBindGroup({ layout: flatPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: resolvedUniform } }] });
   const fallbackBindGroup = device.createBindGroup({ layout: flatPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: fallbackUniform } }] });
+  const gpuResourceApplyCpuMs = monotonicNow() - resourceStartedAt;
+  const gpuBufferPayloadBytes = byteLengthOf(
+    scene.terrain.positions,
+    scene.terrain.normals,
+    scene.terrain.indices,
+    scene.roads.positions,
+    scene.roads.indices,
+    scene.buildingsResolved.positions,
+    scene.buildingsResolved.indices,
+    scene.buildingsFallback.positions,
+    scene.buildingsFallback.indices,
+  ) + (4 * 80);
+  const gpuBufferCount = [
+    terrainMesh.positionBuffer, terrainMesh.normalBuffer, terrainMesh.indexBuffer,
+    roadMesh.positionBuffer, roadMesh.indexBuffer,
+    resolvedMesh.positionBuffer, resolvedMesh.indexBuffer,
+    fallbackMesh.positionBuffer, fallbackMesh.indexBuffer,
+    terrainUniform, roadUniform, resolvedUniform, fallbackUniform,
+  ].filter(Boolean).length;
+  const drawCallsPerFrame = [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
 
   const camera = createPreviewCamera();
   let dirty = true;
@@ -135,6 +177,7 @@ export async function createPreview1WebGpuRenderer({
   let depthTexture = null;
   let msaaTexture = null;
   let actualPixelRatio = 1;
+  let attachmentEstimateBytes = 0;
   let firstFrameResolve;
   let firstFrameReject;
   let firstFrameSettled = false;
@@ -154,6 +197,9 @@ export async function createPreview1WebGpuRenderer({
       label: 'preview-msaa', size: [canvas.width, canvas.height, 1], sampleCount,
       format, usage: GPUTextureUsage.RENDER_ATTACHMENT,
     }) : null;
+    const depthEstimate = canvas.width * canvas.height * 4 * sampleCount;
+    const msaaEstimate = msaaTexture ? canvas.width * canvas.height * 4 * sampleCount : 0;
+    attachmentEstimateBytes = depthEstimate + msaaEstimate;
   }
 
   function resize() {
@@ -184,6 +230,7 @@ export async function createPreview1WebGpuRenderer({
     if (dirty) {
       dirty = false;
       try {
+        const drawStartedAt = monotonicNow();
         const viewProj = cameraViewProjection(camera, canvas.width, canvas.height);
         for (const uniform of [terrainUniform, roadUniform, resolvedUniform, fallbackUniform]) writeMatrix(device, uniform, viewProj);
         const targetView = context.getCurrentTexture().createView();
@@ -208,6 +255,8 @@ export async function createPreview1WebGpuRenderer({
         const frame = {
           at: now,
           drawGapMs: lastDrawAt ? now - lastDrawAt : null,
+          drawCpuMs: monotonicNow() - drawStartedAt,
+          drawCalls: drawCallsPerFrame,
           backend: 'webgpu',
           pixelRatio: actualPixelRatio,
           camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
@@ -248,6 +297,7 @@ export async function createPreview1WebGpuRenderer({
     console.warn('WEBGPU_DEVICE_LOST', info?.reason, info?.message);
   });
   resize();
+  const rendererInitCpuMs = monotonicNow() - initStartedAt;
   requestAnimationFrame(draw);
 
   return {
@@ -261,6 +311,17 @@ export async function createPreview1WebGpuRenderer({
       get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: sampleCount,
       power_preference: profile.powerPreference ?? 'default',
+      draw_calls_per_frame: drawCallsPerFrame,
+      gpu_buffer_count: gpuBufferCount,
+      gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
+      get gpu_attachment_estimated_bytes() { return attachmentEstimateBytes; },
+      timestamp_query_supported: adapter.features?.has?.('timestamp-query') ?? false,
+      timing_ms: {
+        adapter_device_cpu_ms: adapterDeviceCpuMs,
+        scene_build_cpu_ms: sceneBuildCpuMs,
+        gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs,
+        renderer_init_cpu_ms: rendererInitCpuMs,
+      },
     },
     invalidate() { dirty = true; },
     dispose() {

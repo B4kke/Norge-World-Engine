@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node test_device_evidence.mjs && vite build",
+    "test:device-evidence": "node test_device_evidence.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

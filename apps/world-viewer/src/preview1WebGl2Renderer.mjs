@@ -4,6 +4,7 @@ import {
   createPreviewSceneGeometry,
   installPreviewSceneControls,
 } from './preview1SceneGeometry.mjs';
+import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 
 function compileShader(gl, type, source) {
   const shader = gl.createShader(type);
@@ -125,6 +126,7 @@ export function createPreview1WebGl2Renderer({
   graphicsProfile,
   onFrame = () => {},
 } = {}) {
+  const initStartedAt = monotonicNow();
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, webglAntialias: true };
   const gl = canvas.getContext('webgl2', {
@@ -138,13 +140,37 @@ export function createPreview1WebGl2Renderer({
   gl.disable(gl.CULL_FACE);
   gl.clearColor(0.025, 0.045, 0.055, 1);
 
+  const sceneStartedAt = monotonicNow();
   const scene = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
+  const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
+
+  const resourceStartedAt = monotonicNow();
   const terrainProgram = createTerrainProgram(gl);
   const flatProgram = createFlatProgram(gl);
   const terrainMesh = createIndexedMesh(gl, scene.terrain.positions, scene.terrain.indices, scene.terrain.normals);
   const roadMesh = createIndexedMesh(gl, scene.roads.positions, scene.roads.indices);
   const resolvedMesh = createIndexedMesh(gl, scene.buildingsResolved.positions, scene.buildingsResolved.indices);
   const fallbackMesh = createIndexedMesh(gl, scene.buildingsFallback.positions, scene.buildingsFallback.indices);
+  const gpuResourceApplyCpuMs = monotonicNow() - resourceStartedAt;
+  const gpuBufferPayloadBytes = byteLengthOf(
+    scene.terrain.positions,
+    scene.terrain.normals,
+    scene.terrain.indices,
+    scene.roads.positions,
+    scene.roads.indices,
+    scene.buildingsResolved.positions,
+    scene.buildingsResolved.indices,
+    scene.buildingsFallback.positions,
+    scene.buildingsFallback.indices,
+  );
+  const gpuBufferCount = [
+    terrainMesh.positionBuffer, terrainMesh.normalBuffer, terrainMesh.indexBuffer,
+    roadMesh.positionBuffer, roadMesh.indexBuffer,
+    resolvedMesh.positionBuffer, resolvedMesh.indexBuffer,
+    fallbackMesh.positionBuffer, fallbackMesh.indexBuffer,
+  ].filter(Boolean).length;
+  const drawCallsPerFrame = [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
+
   const camera = createPreviewCamera();
   let dirty = true;
   let stopped = false;
@@ -190,17 +216,21 @@ export function createPreview1WebGl2Renderer({
     if (dirty) {
       dirty = false;
       try {
+        const drawStartedAt = monotonicNow();
         const viewProj = cameraViewProjection(camera, canvas.width, canvas.height);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         drawMesh(terrainProgram, terrainMesh, viewProj);
         drawMesh(flatProgram, roadMesh, viewProj, roadColor);
         drawMesh(flatProgram, resolvedMesh, viewProj, resolvedColor);
         drawMesh(flatProgram, fallbackMesh, viewProj, fallbackColor);
+        gl.flush();
         const error = gl.getError();
         if (error !== gl.NO_ERROR) throw new Error(`WEBGL2_FRAME_ERROR_${error}`);
         const frame = {
           at: now,
           drawGapMs: lastDrawAt ? now - lastDrawAt : null,
+          drawCpuMs: monotonicNow() - drawStartedAt,
+          drawCalls: drawCallsPerFrame,
           backend: 'webgl2',
           pixelRatio: actualPixelRatio,
           camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
@@ -226,6 +256,7 @@ export function createPreview1WebGl2Renderer({
   const observer = new ResizeObserver(() => { dirty = true; });
   observer.observe(canvas);
   resize();
+  const rendererInitCpuMs = monotonicNow() - initStartedAt;
   requestAnimationFrame(draw);
 
   return {
@@ -238,6 +269,15 @@ export function createPreview1WebGl2Renderer({
       max_dpr: profile.maxDpr ?? 1.5,
       get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: profile.webglAntialias === false ? 1 : null,
+      draw_calls_per_frame: drawCallsPerFrame,
+      gpu_buffer_count: gpuBufferCount,
+      gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
+      timestamp_query_supported: false,
+      timing_ms: {
+        scene_build_cpu_ms: sceneBuildCpuMs,
+        gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs,
+        renderer_init_cpu_ms: rendererInitCpuMs,
+      },
     },
     invalidate() { dirty = true; },
     dispose() {
