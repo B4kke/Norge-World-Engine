@@ -1,6 +1,7 @@
 import './styles.css';
 import './preview1.css';
 import { runWorldViewerTerrainExperiment } from './terrainExperiment.mjs';
+import { GRAPHICS_PROFILE_IDS, RENDERER_PREFERENCES, resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
 import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -8,7 +9,7 @@ if (!app) throw new Error('WORLD_VIEWER_APP_ROOT_MISSING');
 
 const probeCanvas = document.createElement('canvas');
 const webgl2 = probeCanvas.getContext('webgl2', { antialias: false, alpha: false, depth: true, stencil: false });
-const webgpuAvailable = 'gpu' in navigator;
+const webgpuAvailable = Boolean((navigator as any).gpu);
 const workerAvailable = typeof Worker === 'function';
 const webcryptoAvailable = Boolean(globalThis.crypto?.subtle);
 const params = new URLSearchParams(location.search);
@@ -16,17 +17,42 @@ const labMode = params.get('lab') === 'terrain';
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
 const previewReportUrl = params.get('previewReport');
 const sameOriginAudit = params.get('previewAuditOrigin') === '1';
+const graphicsProfile = resolveGraphicsProfile(params.get('graphics') || 'balanced');
+const rendererPreference = resolveRendererPreference(params.get('renderer') || 'auto');
 const nativeFetch = globalThis.fetch.bind(globalThis);
+
+function option(value: string, label: string, selected: string) {
+  return `<option value="${value}" ${value === selected ? 'selected' : ''}>${label}</option>`;
+}
+
+function updateQuerySetting(key: string, value: string, defaultValue: string) {
+  const url = new URL(location.href);
+  if (value === defaultValue) url.searchParams.delete(key);
+  else url.searchParams.set(key, value);
+  location.href = url.href;
+}
 
 function shell(modeLabel: string, introTitle: string, introCopy: string, actionLabel: string) {
   app.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <p class="eyebrow">Norge World Engine</p>
           <h1>World Viewer · Nannestad</h1>
         </div>
         <div class="topbar-actions">
+          ${labMode ? '' : `
+            <label class="graphics-select"><span>Renderer</span><select id="renderer-select" aria-label="Renderer">
+              ${option('auto', 'Auto', rendererPreference)}
+              ${option('webgpu', 'WebGPU', rendererPreference)}
+              ${option('webgl2', 'WebGL2', rendererPreference)}
+            </select></label>
+            <label class="graphics-select"><span>Grafikk</span><select id="graphics-select" aria-label="Grafikkprofil">
+              ${option('low', 'Lav', graphicsProfile.id)}
+              ${option('balanced', 'Balansert', graphicsProfile.id)}
+              ${option('high', 'Høy', graphicsProfile.id)}
+            </select></label>
+          `}
           <button type="button" class="panel-toggle" id="panel-toggle" aria-controls="runtime-panel" aria-expanded="false">Data</button>
           <span class="mode">${modeLabel}</span>
         </div>
@@ -59,12 +85,14 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
         </section>
 
         <section>
-          <p class="section-label">Runtime</p>
+          <p class="section-label">Runtime / GPU</p>
+          <div class="row"><span>Active renderer</span><strong id="metric-renderer">WAIT</strong></div>
+          <div class="row"><span>Graphics profile</span><strong id="metric-graphics">${graphicsProfile.label.toUpperCase()}</strong></div>
           <div class="row"><span>Full provenance</span><strong id="metric-provenance">WAIT</strong></div>
           <div class="row"><span>Dedicated Worker</span><strong class="${workerAvailable ? 'pass' : 'warn'}">${workerAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
           <div class="row"><span>WebCrypto</span><strong class="${webcryptoAvailable ? 'pass' : 'warn'}">${webcryptoAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
-          <div class="row"><span>WebGL2 preview adapter</span><strong class="${webgl2 ? 'pass' : 'warn'}">${webgl2 ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
-          <div class="row"><span>WebGPU probe</span><strong class="${webgpuAvailable ? 'pass' : 'muted'}">${webgpuAvailable ? 'AVAILABLE' : 'NOT DETECTED'}</strong></div>
+          <div class="row"><span>WebGPU</span><strong class="${webgpuAvailable ? 'pass' : 'muted'}">${webgpuAvailable ? 'AVAILABLE' : 'NOT DETECTED'}</strong></div>
+          <div class="row"><span>WebGL2 fallback</span><strong class="${webgl2 ? 'pass' : 'warn'}">${webgl2 ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
           <div class="row"><span>Retained terrain</span><strong id="metric-bytes">—</strong></div>
         </section>
 
@@ -78,29 +106,34 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
 
         <section>
           <p class="section-label">Controls / provenance</p>
-          <p class="copy">Touch: 1 finger orbit · 2 fingers pinch-zoom + pan. Mouse: drag orbit · Shift/middle/right drag pan · wheel zoom · double-click reset. Open <code>?lab=terrain</code> for Forsøk 18.</p>
+          <p class="copy">Touch: 1 finger orbit · 2 fingers pinch-zoom + pan. Mouse: drag orbit · Shift/middle/right drag pan · wheel zoom · double-click reset. Renderer/grafikkvalg laster samme world truth på nytt; de endrer ikke geodata.</p>
           <p class="copy" id="artifact-note">Manifest: ${manifestUrl}</p>
         </section>
       </aside>
     </main>
   `;
 
+  document.querySelector<HTMLSelectElement>('#renderer-select')?.addEventListener('change', (event) => {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (RENDERER_PREFERENCES.includes(value)) updateQuerySetting('renderer', value, 'auto');
+  });
+  document.querySelector<HTMLSelectElement>('#graphics-select')?.addEventListener('change', (event) => {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (GRAPHICS_PROFILE_IDS.includes(value)) updateQuerySetting('graphics', value, 'balanced');
+  });
+
   const shellElement = document.querySelector<HTMLElement>('.shell');
   const panelToggle = document.querySelector<HTMLButtonElement>('#panel-toggle');
   const viewport = document.querySelector<HTMLElement>('.viewport');
   if (!shellElement || !panelToggle || !viewport) return;
-
   const mobileQuery = matchMedia('(max-width: 760px)');
   const setPanelOpen = (open: boolean) => {
     shellElement.classList.toggle('mobile-panel-open', open && mobileQuery.matches);
     panelToggle.setAttribute('aria-expanded', String(open && mobileQuery.matches));
     panelToggle.textContent = open && mobileQuery.matches ? 'Lukk' : 'Data';
   };
-
   setPanelOpen(false);
-  panelToggle.addEventListener('click', () => {
-    setPanelOpen(!shellElement.classList.contains('mobile-panel-open'));
-  });
+  panelToggle.addEventListener('click', () => setPanelOpen(!shellElement.classList.contains('mobile-panel-open')));
   viewport.addEventListener('pointerdown', () => {
     if (shellElement.classList.contains('mobile-panel-open')) setPanelOpen(false);
   });
@@ -135,9 +168,7 @@ function createAuditedRuntimeFetch() {
     const raw = input instanceof Request ? input.url : String(input);
     const url = new URL(raw, location.href).href;
     requests.push(url);
-    if (sameOriginAudit && new URL(url).origin !== location.origin) {
-      throw new Error(`PREVIEW_BROWSER_RAW_NETWORK_FORBIDDEN: ${url}`);
-    }
+    if (sameOriginAudit && new URL(url).origin !== location.origin) throw new Error(`PREVIEW_BROWSER_RAW_NETWORK_FORBIDDEN: ${url}`);
     return nativeFetch(input, init);
   };
   return { fetchImpl, requests };
@@ -157,11 +188,18 @@ async function postPreviewReport(report: any) {
   }
 }
 
+function requestedRendererAvailable() {
+  if (!workerAvailable || !webcryptoAvailable) return false;
+  if (rendererPreference === 'webgpu') return webgpuAvailable;
+  if (rendererPreference === 'webgl2') return Boolean(webgl2);
+  return webgpuAvailable || Boolean(webgl2);
+}
+
 async function runDefaultPreview() {
   shell(
     'PREVIEW 1 · REAL COMPILED',
     'Ekte Nannestad-preview',
-    'Laster kompilert DTM1-terreng, NVDB-veier og OSM-bygg gjennom samme runtime-verifikasjon som motoren bruker. Ingen rå geodatakilde kontaktes av vieweren.',
+    'Auto bruker WebGPU når klienten kan opprette en fungerende adapter/device, ellers WebGL2. Grafikkprofilen endrer GPU/mesh-budsjett, aldri world truth.',
     'Last Preview 1',
   );
   const canvas = document.querySelector<HTMLCanvasElement>('#world-canvas');
@@ -172,12 +210,12 @@ async function runDefaultPreview() {
   resizeCanvas(canvas);
   new ResizeObserver(() => resizeCanvas(canvas)).observe(canvas);
 
-  const canRun = Boolean(webgl2 && workerAvailable && webcryptoAvailable);
-  if (!canRun) {
+  if (!requestedRendererAvailable()) {
     action.disabled = true;
-    action.textContent = 'Preview utilgjengelig på denne klienten';
+    action.textContent = 'Valgt renderer er utilgjengelig';
     setMetric('metric-scene', 'CLIENT BLOCKED', 'warn');
-    await postPreviewReport({ status: 'FAIL', code: 'CLIENT_CAPABILITY_BLOCKED' });
+    setMetric('metric-renderer', `${rendererPreference.toUpperCase()} UNAVAILABLE`, 'warn');
+    await postPreviewReport({ status: 'FAIL', code: 'CLIENT_CAPABILITY_BLOCKED', renderer_preference: rendererPreference });
     return;
   }
 
@@ -195,6 +233,8 @@ async function runDefaultPreview() {
         canvas,
         manifestUrl,
         fetchImpl: runtimeFetch.fetchImpl,
+        graphicsProfile: graphicsProfile.id,
+        rendererPreference,
         onPhase: (phase) => {
           phaseChip.textContent = phase.toUpperCase();
           if (phase.includes('verify')) setMetric('metric-provenance', 'VERIFYING', 'warn');
@@ -205,13 +245,18 @@ async function runDefaultPreview() {
       setMetric('metric-buildings', `PASS · ${result.buildings.count} footprints`, 'pass');
       setMetric('metric-provenance', 'PASS ×3', 'pass');
       setMetric('metric-bytes', formatBytes(result.terrain.retained_bytes));
-      setMetric('metric-mesh', `${result.renderer.terrain_vertices.toLocaleString()} vertices`);
+      setMetric('metric-renderer', `${String(result.renderer.backend).toUpperCase()}${result.renderer.fallback ? ' · FALLBACK' : ''}`, result.renderer.fallback ? 'warn' : 'pass');
+      setMetric('metric-graphics', `${graphicsProfile.label.toUpperCase()} · ${result.renderer.terrain_vertices.toLocaleString()} V`, 'pass');
+      setMetric('metric-mesh', `${result.renderer.terrain_vertices.toLocaleString()} vertices · ${result.renderer.terrain_triangles.toLocaleString()} tris`);
       setMetric('metric-height-backed', String(result.renderer.source_backed_building_heights), 'pass');
       setMetric('metric-height-fallback', `${result.renderer.unresolved_building_heights} · DEBUG 5 m`, 'warn');
       const coordinates = document.querySelector<HTMLElement>('#coordinates');
       if (coordinates) coordinates.textContent = `${result.tile_id} · EPSG:25832 / NN2000`;
       const note = document.querySelector<HTMLElement>('#world-note');
-      if (note) note.textContent = 'REAL COMPILED runtime artifacts er verifisert og rendret. På mobil: 1 finger roterer, 2 fingre zoomer og flytter kameraets målpunkt.';
+      if (note) {
+        const fallback = result.renderer.fallback ? ` Auto fallback: ${result.renderer.fallback.reason}.` : '';
+        note.textContent = `REAL COMPILED world truth verifisert. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${fallback}`;
+      }
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
       intro.classList.add('hidden');
@@ -228,6 +273,7 @@ async function runDefaultPreview() {
       phaseChip.classList.add('fail-chip');
       setMetric('metric-scene', 'FAIL CLOSED', 'fail');
       setMetric('metric-provenance', 'NOT ACCEPTED', 'fail');
+      setMetric('metric-renderer', 'FAILED', 'fail');
       const note = document.querySelector<HTMLElement>('#world-note');
       if (note) note.textContent = error instanceof Error ? error.message : String(error);
       intro.classList.remove('running');
@@ -248,12 +294,7 @@ async function runDefaultPreview() {
 }
 
 async function runTerrainLab() {
-  shell(
-    'LAB · FORSØK 18',
-    'Terrain runtime-laboratorium',
-    'Dette er den eksplisitte strukturtesten. Standard-URL-en er nå reservert for den ekte Preview 1-verdenen.',
-    'Kjør Forsøk 18',
-  );
+  shell('LAB · FORSØK 18', 'Terrain runtime-laboratorium', 'Eksplisitt strukturtest. Standard-URL-en er den ekte Preview 1-verdenen.', 'Kjør Forsøk 18');
   const canvas = document.querySelector<HTMLCanvasElement>('#world-canvas');
   const action = document.querySelector<HTMLButtonElement>('#world-action');
   const intro = document.querySelector<HTMLDivElement>('#experiment-intro');
@@ -264,10 +305,7 @@ async function runTerrainLab() {
     action.disabled = true;
     intro.classList.add('running');
     try {
-      const result = await runWorldViewerTerrainExperiment({
-        canvas,
-        onPhase: (phase: string) => { phaseChip.textContent = phase.toUpperCase(); },
-      });
+      const result = await runWorldViewerTerrainExperiment({ canvas, onPhase: (phase: string) => { phaseChip.textContent = phase.toUpperCase(); } });
       setMetric('metric-terrain', result.verification_code, 'pass');
       setMetric('metric-provenance', result.verification_code, 'pass');
       setMetric('metric-bytes', formatBytes(result.retained_bytes));
