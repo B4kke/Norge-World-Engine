@@ -20,16 +20,22 @@ jobs:
           python-version: '3.12'
 
       - name: Syntax check
-        run: python -m py_compile tools/visual-data/probe_visual_sources.py
+        run: |
+          python -m py_compile tools/visual-data/probe_visual_sources.py
+          python -m py_compile tools/visual-data/probe_visual_order_selections.py
 
       - name: Probe current official download contracts
         run: |
           python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json
+          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json
           cat /tmp/nwe-visual-source-probe.json
+          cat /tmp/nwe-visual-order-selection.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: visual-source-probe-${{ github.sha }}
-          path: /tmp/nwe-visual-source-probe.json
+          path: |
+            /tmp/nwe-visual-source-probe.json
+            /tmp/nwe-visual-order-selection.json
           if-no-files-found: error
           retention-days: 14
