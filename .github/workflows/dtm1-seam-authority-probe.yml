@@ -2,6 +2,12 @@ name: dtm1-seam-authority-probe
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/dtm1-seam-authority-probe.yml'
+      - 'engine/compiler/src/nwe_compiler/nhm_mosaic_authority.py'
+      - 'engine/compiler/tests/test_nhm_mosaic_authority.py'
+      - 'tools/geo/dtm1_nhm_mosaic_authority_probe.py'
 
 jobs:
   probe-provider-mosaic-authority:
