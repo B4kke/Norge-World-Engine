@@ -347,3 +347,28 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
+
+## 2026-08-18 — LUMEN device-evidence comparability hardening
+
+**Gjort**
+- Started from current `main` and created the persistent LUMEN branch `agent/lumen-hourly`; prior LUMEN PR #27 was already merged, so no duplicate LUMEN PR was retained.
+- Audited the merged Android/device evidence exporter and found a benchmark-validity hole: its prose required same camera/device context, but the JSON did not persist first-frame camera or actual render-surface/backing-buffer dimensions.
+- Added first-frame yaw/pitch/distance, canvas CSS/backing pixel dimensions and effective renderer pixel ratio to `nwe.world-viewer-device-evidence/0.1` output.
+- Added `compareDeviceEvidenceContext()` so renderer timing may only be compared when tile/artifact hashes, verification state, graphics profile, camera, render surface and device metadata match.
+- Kept raw-source blocking and full RuntimeVerificationBundle verification unchanged.
+- Opened one draft PR, #30, from the persistent LUMEN branch; no merge requested.
+
+**Bevist**
+- Focused Node regression passed before publication: same-context WebGL2/WebGPU evidence is accepted, while changed camera and changed backing-buffer dimensions are rejected as non-comparable.
+- This improves evidence validity only; it does not constitute Android performance evidence or select WebGPU/WebGL2/Cesium.
+
+**Endret**
+- `apps/world-viewer/src/deviceEvidence.mjs`
+- `apps/world-viewer/src/deviceEvidenceEntry.mjs`
+- `apps/world-viewer/test_device_evidence.mjs`
+- `docs/06-task-queue.md`
+- This worklog. `docs/04-decisions.md` remains unchanged because no renderer architecture decision is proven.
+
+**Neste**
+- Require exact-head CI/Vite PASS and verify the Vercel Preview commit identity.
+- Then capture WebGL2 and WebGPU on the same physical Android Chrome device and reject timing interpretation unless `compareDeviceEvidenceContext()` reports `comparable=true`.
