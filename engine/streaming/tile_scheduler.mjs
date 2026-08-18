@@ -5,6 +5,8 @@ const DEFAULTS = Object.freeze({
   maxResidentTiles: 9,
   maxCacheBytes: 64 * 1024 * 1024,
   maxResidentBytes: null,
+  retryDelayMs: 0,
+  maxLoadAttemptsPerInterest: null,
 });
 
 function finite(value, label) {
@@ -25,6 +27,11 @@ function optionalNonNegative(value, label) {
 function positiveInteger(value, label) {
   if (!Number.isInteger(value) || value <= 0) throw new TypeError(`${label} must be a positive integer`);
   return value;
+}
+
+function optionalPositiveInteger(value, label) {
+  if (value == null) return null;
+  return positiveInteger(value, label);
 }
 
 function validateTile(tile) {
@@ -73,6 +80,8 @@ export class TileStreamingScheduler {
     maxResidentTiles = DEFAULTS.maxResidentTiles,
     maxCacheBytes = DEFAULTS.maxCacheBytes,
     maxResidentBytes = DEFAULTS.maxResidentBytes,
+    retryDelayMs = DEFAULTS.retryDelayMs,
+    maxLoadAttemptsPerInterest = DEFAULTS.maxLoadAttemptsPerInterest,
     clock = () => performance.now(),
     onEvent = () => {},
   } = {}) {
@@ -87,6 +96,8 @@ export class TileStreamingScheduler {
     positiveInteger(maxResidentTiles, 'maxResidentTiles');
     nonNegative(maxCacheBytes, 'maxCacheBytes');
     optionalNonNegative(maxResidentBytes, 'maxResidentBytes');
+    nonNegative(retryDelayMs, 'retryDelayMs');
+    optionalPositiveInteger(maxLoadAttemptsPerInterest, 'maxLoadAttemptsPerInterest');
 
     Object.assign(this, {
       loadTile,
@@ -99,6 +110,8 @@ export class TileStreamingScheduler {
       maxResidentTiles,
       maxCacheBytes,
       maxResidentBytes,
+      retryDelayMs,
+      maxLoadAttemptsPerInterest,
       clock,
       onEvent,
     });
@@ -116,6 +129,9 @@ export class TileStreamingScheduler {
       loadsStarted: 0,
       loadsCompleted: 0,
       loadsFailed: 0,
+      retriesQueued: 0,
+      retryDeferrals: 0,
+      retryExhaustions: 0,
       abortRequests: 0,
       staleCompletionsDropped: 0,
       cacheHits: 0,
@@ -135,6 +151,8 @@ export class TileStreamingScheduler {
       peakRetainedBytes: 0,
       maxCacheBytes,
       maxResidentBytes,
+      retryDelayMs,
+      maxLoadAttemptsPerInterest,
     };
   }
 
@@ -150,6 +168,12 @@ export class TileStreamingScheduler {
     this.metrics.peakRetainedBytes = Math.max(this.metrics.peakRetainedBytes, retainedBytes);
   }
 
+  #resetRetryCycle(record) {
+    record.loadAttempts = 0;
+    record.retryNotBefore = 0;
+    record.retryExhaustedReported = false;
+  }
+
   #recordFor(tile) {
     let record = this.records.get(tile.id);
     if (!record) {
@@ -163,6 +187,9 @@ export class TileStreamingScheduler {
         byteSize: 0,
         lastTouched: 0,
         loadToken: 0,
+        loadAttempts: 0,
+        retryNotBefore: 0,
+        retryExhaustedReported: false,
         controller: null,
         error: null,
       };
@@ -207,6 +234,11 @@ export class TileStreamingScheduler {
     for (const record of this.records.values()) {
       if (!record.desired && record.state === 'resident') await this.#deactivate(record, 'interest-lost');
       if (!record.desired && record.state === 'queued') record.state = 'idle';
+      if (!record.desired && record.state === 'failed') {
+        record.state = 'idle';
+        record.error = null;
+        this.#resetRetryCycle(record);
+      }
       if (!record.desired && record.state === 'loading' && record.distance > this.retainRadiusMeters) {
         this.#abort(record, 'outside-retain-radius');
       }
@@ -219,10 +251,43 @@ export class TileStreamingScheduler {
       if (record.state === 'cached') {
         this.metrics.cacheHits += 1;
         await this.#activate(record, 'cache-hit');
-      } else if (record.state === 'idle' || record.state === 'failed') {
+      } else if (record.state === 'idle') {
         record.state = 'queued';
         record.error = null;
         this.metrics.cacheMisses += 1;
+      } else if (record.state === 'failed') {
+        const now = this.clock();
+        const attemptsExhausted = this.maxLoadAttemptsPerInterest != null
+          && record.loadAttempts >= this.maxLoadAttemptsPerInterest;
+        if (attemptsExhausted) {
+          if (!record.retryExhaustedReported) {
+            record.retryExhaustedReported = true;
+            this.metrics.retryExhaustions += 1;
+            this.#emit('load-retry-exhausted', {
+              tileId: record.tile.id,
+              loadAttempts: record.loadAttempts,
+              maxLoadAttemptsPerInterest: this.maxLoadAttemptsPerInterest,
+            });
+          }
+        } else if (now < record.retryNotBefore) {
+          this.metrics.retryDeferrals += 1;
+          this.#emit('load-retry-deferred', {
+            tileId: record.tile.id,
+            loadAttempts: record.loadAttempts,
+            retryNotBefore: record.retryNotBefore,
+            remainingMs: record.retryNotBefore - now,
+          });
+        } else {
+          record.state = 'queued';
+          record.error = null;
+          record.retryExhaustedReported = false;
+          this.metrics.cacheMisses += 1;
+          this.metrics.retriesQueued += 1;
+          this.#emit('load-retry-queued', {
+            tileId: record.tile.id,
+            nextAttempt: record.loadAttempts + 1,
+          });
+        }
       }
     }
 
@@ -238,6 +303,7 @@ export class TileStreamingScheduler {
     record.loadToken += 1;
     record.controller = null;
     record.state = 'idle';
+    this.#resetRetryCycle(record);
     controller?.abort(reason);
     this.metrics.abortRequests += 1;
     this.#emit('load-abort-requested', { tileId: record.tile.id, reason });
@@ -290,6 +356,7 @@ export class TileStreamingScheduler {
     record.state = 'resident';
     record.error = null;
     record.lastTouched = this.generation;
+    this.#resetRetryCycle(record);
     this.metrics.activations += 1;
     this.#updateBytePeaks();
     this.#emit('tile-activated', { tileId: record.tile.id, reason, byteSize: record.byteSize });
@@ -339,15 +406,17 @@ export class TileStreamingScheduler {
     const controller = new AbortController();
     record.controller = controller;
     record.loadToken += 1;
+    record.loadAttempts += 1;
     const token = record.loadToken;
+    const attempt = record.loadAttempts;
     const startedAt = this.clock();
     this.activeLoads += 1;
     this.metrics.loadsStarted += 1;
     this.metrics.peakActiveLoads = Math.max(this.metrics.peakActiveLoads, this.activeLoads);
-    this.#emit('load-started', { tileId: record.tile.id, priority: record.priority });
+    this.#emit('load-started', { tileId: record.tile.id, priority: record.priority, attempt });
 
     const promise = Promise.resolve()
-      .then(() => this.loadTile(record.tile, { signal: controller.signal }))
+      .then(() => this.loadTile(record.tile, { signal: controller.signal, attempt }))
       .then(async (result) => {
         if (record.loadToken !== token || record.state !== 'loading') {
           this.metrics.staleCompletionsDropped += 1;
@@ -362,12 +431,15 @@ export class TileStreamingScheduler {
         record.error = null;
         record.lastTouched = this.generation;
         record.state = 'cached';
+        record.retryNotBefore = 0;
+        record.retryExhaustedReported = false;
         this.bytesCached += byteSize;
         this.metrics.loadsCompleted += 1;
         this.#updateBytePeaks();
         this.#emit('load-completed', {
           tileId: record.tile.id,
           byteSize,
+          attempt,
           durationMs: this.clock() - startedAt,
         });
 
@@ -390,12 +462,20 @@ export class TileStreamingScheduler {
         record.controller = null;
         if (error?.name === 'AbortError') {
           record.state = 'idle';
+          this.#resetRetryCycle(record);
           return;
         }
         record.state = 'failed';
         record.error = error;
+        record.retryNotBefore = this.clock() + this.retryDelayMs;
+        record.retryExhaustedReported = false;
         this.metrics.loadsFailed += 1;
-        this.#emit('load-failed', { tileId: record.tile.id, message: String(error?.message ?? error) });
+        this.#emit('load-failed', {
+          tileId: record.tile.id,
+          attempt,
+          retryNotBefore: record.retryNotBefore,
+          message: String(error?.message ?? error),
+        });
       })
       .finally(() => {
         this.activeLoads -= 1;
@@ -447,6 +527,7 @@ export class TileStreamingScheduler {
     record.byteSize = 0;
     record.state = 'idle';
     record.lastTouched = this.generation;
+    this.#resetRetryCycle(record);
     this.bytesCached = Math.max(0, this.bytesCached - byteSize);
     this.metrics.evictions += 1;
     this.#emit('tile-evicted', { tileId: record.tile.id, byteSize, reason });
@@ -471,6 +552,8 @@ export class TileStreamingScheduler {
         distance: record.distance,
         byteSize: record.byteSize,
         lastTouched: record.lastTouched,
+        loadAttempts: record.loadAttempts,
+        retryNotBefore: record.retryNotBefore,
         error: record.error ? String(record.error?.message ?? record.error) : null,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
