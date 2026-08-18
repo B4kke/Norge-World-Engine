@@ -74,6 +74,11 @@ async function run() {
 
   const proof = {
     ...result,
+    gpu_resource_lifecycle: {
+      ...result.gpu_resource_lifecycle,
+      physical_vram_release_observed: false,
+      claim_boundary: 'WebGL deleteBuffer/deleteVertexArray calls and renderer ownership removal are observed; physical driver/VRAM reclamation timing is not observable here.',
+    },
     network: {
       resource_requests: resources.length,
       raw_source_calls: rawSourceCalls,
