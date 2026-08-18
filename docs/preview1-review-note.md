@@ -1,1 +1,0 @@
-Preview 1 branch review note. Hosted real-data and Vercel gates remain authoritative before merge.
