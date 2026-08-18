@@ -55,6 +55,7 @@ async function run() {
       graphicsProfile,
       rendererPreference,
       benchmarkFrameCount: frameCount,
+      streamingMovementProbe: true,
       onPhase: (phase) => setStatus(String(phase).toUpperCase()),
     });
     const evidence = buildDeviceEvidence({
