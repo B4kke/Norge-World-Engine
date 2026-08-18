@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from itertools import combinations
+from statistics import mean
 
 
 class SourceGridAuditError(RuntimeError):
@@ -168,6 +170,95 @@ def audit_declared_route_pair(
             if pair.hypothesis_supported
             else "declared extents are not geometrically consistent with the tested buffered-route hypothesis",
             "assumption": "the inferred buffer is a non-authoritative processing halo",
+            "production_seam_authority": False,
+            "authority_status": "UNPROVEN",
+        },
+    }
+
+
+def audit_declared_route_grid(
+    routes: dict[str, tuple[float, float, float, float]],
+    *,
+    nominal_route_size_m: float = 15_000.0,
+    tolerance_m: float = 0.25,
+) -> dict:
+    """Audit every nominally adjacent pair in a declared source-route set.
+
+    This intentionally measures regularity only. Even a perfectly regular grid
+    does not authorize dropping overlap samples or choosing a source winner.
+    """
+
+    if len(routes) < 2:
+        raise SourceGridAuditError("route-grid audit requires at least two routes")
+
+    inferred = {
+        route_id: infer_route_extent(
+            bounds,
+            nominal_route_size_m=nominal_route_size_m,
+            tolerance_m=tolerance_m,
+        )
+        for route_id, bounds in sorted(routes.items())
+    }
+
+    pairs: list[dict] = []
+    for first_id, second_id in combinations(sorted(inferred), 2):
+        try:
+            pair = audit_adjacent_routes(
+                inferred[first_id],
+                inferred[second_id],
+                tolerance_m=tolerance_m,
+            )
+        except SourceGridAuditError as exc:
+            if "not adjacent" in str(exc):
+                continue
+            raise
+        pairs.append(
+            {
+                "first_id": first_id,
+                "second_id": second_id,
+                **asdict(pair),
+            }
+        )
+
+    if not pairs:
+        raise SourceGridAuditError("route-grid audit found no nominally adjacent route pairs")
+
+    supported_pairs = sum(1 for pair in pairs if pair["hypothesis_supported"])
+    overlaps = [float(pair["raw_overlap_m"]) for pair in pairs]
+    spacings = [float(pair["center_spacing_m"]) for pair in pairs]
+    core_gaps = [float(pair["nominal_core_gap_m"]) for pair in pairs]
+
+    return {
+        "schema": "nwe.dtm1-source-grid-regularity-audit/0.1",
+        "nominal_route_size_m": nominal_route_size_m,
+        "tolerance_m": tolerance_m,
+        "route_count": len(inferred),
+        "adjacent_pair_count": len(pairs),
+        "supported_pair_count": supported_pairs,
+        "all_adjacent_pairs_support_hypothesis": supported_pairs == len(pairs),
+        "summary": {
+            "raw_overlap_m": {
+                "min": min(overlaps),
+                "max": max(overlaps),
+                "mean": mean(overlaps),
+            },
+            "center_spacing_m": {
+                "min": min(spacings),
+                "max": max(spacings),
+                "mean": mean(spacings),
+            },
+            "nominal_core_gap_m": {
+                "min": min(core_gaps),
+                "max": max(core_gaps),
+                "mean": mean(core_gaps),
+            },
+        },
+        "routes": {route_id: asdict(audit) for route_id, audit in inferred.items()},
+        "pairs": pairs,
+        "claim_calibration": {
+            "fact": "grid regularity was measured from declared provider extents",
+            "inference": "regularity may support the buffered-route geometry hypothesis",
+            "assumption": "any inferred buffer is a disposable processing halo",
             "production_seam_authority": False,
             "authority_status": "UNPROVEN",
         },
