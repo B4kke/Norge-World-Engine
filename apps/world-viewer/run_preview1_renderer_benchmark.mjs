@@ -215,10 +215,19 @@ async function main() {
       '--headless=new',
       '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
       '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-      '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1280,800',
+      '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+      '--window-size=1280,800',
       `--user-data-dir=${profile}`,
     ];
-    if (backend === 'webgpu') chromeArgs.push('--enable-unsafe-webgpu', '--enable-features=Vulkan,UseSkiaRenderer');
+    if (backend === 'webgpu') {
+      chromeArgs.push(
+        '--enable-unsafe-webgpu',
+        '--use-webgpu-adapter=swiftshader',
+        '--disable-dawn-features=disallow_unsafe_apis',
+        '--use-gpu-in-tests',
+        '--enable-accelerated-2d-canvas',
+      );
+    }
     chromeArgs.push(`${origin}/?${query}`);
     const child = spawn(chrome, chromeArgs, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     let chromeLog = '';
