@@ -1,4 +1,5 @@
 const RAW_SOURCE_MARKERS = ['kartverket.no', 'geonorge.no', 'vegvesen.no', 'nvdb', 'overpass', 'openstreetmap.org'];
+const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
 
 export function isRawSourceRuntimeUrl(url) {
   const lower = String(url).toLowerCase();
@@ -33,6 +34,18 @@ function normalizedCaptureSessionId(value) {
   return typeof value === 'string' && /^[a-zA-Z0-9._:-]{8,128}$/.test(value) ? value : null;
 }
 
+function stableLifecycleCheckpoint(checkpoint) {
+  return checkpoint ? {
+    label: checkpoint.label ?? null,
+    active: checkpoint.active === true,
+    creates: finiteNumberOrNull(checkpoint.creates),
+    destroys: finiteNumberOrNull(checkpoint.destroys),
+    current_buffer_count: finiteNumberOrNull(checkpoint.current_buffer_count),
+    current_payload_bytes: finiteNumberOrNull(checkpoint.current_payload_bytes),
+    physical_vram_release_observed: checkpoint.physical_vram_release_observed === true,
+  } : null;
+}
+
 function streamingComparisonContract(streaming) {
   const probe = streaming?.movement_probe ?? null;
   const trace = streaming?.trace ?? null;
@@ -51,6 +64,12 @@ function streamingComparisonContract(streaming) {
       loads_started_delta: finiteNumberOrNull(probe.loads_started_delta),
       cache_hits_delta: finiteNumberOrNull(probe.cache_hits_delta),
       renderer_resource_lifecycle_observed: probe.renderer_resource_lifecycle_observed === true,
+      renderer_resource_checkpoints: Array.isArray(probe.renderer_resource_checkpoints)
+        ? probe.renderer_resource_checkpoints.map(stableLifecycleCheckpoint)
+        : null,
+      renderer_resource_creates_delta: finiteNumberOrNull(probe.renderer_resource_creates_delta),
+      renderer_resource_destroys_delta: finiteNumberOrNull(probe.renderer_resource_destroys_delta),
+      physical_vram_release_observed: probe.physical_vram_release_observed === true,
     } : null,
     trace: trace ? {
       schema: trace.schema ?? null,
@@ -62,8 +81,68 @@ function streamingComparisonContract(streaming) {
       retain_radius_m: finiteNumberOrNull(trace.metadata?.retain_radius_m),
       movement_offset_e_m: finiteNumberOrNull(trace.metadata?.movement_offset_e_m),
       renderer_resource_lifecycle_observed: trace.metadata?.renderer_resource_lifecycle_observed === true,
+      physical_vram_release_observed: trace.metadata?.physical_vram_release_observed === true,
     } : null,
   });
+}
+
+function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererResult) {
+  if (movementProbe.renderer_resource_lifecycle_observed !== true) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_LIFECYCLE_MISSING');
+  }
+  if (movementProbe.physical_vram_release_observed !== false) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_VRAM_CLAIM_INVALID');
+  }
+  if (movementProbe.renderer_resource_creates_delta !== 1 || movementProbe.renderer_resource_destroys_delta !== 1) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_LIFECYCLE_COUNTS');
+  }
+  const checkpoints = Array.isArray(movementProbe.renderer_resource_checkpoints)
+    ? movementProbe.renderer_resource_checkpoints
+    : [];
+  if (checkpoints.length !== 3) throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_CHECKPOINTS_MISSING');
+  const byLabel = Object.fromEntries(checkpoints.map((checkpoint) => [checkpoint?.label, checkpoint]));
+  const initial = byLabel['initial-resident'];
+  const cached = byLabel['outside-active-inside-retain'];
+  const returned = byLabel['returned-center'];
+  if (!initial || initial.active !== true || initial.current_buffer_count !== 3 || !(initial.current_payload_bytes > 0)) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_INITIAL_INVALID');
+  }
+  if (!cached || cached.active !== false || cached.current_buffer_count !== 0 || cached.current_payload_bytes !== 0) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_CACHED_INVALID');
+  }
+  if (!returned || returned.active !== true || returned.current_buffer_count !== 3 || !(returned.current_payload_bytes > 0)) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_RETURN_INVALID');
+  }
+  if (initial.tile_id !== movementProbe.tile_id || cached.tile_id !== movementProbe.tile_id || returned.tile_id !== movementProbe.tile_id) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_TILE_MISMATCH');
+  }
+  const expectedArtifact = rendererResult?.terrain_resource_lifecycle?.artifact_sha256 ?? null;
+  if (!expectedArtifact || [initial, cached, returned].some((checkpoint) => checkpoint.artifact_sha256 !== expectedArtifact)) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_ARTIFACT_MISMATCH');
+  }
+  const backend = rendererResult?.backend ?? null;
+  if (!backend || movementProbe.renderer_backend !== backend || [initial, cached, returned].some((checkpoint) => checkpoint.backend !== backend)) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_BACKEND_MISMATCH');
+  }
+  if ([initial, cached, returned].some((checkpoint) => checkpoint.physical_vram_release_observed !== false)) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_VRAM_CHECKPOINT_INVALID');
+  }
+  const finalLifecycle = rendererResult?.terrain_resource_lifecycle;
+  if (!finalLifecycle || finalLifecycle.schema !== TERRAIN_RESOURCE_SCHEMA || finalLifecycle.active !== true) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_FINAL_STATE_INVALID');
+  }
+  if (finalLifecycle.tile_id !== movementProbe.tile_id || finalLifecycle.artifact_sha256 !== expectedArtifact || finalLifecycle.backend !== backend) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_FINAL_IDENTITY_INVALID');
+  }
+  if (finalLifecycle.physical_vram_release_observed !== false) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_FINAL_VRAM_CLAIM_INVALID');
+  }
+  if (streamingTrace?.metadata?.renderer_resource_lifecycle_observed !== true) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_RENDERER_LIFECYCLE_MISSING');
+  }
+  if (streamingTrace?.metadata?.physical_vram_release_observed !== false) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_VRAM_CLAIM_INVALID');
+  }
 }
 
 export function classifyBrowserEnvironment(navigatorLike = {}) {
@@ -185,12 +264,10 @@ export function buildDeviceEvidence({
     if (movementProbe.schema !== 'nwe.single-tile-streaming-movement-probe/0.1' || movementProbe.status !== 'PASS') {
       throw new Error('DEVICE_EVIDENCE_STREAMING_MOVEMENT_INVALID');
     }
-    if (movementProbe.renderer_resource_lifecycle_observed !== false) {
-      throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_BOUNDARY_AMBIGUOUS');
-    }
     if (streamingTrace?.schema !== 'nwe.streaming-movement-trace/0.1') {
       throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_MISSING');
     }
+    validateRendererLifecycleProbe(movementProbe, streamingTrace, result.renderer);
   }
   if (streamingTrace != null) {
     if (streamingTrace.schema !== 'nwe.streaming-movement-trace/0.1') {
@@ -256,7 +333,7 @@ export function buildDeviceEvidence({
       fallback: result.renderer?.fallback ?? null,
       graphics_profile: result.graphics_profile ?? null,
       webgpu_feature_level: result.renderer?.webgpu_feature_level ?? null,
-      webgpu_adapter_request_mode: result.renderer?.webgpu_feature_level ?? result.renderer?.webgpu_adapter_request_mode ?? null,
+      webgpu_adapter_request_mode: result.renderer?.webgpu_adapter_request_mode ?? result.renderer?.webgpu_feature_level ?? null,
       webgpu_core_features_and_limits: result.renderer?.webgpu_core_features_and_limits ?? null,
       max_dpr: finiteNumberOrNull(result.renderer?.max_dpr),
       msaa_samples: finiteNumberOrNull(result.renderer?.msaa_samples),
@@ -268,6 +345,7 @@ export function buildDeviceEvidence({
       timestamp_query_supported: result.renderer?.timestamp_query_supported ?? false,
       terrain_vertices: result.renderer?.terrain_vertices ?? null,
       terrain_triangles: result.renderer?.terrain_triangles ?? null,
+      terrain_resource_lifecycle: result.renderer?.terrain_resource_lifecycle ?? null,
       camera: camera ? {
         yaw: finiteNumberOrNull(camera.yaw),
         pitch: finiteNumberOrNull(camera.pitch),
@@ -291,6 +369,7 @@ export function buildDeviceEvidence({
       repeated_draw: result.timing_ms?.renderer_frame_benchmark ?? null,
       terrain_pipeline: result.terrain?.timing_ms ?? null,
       renderer: result.renderer?.timing_ms ?? null,
+      terrain_resource_lifecycle: movementProbe?.renderer_resource_timing_ms ?? null,
     },
     memory: {
       browser: result.browser_memory ?? null,
@@ -302,7 +381,7 @@ export function buildDeviceEvidence({
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, streaming probe contract, camera, render workload/surface and exposed device/browser context. The streaming movement probe proves verified single-tile resident→cached→resident runtime/cache behavior with no refetch; renderer_resource_lifecycle_observed=false means it does not prove GPU resource unload/reload. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
+    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, stable streaming/resource-lifecycle contract, camera, render workload/surface and exposed device/browser context. The single-tile movement probe proves resident→cached→resident runtime/cache behavior with no refetch and observes renderer terrain resource objects present→absent→present across the same transition. This does not observe when the browser/driver physically reclaims VRAM. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
   };
 }
 
