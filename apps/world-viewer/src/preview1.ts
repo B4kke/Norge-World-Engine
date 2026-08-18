@@ -27,8 +27,8 @@ function assertManifest(value: any) {
   return value;
 }
 
-async function fetchPreviewManifest(manifestUrl: string) {
-  const response = await fetch(manifestUrl, { cache: 'no-store' });
+async function fetchPreviewManifest(manifestUrl: string, fetchImpl: typeof globalThis.fetch) {
+  const response = await fetchImpl(manifestUrl, { cache: 'no-store' });
   if (!response.ok) throw new Error(`PREVIEW_MANIFEST_FETCH: ${response.status} ${manifestUrl}`);
   return assertManifest(await response.json());
 }
@@ -40,7 +40,12 @@ function centerFromBounds(bounds: number[]) {
   };
 }
 
-async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: string) => void) {
+async function loadTerrain(
+  manifest: any,
+  manifestUrl: string,
+  onPhase: (phase: string) => void,
+  fetchImpl: typeof globalThis.fetch,
+) {
   const terrainBundleUrl = absoluteUrl(manifest.terrain.bundle, manifestUrl);
   const center = centerFromBounds(manifest.tile.bounds);
   const descriptor = { id: manifest.tile.id, centerE: center.e, centerN: center.n };
@@ -55,6 +60,7 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
       return loadTerrainRuntimeInput({
         bundleUrl: terrainBundleUrl,
         expectedTileId: tile.id,
+        fetchImpl,
         signal,
       });
     },
@@ -100,31 +106,36 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
 export async function runPreview1({
   canvas,
   manifestUrl = DEFAULT_PREVIEW1_MANIFEST,
+  fetchImpl = globalThis.fetch,
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
 }: {
   canvas: HTMLCanvasElement;
   manifestUrl?: string;
+  fetchImpl?: typeof globalThis.fetch;
   onPhase?: (phase: string) => void;
   onReady?: (result: any) => void;
   onFrame?: (frame: any) => void;
 }) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
+  if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required');
   onPhase('manifest');
-  const manifest = await fetchPreviewManifest(manifestUrl);
   const manifestBase = new URL(manifestUrl, location.href).href;
+  const manifest = await fetchPreviewManifest(manifestBase, fetchImpl);
 
   onPhase('compiled-vectors');
   const roadsPromise = loadCompiledJsonArtifact({
     bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase),
     expectedRole: 'road-network',
+    fetchImpl,
   });
   const buildingsPromise = loadCompiledJsonArtifact({
     bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase),
     expectedRole: 'building-footprints',
+    fetchImpl,
   });
-  const terrainPromise = loadTerrain(manifest, manifestBase, onPhase);
+  const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl);
   const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
 
   if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) {
