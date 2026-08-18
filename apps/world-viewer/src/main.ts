@@ -14,6 +14,9 @@ const webcryptoAvailable = Boolean(globalThis.crypto?.subtle);
 const params = new URLSearchParams(location.search);
 const labMode = params.get('lab') === 'terrain';
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
+const previewReportUrl = params.get('previewReport');
+const sameOriginAudit = params.get('previewAuditOrigin') === '1';
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 function shell(modeLabel: string, introTitle: string, introCopy: string, actionLabel: string) {
   app.innerHTML = `
@@ -101,6 +104,34 @@ function resizeCanvas(canvas: HTMLCanvasElement) {
   canvas.height = height;
 }
 
+function createAuditedRuntimeFetch() {
+  const requests: string[] = [];
+  const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+    const raw = input instanceof Request ? input.url : String(input);
+    const url = new URL(raw, location.href).href;
+    requests.push(url);
+    if (sameOriginAudit && new URL(url).origin !== location.origin) {
+      throw new Error(`PREVIEW_BROWSER_RAW_NETWORK_FORBIDDEN: ${url}`);
+    }
+    return nativeFetch(input, init);
+  };
+  return { fetchImpl, requests };
+}
+
+async function postPreviewReport(report: any) {
+  if (!previewReportUrl) return;
+  try {
+    await nativeFetch(new URL(previewReportUrl, location.href).href, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(report),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('PREVIEW_REPORT_FAILED', error);
+  }
+}
+
 async function runDefaultPreview() {
   shell(
     'PREVIEW 1 · REAL COMPILED',
@@ -121,6 +152,7 @@ async function runDefaultPreview() {
     action.disabled = true;
     action.textContent = 'Preview utilgjengelig på denne klienten';
     setMetric('metric-scene', 'CLIENT BLOCKED', 'warn');
+    await postPreviewReport({ status: 'FAIL', code: 'CLIENT_CAPABILITY_BLOCKED' });
     return;
   }
 
@@ -132,10 +164,12 @@ async function runDefaultPreview() {
     action.textContent = 'Laster ekte world data…';
     intro.classList.add('running');
     phaseChip.textContent = 'LOADING';
+    const runtimeFetch = createAuditedRuntimeFetch();
     try {
       const { result } = await runPreview1({
         canvas,
         manifestUrl,
+        fetchImpl: runtimeFetch.fetchImpl,
         onPhase: (phase) => {
           phaseChip.textContent = phase.toUpperCase();
           if (phase.includes('verify')) setMetric('metric-provenance', 'VERIFYING', 'warn');
@@ -156,6 +190,13 @@ async function runDefaultPreview() {
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
       intro.classList.add('hidden');
+      await postPreviewReport({
+        schema: 'nwe.world-preview-browser-smoke/0.1',
+        status: 'PASS',
+        phase: phaseChip.textContent,
+        runtime_requests: runtimeFetch.requests,
+        result,
+      });
     } catch (error) {
       console.error(error);
       phaseChip.textContent = 'DATA NOT READY';
@@ -168,6 +209,13 @@ async function runDefaultPreview() {
       action.textContent = 'Prøv Preview 1 igjen';
       action.disabled = false;
       running = false;
+      await postPreviewReport({
+        schema: 'nwe.world-preview-browser-smoke/0.1',
+        status: 'FAIL',
+        phase: phaseChip.textContent,
+        runtime_requests: runtimeFetch.requests,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   };
   action.addEventListener('click', start);
