@@ -107,8 +107,16 @@ function assertBrowserResult(report, manifest, serverRequests) {
     throw new Error(`terrain scheduler mismatch ${JSON.stringify(result.terrain?.scheduler)}`);
   }
 
+  const firstFrame = result.renderer?.first_frame;
+  if (!firstFrame || !['webgpu', 'webgl2'].includes(firstFrame.backend)) {
+    throw new Error(`renderer first-frame proof missing: ${JSON.stringify(firstFrame)}`);
+  }
+  if (firstFrame.backend !== result.renderer?.backend) {
+    throw new Error(`renderer backend/first-frame mismatch: ${result.renderer?.backend}/${firstFrame.backend}`);
+  }
+
   const runtimeRequests = report.runtime_requests ?? [];
-  const expectedRuntimeRequests = 7; // manifest + 3 bundles + 3 compiled artifacts
+  const expectedRuntimeRequests = 7;
   if (runtimeRequests.length !== expectedRuntimeRequests) {
     throw new Error(`runtime request count ${runtimeRequests.length} != ${expectedRuntimeRequests}: ${JSON.stringify(runtimeRequests)}`);
   }
@@ -127,6 +135,13 @@ function assertBrowserResult(report, manifest, serverRequests) {
     phase: report.phase,
     runtime_request_count: runtimeRequests.length,
     raw_source_runtime_calls: 0,
+    renderer: {
+      backend: result.renderer.backend,
+      preference: result.renderer_preference,
+      graphics_profile: result.graphics_profile,
+      fallback: result.renderer.fallback ?? null,
+      first_frame: firstFrame,
+    },
     terrain: {
       sha256: result.terrain.artifact_sha256,
       retained_bytes: result.terrain.retained_bytes,
@@ -252,7 +267,9 @@ async function main() {
     clearTimeout(timeout);
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     await new Promise((resolvePromise) => server.close(resolvePromise));
-    rmSync(profile, { recursive: true, force: true });
+    // Chrome can briefly keep profile files open after the process group receives
+    // SIGTERM. Retrying only cleanup avoids turning a proven GPU frame into a false CI failure.
+    rmSync(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
   }
 }
 
