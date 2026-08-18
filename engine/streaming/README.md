@@ -5,8 +5,9 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 ## Current Prototype-0 components
 
 - `runtime_verifier.mjs` — reconstructs provenance and verifies exact compiled artifact bytes before `READY_FOR_RUNTIME`.
-- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, separate inactive-cache/resident payload accounting and stale-load rejection.
+- `tile_scheduler.mjs` — deterministic camera-distance tile interest, bounded concurrent loading, resident↔cache lifecycle, retention radius, separate inactive-cache/resident payload accounting, update-driven retry controls and stale-load rejection.
 - `test_tile_scheduler.mjs` — scheduler lifecycle/adversarial regressions.
+- `test_tile_scheduler_retry.mjs` — deterministic retry-delay, retry-cap and interest-cycle regressions.
 - `benchmark_tile_scheduler.mjs` — synthetic 3×3 Nannestad scheduler simulation with constrained resident/cache byte stress. It tests runtime scheduling mechanics only and does **not** claim that neighbouring Nannestad geodata/artifacts exist yet or select production budgets.
 - `terrain_mesh_buffers.mjs` — deterministic renderer-independent height-grid → position/normal/UV/index buffer construction using the same pixel-center bilinear sampling semantics as Forsøk 16.
 - `terrain_mesh_worker_protocol.mjs` + `terrain_mesh_worker.mjs` — Dedicated Worker job/result contract for mesh construction.
@@ -16,13 +17,15 @@ Production-direction runtime loading, provenance verification, cache/LOD schedul
 
 `TileStreamingScheduler` consumes opaque tile descriptors with a stable `id`, `centerE` and `centerN`. It deliberately does not define the final whole-Norway tile-addressing scheme; that remains an open architectural decision.
 
-The injected `loadTile(tile, {signal})` callback must return only after the tile payload has passed whatever artifact verification/decode gate the caller requires. The scheduler never contacts source geodata APIs and never promotes data. It only decides which already-runtime-eligible tile payloads should be loading, resident, cached or evicted.
+The injected `loadTile(tile, {signal, attempt})` callback must return only after the tile payload has passed whatever artifact verification/decode gate the caller requires. The scheduler never contacts source geodata APIs and never promotes data. It only decides which already-runtime-eligible tile payloads should be loading, resident, cached or evicted.
 
 Renderer-specific scene work stays behind injected `activateTile`, `deactivateTile` and `disposeTile` callbacks. This keeps Three.js/WebGPU/Cesium/Unreal choices outside the scheduling core. Activation failure keeps the verified payload cached for a later activation retry instead of forcing a source/runtime-input refetch; disposal failure keeps the payload and byte accounting intact rather than pretending memory was released.
 
 `maxCacheBytes` is specifically an **inactive cached-payload** budget. Resident payload bytes do not consume it. `maxResidentBytes` is an optional hard cap over scheduler-known payload bytes in `resident + activating`; it defaults to `null`, so no production resident-byte budget is selected by the core. This is a CPU/runtime-payload accounting boundary, not a claim about exact GPU/VRAM allocation. LUMEN may enforce renderer-resource budgets through the adapter layer once browser/device measurements justify a policy.
 
 During an asynchronous activation, bytes move through an explicit `activating` bucket. This reserves resident capacity before the adapter awaits GPU/scene work, so concurrent load completions cannot both pass the same resident budget and overcommit it.
+
+Load retry is deliberately **update-driven** rather than timer-owned by the streaming core. `retryDelayMs` gates when a failed desired tile may be re-queued, and optional `maxLoadAttemptsPerInterest` bounds repeated failures while the same tile remains desired. Leaving the interest set resets that failure cycle. Defaults remain `retryDelayMs = 0` and `maxLoadAttemptsPerInterest = null`, preserving the previous behavior and avoiding an unmeasured production retry policy. Runtime snapshots/events expose attempts, retry-not-before, queued retries, deferrals and exhaustion.
 
 ## Terrain mesh job boundary
 
@@ -47,6 +50,7 @@ Scheduler snapshots report at least:
 - current resident, activating, inactive-cache and total retained payload bytes;
 - peak resident, activating, inactive-cache and retained payload bytes;
 - cache/resident budget overcommit bytes and resident-budget deferrals;
+- load attempts, retry-not-before, retries queued, retry deferrals and retry exhaustion;
 - activations/deactivations/evictions plus activation/deactivation/disposal/lifecycle failures;
 - abort requests and stale completions dropped.
 
@@ -58,6 +62,7 @@ Terrain mesh jobs report deterministic vertex/triangle/index counts, output byte
 - no accepted LOD metric beyond Prototype-0 distance prioritization;
 - no renderer choice;
 - no production `maxResidentBytes`, inactive-cache size or GPU/VRAM budget selected from the synthetic stress benchmark;
+- no production retry delay or retry-attempt cap selected without real failure/device evidence;
 - no worker-pool size/persistence policy;
 - no claim that a synthetic 3×3 scheduling test equals real multi-tile streaming;
 - no claim that hosted Node mesh timing equals Android browser worker timing.
