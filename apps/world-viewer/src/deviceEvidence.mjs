@@ -254,6 +254,7 @@ export function buildDeviceEvidence({
       requested_backend: result.renderer_preference ?? null,
       active_backend: result.renderer?.backend ?? null,
       fallback: result.renderer?.fallback ?? null,
+      webgpu_feature_level: result.renderer?.webgpu_feature_level ?? null,
       graphics_profile: result.graphics_profile ?? null,
       max_dpr: finiteNumberOrNull(result.renderer?.max_dpr),
       msaa_samples: finiteNumberOrNull(result.renderer?.msaa_samples),
