@@ -143,19 +143,32 @@ The operator then supplied `nwe.world-viewer-device-evidence/0.1` **PASS** from 
 
 This proves that the NWE WebGPU implementation can obtain a device, build the exact-real Preview 1 scene, submit a real first frame and complete the 90-draw measurement loop on the operator handset when Chrome's blocklist is bypassed diagnostically.
 
-### Evidence plumbing correction after the PASS capture
+### Strict matched A/B — PASS
 
-The PASS file exposed a metadata gap: the WebGPU renderer already recorded `webgpu_feature_level`, but `deviceEvidence.mjs` emitted different field names and therefore lost whether the successful adapter came from the core request or compatibility fallback. Subsequent branch changes preserve this value as `renderer.webgpu_feature_level` and `renderer.webgpu_adapter_request_mode`, with a regression test. The `unsafe-webgpu-002` capture must therefore **not** be used to assert core vs compatibility mode; a fresh capture on the corrected evidence head is required for that detail.
+A later matched capture pair on commit `b8cb6b35de3847aaab4357a9d89f81029dfb6997`, session `ab-msaa1-001`, `balanced`, DPR 1.5 and one-sample raster workload now satisfies `compareDeviceEvidenceContext()` with **0 mismatches / comparable=true**.
+
+Accepted renderer observations from that pair:
+
+- WebGPU core adapter request succeeds directly under Unsafe WebGPU;
+- repeated-draw CPU p50/p95/p99/max: WebGPU **0.300 / 0.600 / 0.655 / 1.100 ms** vs WebGL2 **1.150 / 1.855 / 2.985 / 6.100 ms**;
+- GPU-resource-apply CPU: WebGPU **2.7 ms** vs WebGL2 **19.2 ms**;
+- renderer init CPU: WebGPU **31.4 ms** vs WebGL2 **53.9 ms**;
+- frame-gap p50 is effectively identical; WebGPU p95 is slightly worse while p99/max are lower in this single 90-frame capture.
+
+Startup total is explicitly **not** attributed to the renderer backend from this pair because the pre-render terrain/input pipeline differed materially: WebGPU **496.4 ms** vs WebGL2 **236.2 ms**, mostly in `resolveInput` and worker roundtrip before renderer initialization.
+
+Full strict-A/B proof: `docs/proofs/2026-08-19-android-webgpu-webgl2-strict-ab.md`.
 
 ## Acceptance classification
 
-**PASS — exact-real single-tile verified runtime/cache movement is proven through the same deployed device-evidence application route.** Android Chrome has now executed the exact accepted Nannestad terrain/road/building path with full provenance, real module worker, cache round-trip and measured WebGL2. A diagnostic Unsafe-WebGPU run additionally proves the WebGPU implementation through first frame and 90 repeated draws on the handset.
+**PASS — exact-real single-tile verified runtime/cache movement is proven through the same deployed device-evidence application route.** Android Chrome has now executed the exact accepted Nannestad terrain/road/building path with full provenance, real module worker, cache round-trip and measured WebGL2. A diagnostic Unsafe-WebGPU run additionally proves the WebGPU implementation through first frame and 90 repeated draws on the handset, and a later strict matched pair proves backend-comparable CPU-side renderer measurements under the diagnostic flag.
 
 **Still open / explicit non-claims:**
 
 - normal Chrome on this handset remains WebGPU-capability blocked in the observed default browser state; the unsafe flag is not a production requirement or acceptance path;
-- the Unsafe-WebGPU PASS is not yet a strict WebGL2/WebGPU A/B because the existing WebGL2 capture used a different commit/profile/session/render surface;
-- the successful capture does not identify core vs compatibility adapter mode because that metadata was dropped before the evidence-plumbing correction;
+- the strict A/B measures CPU-side draw/update/resource application, not direct GPU execution time; actual GPU timing is still open;
+- one 90-frame pair is not a repeatability/general-device conclusion;
+- first-frame/startup performance is not backend-isolated because pre-render terrain/input latency varied materially between the matched captures;
 - repeated identical-scene draws are not gameplay/camera-motion acceptance;
 - `renderer_resource_lifecycle_observed=false`: GPU resource unload/reload is still not proven;
 - real neighbor-tile transitions, 2×2/3×3 streaming, worker-pool/LOD/hard memory policy and multi-tile DTM1 seam authority remain open.
