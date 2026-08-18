@@ -98,6 +98,11 @@ function comparisonContext(evidence) {
   });
 }
 
+function normalizedBackend(value) {
+  const backend = String(value ?? '').toLowerCase();
+  return backend === 'webgl2' || backend === 'webgpu' ? backend : null;
+}
+
 export function compareDeviceEvidenceContext(left, right) {
   if (left?.schema !== 'nwe.world-viewer-device-evidence/0.1' || left?.status !== 'PASS') {
     throw new Error('DEVICE_EVIDENCE_COMPARE_LEFT_INVALID');
@@ -114,11 +119,26 @@ export function compareDeviceEvidenceContext(left, right) {
   for (const key of Object.keys(lhs)) {
     if (JSON.stringify(lhs[key]) !== JSON.stringify(rhs[key])) mismatches.push(key);
   }
+
+  const leftRequested = normalizedBackend(left.renderer?.requested_backend);
+  const leftActive = normalizedBackend(left.renderer?.active_backend);
+  const rightRequested = normalizedBackend(right.renderer?.requested_backend);
+  const rightActive = normalizedBackend(right.renderer?.active_backend);
+  if (!leftRequested || !leftActive || !rightRequested || !rightActive
+      || leftRequested !== leftActive || rightRequested !== rightActive) {
+    mismatches.push('backend_fallback');
+  }
+  if (new Set([leftActive, rightActive]).size !== 2
+      || ![leftActive, rightActive].includes('webgl2')
+      || ![leftActive, rightActive].includes('webgpu')) {
+    mismatches.push('backend_pair');
+  }
+
   return {
     comparable: mismatches.length === 0,
     mismatches,
-    left_backend: left.renderer?.active_backend ?? null,
-    right_backend: right.renderer?.active_backend ?? null,
+    left_backend: leftActive,
+    right_backend: rightActive,
     context: lhs,
     physical_device_attested: false,
   };
@@ -249,7 +269,7 @@ export function buildDeviceEvidence({
       source_backed_building_heights: result.renderer?.source_backed_building_heights ?? null,
       unresolved_building_heights: result.renderer?.unresolved_building_heights ?? null,
     },
-    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, camera, render workload/surface and exposed device/browser context. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
+    interpretation: 'Browser evidence cannot attest physical device identity. WebGL2/WebGPU timing is comparable only when compareDeviceEvidenceContext reports comparable=true; comparison requires the same capture session, viewer commit, measurement window, accepted artifacts, camera, render workload/surface and exposed device/browser context, plus one non-fallback WebGL2 capture and one non-fallback WebGPU capture. The android-chrome target validates browser signals only; operator/device-lab evidence is still required to claim the same physical phone. Debug geometry remains non-authoritative.',
   };
 }
 
