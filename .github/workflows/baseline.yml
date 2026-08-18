@@ -63,6 +63,15 @@ jobs:
           node engine/streaming/benchmark_tile_scheduler.mjs | tee /tmp/nwe-streaming-scheduler-benchmark.json
           python -m json.tool /tmp/nwe-streaming-scheduler-benchmark.json > /dev/null
 
+      - name: Terrain mesh worker regressions
+        run: |
+          node --check engine/streaming/terrain_mesh_buffers.mjs
+          node --check engine/streaming/terrain_mesh_worker_protocol.mjs
+          node --check engine/streaming/terrain_mesh_worker_client.mjs
+          node --check engine/streaming/terrain_mesh_worker.mjs
+          node --check engine/streaming/test_terrain_mesh_worker.mjs
+          node engine/streaming/test_terrain_mesh_worker.mjs
+
       - name: Viewer compiled-artifact boundary regression
         run: |
           node --check apps/world-viewer/artifact_consumer.mjs
