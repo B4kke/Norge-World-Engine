@@ -73,9 +73,12 @@ jobs:
           node --check engine/streaming/tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler_retry.mjs
+          node --check engine/streaming/streaming_trace_recorder.mjs
+          node --check engine/streaming/test_streaming_trace_recorder.mjs
           node --check engine/streaming/benchmark_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler_retry.mjs
+          node engine/streaming/test_streaming_trace_recorder.mjs
           node engine/streaming/benchmark_tile_scheduler.mjs | tee /tmp/nwe-streaming-scheduler-benchmark.json
           python -m json.tool /tmp/nwe-streaming-scheduler-benchmark.json > /dev/null
 
