@@ -6,6 +6,7 @@ import { createTerrainTileLoadFunction } from '../../../engine/streaming/terrain
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
+import { browserMemorySnapshot, createFrameGapMonitor, monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
 export const DEFAULT_PREVIEW1_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
 
@@ -30,6 +31,33 @@ async function fetchPreviewManifest(manifestUrl: string, fetchImpl: typeof globa
 
 function centerFromBounds(bounds: number[]) {
   return { e: (bounds[0] + bounds[2]) / 2, n: (bounds[1] + bounds[3]) / 2 };
+}
+
+function animationFrame() {
+  return new Promise<number>((resolve) => requestAnimationFrame(resolve));
+}
+
+async function runRendererFrameBenchmark(renderer: any, frameEvents: any[], requestedFrames: number) {
+  if (!Number.isInteger(requestedFrames) || requestedFrames <= 0) return null;
+  const startIndex = frameEvents.length;
+  const maxAttempts = requestedFrames + 12;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    renderer.invalidate();
+    await animationFrame();
+    const measured = frameEvents.slice(startIndex).filter((frame) => Number.isFinite(frame?.drawGapMs));
+    if (measured.length >= requestedFrames) break;
+  }
+  const measured = frameEvents.slice(startIndex).filter((frame) => Number.isFinite(frame?.drawGapMs)).slice(0, requestedFrames);
+  const frameGaps = measured.map((frame) => Number(frame.drawGapMs));
+  const drawCpu = measured.map((frame) => Number(frame.drawCpuMs)).filter(Number.isFinite);
+  return {
+    requested_frames: requestedFrames,
+    measured_frames: measured.length,
+    frame_gap: summarizeFrameGaps(frameGaps),
+    draw_cpu: summarizeFrameGaps(drawCpu),
+    draw_calls: measured.length ? Math.max(...measured.map((frame) => Number(frame.drawCalls) || 0)) : null,
+    note: 'Repeated identical-scene draws for renderer comparison; not a gameplay camera-path or device acceptance trace.',
+  };
 }
 
 async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: string) => void, fetchImpl: typeof globalThis.fetch, graphicsProfile: any) {
@@ -87,6 +115,7 @@ export async function runPreview1({
   fetchImpl = globalThis.fetch,
   graphicsProfile = 'balanced',
   rendererPreference = 'auto',
+  benchmarkFrameCount = 0,
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
@@ -96,83 +125,116 @@ export async function runPreview1({
   fetchImpl?: typeof globalThis.fetch;
   graphicsProfile?: string;
   rendererPreference?: string;
+  benchmarkFrameCount?: number;
   onPhase?: (phase: string) => void;
   onReady?: (result: any) => void;
   onFrame?: (frame: any) => void;
 }) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required');
+  if (!Number.isInteger(benchmarkFrameCount) || benchmarkFrameCount < 0 || benchmarkFrameCount > 600) {
+    throw new RangeError('benchmarkFrameCount must be an integer within [0, 600]');
+  }
   const profile = resolveGraphicsProfile(graphicsProfile);
   const rendererChoice = resolveRendererPreference(rendererPreference);
+  const startedAt = monotonicNow();
+  const startupFrameMonitor = createFrameGapMonitor();
+  startupFrameMonitor.start();
+  const rendererFrames: any[] = [];
 
-  onPhase('manifest');
-  const manifestBase = new URL(manifestUrl, location.href).href;
-  const manifest = await fetchPreviewManifest(manifestBase, fetchImpl);
+  try {
+    onPhase('manifest');
+    const manifestBase = new URL(manifestUrl, location.href).href;
+    const manifest = await fetchPreviewManifest(manifestBase, fetchImpl);
 
-  onPhase('compiled-vectors');
-  const roadsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase), expectedRole: 'road-network', fetchImpl });
-  const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
-  const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
-  const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
+    onPhase('compiled-vectors');
+    const roadsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase), expectedRole: 'road-network', fetchImpl });
+    const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
+    const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
+    const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
 
-  if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
+    if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
 
-  let rendererFallback: any = null;
-  onPhase('renderer');
-  const renderer = await createPreview1Renderer({
-    canvas,
-    terrainPayload: terrain.payload,
-    roadsArtifact: roads.artifact,
-    buildingsArtifact: buildings.artifact,
-    graphicsProfile: profile,
-    backend: rendererChoice,
-    onBackendFallback: (fallback: any) => {
-      rendererFallback = {
-        from: fallback.from,
-        to: fallback.to,
-        reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error),
-      };
-    },
-    onFrame,
-  });
+    let rendererFallback: any = null;
+    onPhase('renderer');
+    const renderer = await createPreview1Renderer({
+      canvas,
+      terrainPayload: terrain.payload,
+      roadsArtifact: roads.artifact,
+      buildingsArtifact: buildings.artifact,
+      graphicsProfile: profile,
+      backend: rendererChoice,
+      onBackendFallback: (fallback: any) => {
+        rendererFallback = {
+          from: fallback.from,
+          to: fallback.to,
+          reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error),
+        };
+      },
+      onFrame: (frame: any) => {
+        rendererFrames.push(frame);
+        onFrame(frame);
+      },
+    });
 
-  onPhase('first-frame');
-  const firstFrame = await renderer.firstFrame;
+    onPhase('first-frame');
+    const firstFrame = await renderer.firstFrame;
+    const inputToFirstFrameReadyMs = monotonicNow() - startedAt;
+    const startupRafGap = startupFrameMonitor.stop();
 
-  const result = {
-    schema: 'nwe.world-preview-runtime/0.1',
-    status: 'PASS',
-    manifest,
-    manifestUrl: manifestBase,
-    tile_id: manifest.tile.id,
-    graphics_profile: profile.id,
-    renderer_preference: rendererChoice,
-    terrain: {
-      artifact_sha256: terrain.payload.artifact.sha256,
-      verification_code: terrain.payload.verification.code,
-      retained_bytes: terrain.snapshot.records.find((record: any) => record.id === manifest.tile.id)?.byteSize ?? null,
-      scheduler: terrain.snapshot.metrics,
-      resolver_calls: terrain.resolverCalls,
-      timing_ms: terrain.payload.timingMs,
-    },
-    roads: {
-      artifact_sha256: roads.artifactRef.sha256,
-      verification_code: roads.verification.code,
-      count: roads.artifact.paths?.length ?? 0,
-    },
-    buildings: {
-      artifact_sha256: buildings.artifactRef.sha256,
-      verification_code: buildings.verification.code,
-      count: buildings.artifact.features?.length ?? 0,
-    },
-    renderer: {
-      ...renderer.stats,
-      fallback: rendererFallback,
-      first_frame: firstFrame,
-    },
-    attribution: manifest.attribution ?? [],
-  };
-  onPhase('ready');
-  onReady(result);
-  return { result, renderer };
+    let rendererFrameBenchmark = null;
+    if (benchmarkFrameCount > 0) {
+      onPhase('renderer-benchmark');
+      rendererFrameBenchmark = await runRendererFrameBenchmark(renderer, rendererFrames, benchmarkFrameCount);
+      if (rendererFrameBenchmark.measured_frames !== benchmarkFrameCount) {
+        throw new Error(`PREVIEW_RENDERER_BENCHMARK_INCOMPLETE: ${rendererFrameBenchmark.measured_frames}/${benchmarkFrameCount}`);
+      }
+    }
+
+    const result = {
+      schema: 'nwe.world-preview-runtime/0.1',
+      status: 'PASS',
+      manifest,
+      manifestUrl: manifestBase,
+      tile_id: manifest.tile.id,
+      graphics_profile: profile.id,
+      renderer_preference: rendererChoice,
+      timing_ms: {
+        input_to_first_frame_ready_ms: inputToFirstFrameReadyMs,
+        startup_raf_gap: startupRafGap,
+        renderer_frame_benchmark: rendererFrameBenchmark,
+      },
+      browser_memory: browserMemorySnapshot(),
+      terrain: {
+        artifact_sha256: terrain.payload.artifact.sha256,
+        verification_code: terrain.payload.verification.code,
+        retained_bytes: terrain.snapshot.records.find((record: any) => record.id === manifest.tile.id)?.byteSize ?? null,
+        scheduler: terrain.snapshot.metrics,
+        resolver_calls: terrain.resolverCalls,
+        timing_ms: terrain.payload.timingMs,
+      },
+      roads: {
+        artifact_sha256: roads.artifactRef.sha256,
+        verification_code: roads.verification.code,
+        count: roads.artifact.paths?.length ?? 0,
+      },
+      buildings: {
+        artifact_sha256: buildings.artifactRef.sha256,
+        verification_code: buildings.verification.code,
+        count: buildings.artifact.features?.length ?? 0,
+      },
+      renderer: {
+        ...renderer.stats,
+        fallback: rendererFallback,
+        first_frame: firstFrame,
+      },
+      attribution: manifest.attribution ?? [],
+    };
+    onPhase('ready');
+    onReady(result);
+    return { result, renderer };
+  } catch (error) {
+    startupFrameMonitor.stop();
+    throw error;
+  }
 }
