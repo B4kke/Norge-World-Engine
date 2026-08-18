@@ -1,1 +1,0 @@
-Hosted CI + Vercel readback are required for acceptance.
