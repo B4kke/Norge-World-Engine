@@ -125,12 +125,14 @@ jobs:
               with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tif,.tiff'):
                   with rasterio.open(item['href']) as src:
                       observed_crs = src.crs.to_string() if src.crs else None
+                      transform6 = tuple(float(v) for v in list(src.transform)[:6])
                       result = classify_raster_grid(
                           raster_bounds=tuple(float(v) for v in src.bounds),
                           declared_bounds=item['declared'],
                           catalog_bounds=cb,
                           raster_width_px=src.width,
                           raster_height_px=src.height,
+                          raster_transform=transform6,
                           pixel_size_x_m=src.transform.a,
                           pixel_size_y_m=src.transform.e,
                           expected_crs='EPSG:25833',
@@ -161,10 +163,11 @@ jobs:
               'image_server_catalog_page_sha256': page_hashes,
               'anomaly_count': len(anomalies),
               'sampling': 'min/median/max metadata-deviation among matched anomalous Atom entries',
+              'catalog_comparison_semantics': 'BOUNDING_EXTENT_OF_PROVIDER_POLYGON_NOT_POLYGON_EQUALITY',
               'observations': observations,
               'claim_calibration': {
-                  'fact': 'actual remote GeoTIFF grid metadata was opened with Rasterio/GDAL and compared to Atom and ImageServer extents',
-                  'not_proven': 'full source byte SHA, seam winner, disposable halo or production transform',
+                  'fact': 'actual remote GeoTIFF axis-aligned grid metadata was opened with Rasterio/GDAL and compared to Atom and ImageServer bounding extents',
+                  'not_proven': 'catalog polygon equality, full source byte SHA, seam winner, disposable halo or production transform',
                   'production_seam_authority': False,
                   'authority_status': 'UNPROVEN',
               },
