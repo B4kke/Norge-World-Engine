@@ -76,28 +76,30 @@ def test_reference_comparison_identifies_closer_raw_surface(tmp_path: Path):
 
 
 def test_mosaic_policy_qa_can_identify_interior_margin_owner(tmp_path: Path):
-    # The normalized comparison grid is 10x10 EPSG:25833. Raw source A extends
-    # two metres farther north; raw source B extends two metres farther south.
-    # Their interior margins therefore define a deterministic north/south owner.
+    # Keep the normalized 10x10 comparison grid far from the raw rasters' east/west
+    # edges so the intended north/south extent difference is the limiting margin.
+    # Raw source A extends two metres farther north; raw source B extends two metres
+    # farther south. Their interior margins therefore define an unambiguous split.
     normalized_a = np.full((10, 10), 100.0, dtype="float32")
     normalized_b = np.full((10, 10), 101.0, dtype="float32")
 
     raw_a = tmp_path / "raw-a.tif"
     raw_b = tmp_path / "raw-b.tif"
-    _raster(raw_a, np.full((12, 10), 100.0, dtype="float32"), left=0, top=12)
-    _raster(raw_b, np.full((12, 10), 101.0, dtype="float32"), left=0, top=10)
+    _raster(raw_a, np.full((12, 210), 100.0, dtype="float32"), left=0, top=12)
+    _raster(raw_b, np.full((12, 210), 101.0, dtype="float32"), left=0, top=10)
 
     path_a = tmp_path / "normalized-a.tif"
     path_b = tmp_path / "normalized-b.tif"
-    _raster(path_a, normalized_a, left=0, top=10)
-    _raster(path_b, normalized_b, left=0, top=10)
+    _raster(path_a, normalized_a, left=100, top=10)
+    _raster(path_b, normalized_b, left=100, top=10)
 
-    # Target pixel centers y=9.5..0.5. A has larger edge margin above y=5,
-    # B below y=5. Build the QA reference from that policy itself.
+    # Target pixel centers y=9.5..0.5. A has the larger raw-raster edge margin in
+    # the five northern rows and B in the five southern rows. Build the QA reference
+    # from exactly that deterministic policy, then require competing policies to lose.
     reference = normalized_b.copy()
     reference[:5, :] = normalized_a[:5, :]
     path_ref = tmp_path / "reference.tif"
-    _raster(path_ref, reference, left=0, top=10)
+    _raster(path_ref, reference, left=100, top=10)
 
     result = compare_mosaic_policies_to_reference(raw_a, raw_b, path_a, path_b, path_ref)
 
@@ -106,4 +108,5 @@ def test_mosaic_policy_qa_can_identify_interior_margin_owner(tmp_path: Path):
     assert ranking[0]["overlap_rmse_m"] == 0.0
     assert result["policies"]["prefer_source_a"]["overlap_only"]["rmse_m"] > 0.0
     assert result["policies"]["prefer_source_b"]["overlap_only"]["rmse_m"] > 0.0
+    assert result["policies"]["edge_distance_feather"]["overlap_only"]["rmse_m"] > 0.0
     assert result["role"] == "diagnostic_comparison_only_no_policy_selected"
