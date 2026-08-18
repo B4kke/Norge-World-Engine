@@ -1,0 +1,25 @@
+.viewport-message.hidden {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.975);
+  pointer-events: none;
+}
+
+#world-canvas {
+  touch-action: none;
+  cursor: grab;
+}
+
+#world-canvas:active {
+  cursor: grabbing;
+}
+
+.phase-chip {
+  max-width: min(56vw, 340px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .viewport-message.hidden { display: none; }
+}
