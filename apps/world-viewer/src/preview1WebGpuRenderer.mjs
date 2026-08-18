@@ -6,6 +6,8 @@ import {
 } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 
+const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
+
 const TERRAIN_WGSL = `
 struct Uniforms { viewProj: mat4x4<f32>, color: vec4<f32>, };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -102,6 +104,18 @@ function createPipeline(device, { code, format, sampleCount, terrain }) {
   });
 }
 
+function assertTerrainPayloadIdentity(payload, expectedTileId, expectedArtifactSha) {
+  if (!payload?.mesh?.positions || !payload?.mesh?.indices || !payload?.mesh?.normals) {
+    throw new Error('PREVIEW_TERRAIN_RESOURCE_PAYLOAD_INVALID');
+  }
+  if (payload?.artifact?.header?.tile_id !== expectedTileId) {
+    throw new Error(`PREVIEW_TERRAIN_RESOURCE_TILE_MISMATCH: ${payload?.artifact?.header?.tile_id ?? 'missing'} != ${expectedTileId}`);
+  }
+  if (payload?.artifact?.sha256 !== expectedArtifactSha) {
+    throw new Error(`PREVIEW_TERRAIN_RESOURCE_ARTIFACT_MISMATCH: ${payload?.artifact?.sha256 ?? 'missing'} != ${expectedArtifactSha}`);
+  }
+}
+
 export async function createPreview1WebGpuRenderer({
   canvas,
   terrainPayload,
@@ -136,12 +150,25 @@ export async function createPreview1WebGpuRenderer({
   const sceneStartedAt = monotonicNow();
   const scene = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
+  const expectedTerrainTileId = terrainPayload?.artifact?.header?.tile_id;
+  const expectedTerrainArtifactSha = terrainPayload?.artifact?.sha256;
+  if (!expectedTerrainTileId || !expectedTerrainArtifactSha) throw new Error('PREVIEW_TERRAIN_RESOURCE_IDENTITY_MISSING');
+
+  const terrainLifecycle = {
+    creates: 0,
+    destroys: 0,
+    createTimingMs: [],
+    destroyTimingMs: [],
+  };
 
   const resourceStartedAt = monotonicNow();
   const sampleCount = profile.msaaSamples === 4 ? 4 : 1;
   const terrainPipeline = createPipeline(device, { code: TERRAIN_WGSL, format, sampleCount, terrain: true });
   const flatPipeline = createPipeline(device, { code: FLAT_WGSL, format, sampleCount, terrain: false });
-  const terrainMesh = createMesh(device, scene.terrain, 'terrain', { normals: scene.terrain.normals });
+  const initialTerrainStartedAt = monotonicNow();
+  let terrainMesh = createMesh(device, scene.terrain, 'terrain', { normals: scene.terrain.normals });
+  terrainLifecycle.creates += 1;
+  terrainLifecycle.createTimingMs.push(monotonicNow() - initialTerrainStartedAt);
   const roadMesh = createMesh(device, scene.roads, 'roads');
   const resolvedMesh = createMesh(device, scene.buildingsResolved, 'buildings-resolved');
   const fallbackMesh = createMesh(device, scene.buildingsFallback, 'buildings-fallback');
@@ -155,10 +182,8 @@ export async function createPreview1WebGpuRenderer({
   const resolvedBindGroup = device.createBindGroup({ layout: flatPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: resolvedUniform } }] });
   const fallbackBindGroup = device.createBindGroup({ layout: flatPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: fallbackUniform } }] });
   const gpuResourceApplyCpuMs = monotonicNow() - resourceStartedAt;
-  const gpuBufferPayloadBytes = byteLengthOf(
-    scene.terrain.positions,
-    scene.terrain.normals,
-    scene.terrain.indices,
+  const terrainGpuPayloadBytes = byteLengthOf(scene.terrain.positions, scene.terrain.normals, scene.terrain.indices);
+  const vectorAndUniformGpuPayloadBytes = byteLengthOf(
     scene.roads.positions,
     scene.roads.indices,
     scene.buildingsResolved.positions,
@@ -166,14 +191,12 @@ export async function createPreview1WebGpuRenderer({
     scene.buildingsFallback.positions,
     scene.buildingsFallback.indices,
   ) + (4 * 80);
-  const gpuBufferCount = [
-    terrainMesh.positionBuffer, terrainMesh.normalBuffer, terrainMesh.indexBuffer,
+  const vectorAndUniformGpuBufferCount = [
     roadMesh.positionBuffer, roadMesh.indexBuffer,
     resolvedMesh.positionBuffer, resolvedMesh.indexBuffer,
     fallbackMesh.positionBuffer, fallbackMesh.indexBuffer,
     terrainUniform, roadUniform, resolvedUniform, fallbackUniform,
   ].filter(Boolean).length;
-  const drawCallsPerFrame = [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
 
   const camera = createPreviewCamera();
   let dirty = true;
@@ -190,6 +213,47 @@ export async function createPreview1WebGpuRenderer({
     firstFrameResolve = resolve;
     firstFrameReject = reject;
   });
+
+  function terrainResourceSnapshot() {
+    return {
+      schema: TERRAIN_RESOURCE_SCHEMA,
+      backend: 'webgpu',
+      tile_id: expectedTerrainTileId,
+      artifact_sha256: expectedTerrainArtifactSha,
+      active: Boolean(terrainMesh),
+      creates: terrainLifecycle.creates,
+      destroys: terrainLifecycle.destroys,
+      create_timing_ms: [...terrainLifecycle.createTimingMs],
+      destroy_timing_ms: [...terrainLifecycle.destroyTimingMs],
+      current_buffer_count: terrainMesh ? 3 : 0,
+      current_payload_bytes: terrainMesh ? terrainGpuPayloadBytes : 0,
+      physical_vram_release_observed: false,
+    };
+  }
+
+  function activateTerrainResource(payload) {
+    if (stopped) throw new Error('PREVIEW_TERRAIN_RESOURCE_RENDERER_STOPPED');
+    assertTerrainPayloadIdentity(payload, expectedTerrainTileId, expectedTerrainArtifactSha);
+    if (terrainMesh) throw new Error('PREVIEW_TERRAIN_RESOURCE_ALREADY_ACTIVE');
+    const startedAt = monotonicNow();
+    terrainMesh = createMesh(device, payload.mesh, 'terrain-reactivated', { normals: payload.mesh.normals });
+    terrainLifecycle.creates += 1;
+    terrainLifecycle.createTimingMs.push(monotonicNow() - startedAt);
+    dirty = true;
+    return terrainResourceSnapshot();
+  }
+
+  function deactivateTerrainResource() {
+    if (stopped) throw new Error('PREVIEW_TERRAIN_RESOURCE_RENDERER_STOPPED');
+    if (!terrainMesh) throw new Error('PREVIEW_TERRAIN_RESOURCE_NOT_ACTIVE');
+    const startedAt = monotonicNow();
+    destroyMesh(terrainMesh);
+    terrainMesh = null;
+    terrainLifecycle.destroys += 1;
+    terrainLifecycle.destroyTimingMs.push(monotonicNow() - startedAt);
+    dirty = true;
+    return terrainResourceSnapshot();
+  }
 
   function recreateAttachments() {
     depthTexture?.destroy();
@@ -229,6 +293,10 @@ export async function createPreview1WebGpuRenderer({
     pass.drawIndexed(mesh.count);
   }
 
+  function currentDrawCallsPerFrame() {
+    return [terrainMesh, roadMesh, resolvedMesh, fallbackMesh].filter((mesh) => mesh?.count > 0).length;
+  }
+
   function draw(now) {
     if (stopped) return;
     resize();
@@ -261,7 +329,7 @@ export async function createPreview1WebGpuRenderer({
           at: now,
           drawGapMs: lastDrawAt ? now - lastDrawAt : null,
           drawCpuMs: monotonicNow() - drawStartedAt,
-          drawCalls: drawCallsPerFrame,
+          drawCalls: currentDrawCallsPerFrame(),
           backend: 'webgpu',
           pixelRatio: actualPixelRatio,
           camera: { yaw: camera.yaw, pitch: camera.pitch, distance: camera.distance },
@@ -312,14 +380,16 @@ export async function createPreview1WebGpuRenderer({
       ...scene.stats,
       backend: 'webgpu',
       webgpu_feature_level: adapterFeatureLevel,
+      webgpu_adapter_request_mode: adapterFeatureLevel,
+      webgpu_core_features_and_limits: adapter.features?.has?.('core-features-and-limits') ?? false,
       graphics_profile: profile.id ?? 'balanced',
       max_dpr: profile.maxDpr ?? 1.5,
       get pixel_ratio() { return actualPixelRatio; },
       msaa_samples: sampleCount,
       power_preference: profile.powerPreference ?? 'default',
-      draw_calls_per_frame: drawCallsPerFrame,
-      gpu_buffer_count: gpuBufferCount,
-      gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
+      get draw_calls_per_frame() { return currentDrawCallsPerFrame(); },
+      get gpu_buffer_count() { return vectorAndUniformGpuBufferCount + (terrainMesh ? 3 : 0); },
+      get gpu_buffer_payload_bytes() { return vectorAndUniformGpuPayloadBytes + (terrainMesh ? terrainGpuPayloadBytes : 0); },
       get gpu_attachment_estimated_bytes() { return attachmentEstimateBytes; },
       timestamp_query_supported: adapter.features?.has?.('timestamp-query') ?? false,
       timing_ms: {
@@ -329,6 +399,9 @@ export async function createPreview1WebGpuRenderer({
         renderer_init_cpu_ms: rendererInitCpuMs,
       },
     },
+    getTerrainResourceLifecycle: terrainResourceSnapshot,
+    activateTerrainResource,
+    deactivateTerrainResource,
     drawForBenchmark() {
       if (stopped) throw new Error('WEBGPU_RENDERER_STOPPED');
       dirty = true;
@@ -341,11 +414,15 @@ export async function createPreview1WebGpuRenderer({
       removeControls();
       depthTexture?.destroy();
       msaaTexture?.destroy();
-      destroyMesh(terrainMesh);
+      if (terrainMesh) {
+        destroyMesh(terrainMesh);
+        terrainMesh = null;
+      }
       destroyMesh(roadMesh);
       destroyMesh(resolvedMesh);
       destroyMesh(fallbackMesh);
       for (const uniform of [terrainUniform, roadUniform, resolvedUniform, fallbackUniform]) uniform.destroy();
+      context.unconfigure?.();
       device.destroy?.();
     },
   };
