@@ -17,12 +17,13 @@ Each adapter invocation emits one immutable `nwe.streaming-lifecycle-observation
 Focused isolated Node execution before publication:
 
 - syntax: PASS;
-- `streaming lifecycle observer regressions: PASS (4 cases)`;
+- `streaming lifecycle observer regressions: PASS (5 cases)`;
 - completed activate/deactivate/dispose timings are recorded;
 - adapter return identity is preserved;
 - adapter failure is observed and rethrown unchanged;
 - telemetry sink failure does not change successful lifecycle behavior;
-- non-monotonic injected test clocks cannot produce negative duration values.
+- non-monotonic injected test clocks cannot produce negative duration values;
+- lifecycle observations enter the existing bounded movement trace as `lifecycle-observation` entries.
 
 The regression is wired into the normal `baseline` workflow under `World streaming scheduler regressions`.
 
