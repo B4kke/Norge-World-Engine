@@ -18,5 +18,11 @@ assert.deepEqual(interpretTimestampPair(1000n, 2501000n), {
 assert.equal(interpretTimestampPair(0n, 100n).code, 'ZERO_TIMESTAMP');
 assert.equal(interpretTimestampPair(100n, 0n).code, 'ZERO_TIMESTAMP');
 assert.equal(interpretTimestampPair(200n, 100n).code, 'NON_MONOTONIC_TIMESTAMP');
+assert.deepEqual(interpretTimestampPair(100n, 100n), {
+  valid: false,
+  code: 'ZERO_DURATION_TIMESTAMP',
+  elapsed_ns: null,
+  elapsed_ms: null,
+});
 
 console.log('webgpu timestamp probe regressions: PASS');
