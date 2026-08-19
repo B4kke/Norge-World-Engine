@@ -6,6 +6,7 @@ import {
   STATIC_COLLISION_OCCUPANCY_SCHEMA,
 } from './static_collision_occupancy_contract.mjs';
 import { createStaticCollisionLifecycleState } from './static_collision_lifecycle_contract.mjs';
+import { createStaticCollisionStreamingGuard } from './static_collision_streaming_guard.mjs';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
@@ -55,6 +56,22 @@ await check('canonical contact order yields deterministic dependency sets', asyn
   ]);
 });
 
+await check('streaming guard can replace manual pins from solver occupancy', async () => {
+  const guard = createStaticCollisionStreamingGuard({
+    initialState: state,
+    getCurrentPhysicsFrame: () => frame,
+    getSimulationTick: () => 121,
+    getCollisionIdentity: () => null,
+  });
+  guard.syncDependenciesFromOccupancy({
+    snapshot: snapshot([{ entityId: 'entity:1', collisionId: 'collision:a', tileId: 'tile:a', artifactSha256: A }]),
+    expectedCompletedPhysicsTick: 120,
+    lifecycleTick: 121,
+  });
+  assert.deepEqual(guard.getState().collisions.find((entry) => entry.collisionId === 'collision:a').dependentEntityIds, ['entity:1']);
+  assert.deepEqual(guard.getState().collisions.find((entry) => entry.collisionId === 'collision:b').dependentEntityIds, []);
+});
+
 await check('zero-contact resident collision derives an empty dependency set', async () => {
   const deps = deriveStaticCollisionDependencies({ snapshot: snapshot([]), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame });
   assert.deepEqual(deps, [
@@ -67,36 +84,29 @@ await check('duplicate entity/collision contact fails closed', async () => {
   const c = { entityId: 'entity:1', collisionId: 'collision:a', tileId: 'tile:a', artifactSha256: A };
   assert.throws(() => createStaticCollisionOccupancySnapshot(snapshot([c, c])), /unique/);
 });
-
 await check('stale completed-tick occupancy fails closed', async () => {
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([]), collisionState: state, expectedTick: 121, currentPhysicsFrame: frame }), /expected completed physics tick/);
 });
-
 await check('stale physics epoch fails closed', async () => {
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([], { physicsFrame: { ...frame, epoch: 3 } }), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame }), /current physics epoch/);
 });
-
 await check('unknown collision fails closed', async () => {
   const contact = { entityId: 'entity:1', collisionId: 'collision:missing', tileId: 'tile:x', artifactSha256: A };
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([contact]), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame }), /non-resident collision/);
 });
-
 await check('tile identity mismatch fails closed', async () => {
   const contact = { entityId: 'entity:1', collisionId: 'collision:a', tileId: 'tile:wrong', artifactSha256: A };
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([contact]), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame }), /contact tile/);
 });
-
 await check('artifact replacement race fails closed', async () => {
   const contact = { entityId: 'entity:1', collisionId: 'collision:a', tileId: 'tile:a', artifactSha256: B };
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([contact]), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame }), /contact artifact/);
 });
-
 await check('render or presentation fields are rejected', async () => {
   assert.throws(() => createStaticCollisionOccupancySnapshot({ ...snapshot([]), renderOriginEpoch: 9 }), /unsupported field/);
 });
-
 await check('foreign world frame fails closed', async () => {
   assert.throws(() => deriveStaticCollisionDependencies({ snapshot: snapshot([], { worldFrameId: 'world:foreign' }), collisionState: state, expectedTick: 120, currentPhysicsFrame: frame }), /another world frame/);
 });
 
-console.log(`static collision occupancy regressions: ${passed}/10 PASS`);
+console.log(`static collision occupancy regressions: ${passed}/11 PASS`);
