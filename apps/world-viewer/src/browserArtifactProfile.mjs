@@ -17,6 +17,13 @@ function assertRuntimeVerificationPass(result) {
   }
 }
 
+function assertMeasuredDuration(phase, value) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`PROFILE_INVALID_TIMING: ${phase}`);
+  }
+  return value;
+}
+
 function summarizeSamples(samples) {
   if (!samples.length) return null;
   return {
@@ -47,16 +54,16 @@ export async function profileVerifiedJsonArtifact({
   for (let index = 0; index < count; index += 1) {
     const verifyStartedAt = now();
     const verification = await verifyImpl(bundle, bytes, { cryptoImpl });
-    const verifyMs = now() - verifyStartedAt;
+    const verifyMs = assertMeasuredDuration('verification', now() - verifyStartedAt);
     assertRuntimeVerificationPass(verification);
 
     const utf8StartedAt = now();
     const jsonText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    const utf8DecodeMs = now() - utf8StartedAt;
+    const utf8DecodeMs = assertMeasuredDuration('utf8_decode', now() - utf8StartedAt);
 
     const parseStartedAt = now();
     const artifact = JSON.parse(jsonText);
-    const jsonParseMs = now() - parseStartedAt;
+    const jsonParseMs = assertMeasuredDuration('json_parse', now() - parseStartedAt);
     if (!artifact || typeof artifact !== 'object') throw new Error('PROFILE_ARTIFACT_JSON_NOT_OBJECT');
 
     const decodeMs = utf8DecodeMs + jsonParseMs;
@@ -97,6 +104,6 @@ export async function profileVerifiedJsonArtifact({
     },
     steady_state: summarizeSamples(steadyStateSamples),
     samples,
-    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. It never replaces the production verification path and excludes network time.',
+    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. Invalid/non-monotonic phase timing fails closed rather than being filtered out of summaries. It never replaces the production verification path and excludes network time.',
   };
 }
