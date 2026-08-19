@@ -23,12 +23,17 @@ DATASETS = {
     "sr16_raster": {
         "metadata_uuid": "5de45872-f534-4e97-840e-3cfd8db04398",
         "provider": "NIBIO",
-        "purpose": "forest/vegetation raster candidate",
+        "purpose": "current split raster dataset; license comparison",
+    },
+    "sr16_raster_open_legacy_candidate": {
+        "metadata_uuid": "7df9ef08-faf2-4ad3-9ae2-49905f5ea808",
+        "provider": "NIBIO",
+        "purpose": "separate open-NLOD GeoTIFF catalog entry; freshness/continuity probe",
     },
     "sr16_vector": {
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
         "provider": "NIBIO",
-        "purpose": "forest/vegetation vector comparison only",
+        "purpose": "open forest/vegetation vector candidate",
     },
     "ar50_wfs": {
         "mode": "wfs_capabilities",
@@ -40,7 +45,7 @@ DATASETS = {
     },
 }
 
-USER_AGENT = "NorgeWorldEngine-VisualSourceProbe/0.2 (+https://github.com/B4kke/Norge-World-Engine)"
+USER_AGENT = "NorgeWorldEngine-VisualSourceProbe/0.3 (+https://github.com/B4kke/Norge-World-Engine)"
 
 
 def fetch_json(url: str, timeout: float = 30.0) -> tuple[Any, dict[str, Any]]:
@@ -223,7 +228,7 @@ def main() -> int:
     args = parser.parse_args()
 
     report = {
-        "schema": "nwe.visual-source-capability-probe/0.2",
+        "schema": "nwe.visual-source-capability-probe/0.3",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "policy": {
             "downloads_geodata": False,
