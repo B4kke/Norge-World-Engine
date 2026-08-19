@@ -1,6 +1,10 @@
 import * as THREE from 'three/webgpu';
+import { loadPolyHavenVegetationTemplates } from './polyHavenVegetationAssets.mjs';
 
-const VEGETATION_RENDER_SCHEMA = 'nwe.vegetation-render-layer/0.1';
+const VEGETATION_RENDER_SCHEMA = 'nwe.vegetation-render-layer/0.2';
+const MAX_RENDERED_TREE_INSTANCES = 48;
+const MAX_CONIFER_INSTANCES = 32;
+const MAX_BROADLEAF_INSTANCES = 16;
 
 function assertPlacement(placement) {
   if (placement?.schema !== 'nwe.synthetic-vegetation-placement/0.1') throw new TypeError('VEGETATION_PLACEMENT_SCHEMA_INVALID');
@@ -14,22 +18,6 @@ function assertPlacement(placement) {
   return count;
 }
 
-function configureInstanceMesh(mesh) {
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  mesh.frustumCulled = true;
-  return mesh;
-}
-
-function composeMatrix(matrix, position, quaternion, scale, x, y, z, yaw, sx, sy, sz) {
-  position.set(x, y, z);
-  quaternion.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
-  scale.set(sx, sy, sz);
-  matrix.compose(position, quaternion, scale);
-  return matrix;
-}
-
 function geometryPayloadBytes(geometry) {
   let bytes = geometry.index?.array?.byteLength ?? 0;
   for (const attribute of Object.values(geometry.attributes ?? {})) bytes += attribute?.array?.byteLength ?? 0;
@@ -40,100 +28,189 @@ function geometryBufferCount(geometry) {
   return Object.keys(geometry.attributes ?? {}).length + (geometry.index ? 1 : 0);
 }
 
-function disposeInstancedMesh(mesh) {
-  mesh.geometry.dispose();
-  mesh.material.dispose();
+function nearestPlacementIndices(placement, classId, limit) {
+  const candidates = [];
+  for (let index = 0; index < placement.count; index += 1) {
+    if (placement.species[index] !== classId) continue;
+    const offset = index * 3;
+    const x = placement.positions[offset];
+    const z = placement.positions[offset + 2];
+    candidates.push({ index, distanceSquared: x * x + z * z });
+  }
+  candidates.sort((a, b) => a.distanceSquared - b.distanceSquared || a.index - b.index);
+  return candidates.slice(0, limit).map(({ index }) => index);
 }
 
-export function createThreeVegetationLayer({ scene, placement } = {}) {
+function configureInstanceMesh(mesh, name) {
+  mesh.name = name;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.frustumCulled = true;
+  return mesh;
+}
+
+function composeTreeMatrix(matrix, position, quaternion, scale, placement, index, nativeHeightM) {
+  const offset = index * 3;
+  const targetHeightM = placement.heights[index];
+  const uniformScale = targetHeightM / nativeHeightM;
+  position.set(placement.positions[offset], placement.positions[offset + 1], placement.positions[offset + 2]);
+  quaternion.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, placement.yaws[index]);
+  scale.setScalar(uniformScale);
+  matrix.compose(position, quaternion, scale);
+  return matrix;
+}
+
+function materialsForInstancing(materials) {
+  const resolved = materials.filter(Boolean);
+  if (resolved.length === 0) throw new Error('POLY_HAVEN_TEMPLATE_MATERIAL_MISSING');
+  return resolved.length === 1 ? resolved[0] : resolved;
+}
+
+function disposeMaterials(materials) {
+  const materialSet = new Set();
+  const textureSet = new Set();
+  for (const material of materials) {
+    const list = Array.isArray(material) ? material : [material];
+    for (const entry of list) {
+      if (!entry || materialSet.has(entry)) continue;
+      materialSet.add(entry);
+      for (const value of Object.values(entry)) if (value?.isTexture) textureSet.add(value);
+    }
+  }
+  for (const texture of textureSet) texture.dispose?.();
+  for (const material of materialSet) material.dispose?.();
+}
+
+export async function createThreeVegetationLayer({
+  scene,
+  placement,
+  templates = null,
+  templateLoader = loadPolyHavenVegetationTemplates,
+  maxRenderedInstances = MAX_RENDERED_TREE_INSTANCES,
+} = {}) {
   if (!scene?.add || !scene?.remove) throw new TypeError('Three scene is required');
   const count = assertPlacement(placement);
-  const coniferCount = placement.metadata.conifer_count ?? Array.from(placement.species).filter((kind) => kind === 0).length;
-  const broadleafCount = placement.metadata.broadleaf_count ?? count - coniferCount;
+  if (!(Number.isInteger(maxRenderedInstances) && maxRenderedInstances > 0)) throw new RangeError('maxRenderedInstances must be a positive integer');
 
-  const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.68, 1, 7, 1, false);
-  const coniferGeometry = new THREE.ConeGeometry(0.5, 1, 9, 3, false);
-  const broadleafGeometry = new THREE.IcosahedronGeometry(0.5, 1);
-  const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x5f4934, roughness: 0.98, metalness: 0, flatShading: true });
-  const coniferMaterial = new THREE.MeshStandardMaterial({ color: 0x315b38, roughness: 0.94, metalness: 0, flatShading: true });
-  const broadleafMaterial = new THREE.MeshStandardMaterial({ color: 0x4c743d, roughness: 0.92, metalness: 0, flatShading: true });
+  const loadedTemplates = templates ?? await templateLoader();
+  if (!Array.isArray(loadedTemplates) || loadedTemplates.length === 0) throw new Error('POLY_HAVEN_VEGETATION_TEMPLATES_REQUIRED');
+  if (loadedTemplates.some((template) => template?.asset?.provider !== 'Poly Haven' || template?.asset?.license !== 'CC0-1.0')) {
+    throw new Error('VEGETATION_ASSET_PROVIDER_MUST_BE_POLY_HAVEN_CC0');
+  }
 
-  const trunks = configureInstanceMesh(new THREE.InstancedMesh(trunkGeometry, trunkMaterial, count));
-  const conifers = configureInstanceMesh(new THREE.InstancedMesh(coniferGeometry, coniferMaterial, coniferCount));
-  const broadleaves = configureInstanceMesh(new THREE.InstancedMesh(broadleafGeometry, broadleafMaterial, broadleafCount));
-  trunks.name = 'nwe-vegetation-trunks';
-  conifers.name = 'nwe-vegetation-conifers';
-  broadleaves.name = 'nwe-vegetation-broadleaves';
+  const coniferBudget = Math.min(MAX_CONIFER_INSTANCES, maxRenderedInstances);
+  const broadleafBudget = Math.min(MAX_BROADLEAF_INSTANCES, Math.max(0, maxRenderedInstances - coniferBudget));
+  const coniferIndices = nearestPlacementIndices(placement, 0, coniferBudget);
+  const broadleafIndices = nearestPlacementIndices(placement, 1, broadleafBudget);
+  const selectedByClass = new Map([[0, coniferIndices], [1, broadleafIndices]]);
+  const templatesByClass = new Map();
+  for (const template of loadedTemplates) {
+    const classId = Number(template.asset.class_id);
+    const list = templatesByClass.get(classId) ?? [];
+    list.push(template);
+    templatesByClass.set(classId, list);
+  }
+  for (const classId of [0, 1]) {
+    if ((selectedByClass.get(classId)?.length ?? 0) > 0 && !(templatesByClass.get(classId)?.length > 0)) {
+      throw new Error(`POLY_HAVEN_VEGETATION_CLASS_TEMPLATE_MISSING: ${classId}`);
+    }
+  }
 
+  const meshes = [];
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3();
-  const color = new THREE.Color();
-  let coniferIndex = 0;
-  let broadleafIndex = 0;
+  const assetSnapshots = [];
+  let matrixPayloadBytes = 0;
+  let sharedGeometryPayloadBytes = 0;
+  let gpuBufferCount = 0;
+  let selectedTriangleCount = 0;
+  let estimatedRenderedTriangles = 0;
 
-  for (let index = 0; index < count; index += 1) {
-    const offset = index * 3;
-    const x = placement.positions[offset];
-    const groundY = placement.positions[offset + 1];
-    const z = placement.positions[offset + 2];
-    const height = placement.heights[index];
-    const yaw = placement.yaws[index];
-    const kind = placement.species[index];
-    const trunkHeight = height * (kind === 0 ? 0.38 : 0.46);
-    const trunkRadius = Math.max(0.14, Math.min(0.42, height * 0.025));
-    trunks.setMatrixAt(index, composeMatrix(matrix, position, quaternion, scale, x, groundY + trunkHeight * 0.5, z, yaw, trunkRadius * 2, trunkHeight, trunkRadius * 2));
+  for (const [classId, selectedIndices] of selectedByClass) {
+    const classTemplates = templatesByClass.get(classId) ?? [];
+    if (selectedIndices.length === 0 || classTemplates.length === 0) continue;
+    const assignments = classTemplates.map(() => []);
+    selectedIndices.forEach((placementIndex, sequence) => assignments[sequence % classTemplates.length].push(placementIndex));
 
-    if (kind === 0) {
-      const crownHeight = height * 0.78;
-      const crownRadius = height * 0.20;
-      conifers.setMatrixAt(coniferIndex, composeMatrix(matrix, position, quaternion, scale, x, groundY + height * 0.60, z, yaw, crownRadius * 2, crownHeight, crownRadius * 2));
-      color.setHSL(0.34 + ((index % 7) - 3) * 0.003, 0.31, 0.29 + (index % 5) * 0.012);
-      conifers.setColorAt(coniferIndex, color);
-      coniferIndex += 1;
-    } else {
-      const crownWidth = height * 0.44;
-      const crownHeight = height * 0.34;
-      broadleaves.setMatrixAt(broadleafIndex, composeMatrix(matrix, position, quaternion, scale, x, groundY + height * 0.73, z, yaw, crownWidth, crownHeight, crownWidth));
-      color.setHSL(0.28 + ((index % 9) - 4) * 0.004, 0.36, 0.34 + (index % 6) * 0.012);
-      broadleaves.setColorAt(broadleafIndex, color);
-      broadleafIndex += 1;
-    }
+    classTemplates.forEach((template, templateIndex) => {
+      const indices = assignments[templateIndex];
+      if (indices.length === 0) return;
+      const nativeHeightM = Number(template.native_height_m);
+      if (!(Number.isFinite(nativeHeightM) && nativeHeightM > 0.05)) throw new Error(`POLY_HAVEN_TEMPLATE_HEIGHT_INVALID: ${template.asset.id}`);
+      const perAssetTriangles = Number(template.selected_triangle_count) || 0;
+      selectedTriangleCount += perAssetTriangles;
+      estimatedRenderedTriangles += perAssetTriangles * indices.length;
+      const assetMeshStart = meshes.length;
+
+      for (let partIndex = 0; partIndex < template.meshes.length; partIndex += 1) {
+        const part = template.meshes[partIndex];
+        const material = materialsForInstancing(part.materials ?? []);
+        const mesh = configureInstanceMesh(
+          new THREE.InstancedMesh(part.geometry, material, indices.length),
+          `nwe-polyhaven-${template.asset.source_slug}-${partIndex}`,
+        );
+        indices.forEach((placementIndex, instanceIndex) => {
+          mesh.setMatrixAt(instanceIndex, composeTreeMatrix(matrix, position, quaternion, scale, placement, placementIndex, nativeHeightM));
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        meshes.push(mesh);
+        scene.add(mesh);
+        matrixPayloadBytes += indices.length * 16 * Float32Array.BYTES_PER_ELEMENT;
+        sharedGeometryPayloadBytes += geometryPayloadBytes(part.geometry);
+        gpuBufferCount += geometryBufferCount(part.geometry) + 1;
+      }
+
+      assetSnapshots.push(Object.freeze({
+        id: template.asset.id,
+        provider: template.asset.provider,
+        license: template.asset.license,
+        source_page: template.asset.source_page,
+        source_request_url: template.asset.url,
+        runtime_resolution: template.asset.runtime_resolution,
+        lod_policy: template.asset.lod_policy,
+        selected_lod: template.selected_lod,
+        available_lods: [...(template.available_lods ?? [])],
+        source_triangle_count: template.asset.source_triangle_count,
+        selected_triangle_count: perAssetTriangles,
+        selected_mesh_count: meshes.length - assetMeshStart,
+        rendered_instances: indices.length,
+        normalized_native_height_m: nativeHeightM,
+      }));
+    });
   }
 
-  for (const mesh of [trunks, conifers, broadleaves]) {
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }
-  scene.add(trunks, conifers, broadleaves);
-
-  const meshes = [trunks, conifers, broadleaves];
-  const drawCalls = meshes.filter((mesh) => mesh.count > 0).length;
-  const matrixPayloadBytes = (count + coniferCount + broadleafCount) * 16 * Float32Array.BYTES_PER_ELEMENT;
-  const colorPayloadBytes = (coniferCount + broadleafCount) * 3 * Float32Array.BYTES_PER_ELEMENT;
-  const sharedGeometryPayloadBytes = geometryPayloadBytes(trunkGeometry) + geometryPayloadBytes(coniferGeometry) + geometryPayloadBytes(broadleafGeometry);
-  const gpuBufferPayloadBytes = matrixPayloadBytes + colorPayloadBytes + sharedGeometryPayloadBytes;
-  const gpuBufferCount = meshes.reduce((sum, mesh) => sum + geometryBufferCount(mesh.geometry) + 1 + (mesh.instanceColor ? 1 : 0), 0);
+  const renderedInstanceCount = coniferIndices.length + broadleafIndices.length;
+  const gpuBufferPayloadBytes = matrixPayloadBytes + sharedGeometryPayloadBytes;
+  const materialRefs = meshes.map((mesh) => mesh.material);
   const snapshot = () => ({
     schema: VEGETATION_RENDER_SCHEMA,
     authority: placement.metadata.authority,
     placement_schema: placement.schema,
     instance_count: count,
-    conifer_count: coniferCount,
-    broadleaf_count: broadleafCount,
-    draw_calls: drawCalls,
-    mesh_count: 3,
+    rendered_instance_count: renderedInstanceCount,
+    presentation_instance_cap: maxRenderedInstances,
+    conifer_count: placement.metadata.conifer_count ?? Array.from(placement.species).filter((kind) => kind === 0).length,
+    broadleaf_count: placement.metadata.broadleaf_count ?? Array.from(placement.species).filter((kind) => kind === 1).length,
+    rendered_conifer_count: coniferIndices.length,
+    rendered_broadleaf_count: broadleafIndices.length,
+    draw_calls: meshes.length,
+    mesh_count: meshes.length,
     gpu_buffer_count: gpuBufferCount,
     gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
     instance_matrix_payload_bytes: matrixPayloadBytes,
-    instance_color_payload_bytes: colorPayloadBytes,
+    instance_color_payload_bytes: 0,
     shared_geometry_payload_bytes: sharedGeometryPayloadBytes,
-    geometry_strategy: 'three-instancedmesh-shared-lowpoly-primitives',
-    material_strategy: 'three-shared-pbr-flat-shaded',
-    source_asset: null,
-    source_asset_status: 'procedural-proof; replaceable-by-vendored-cc0-tree-set',
+    selected_template_triangles: selectedTriangleCount,
+    estimated_rendered_triangles: estimatedRenderedTriangles,
+    geometry_strategy: 'polyhaven-gltf-instanced-selected-lod',
+    material_strategy: 'polyhaven-original-gltf-pbr-materials',
+    source_asset_status: 'polyhaven-cc0-direct-1k-gltf; optimized-vendoring-pending',
+    runtime_asset_dependency: 'external-cc0-renderer-assets',
+    source_assets: assetSnapshots,
     placement: placement.metadata,
   });
 
@@ -141,10 +218,9 @@ export function createThreeVegetationLayer({ scene, placement } = {}) {
     meshes,
     snapshot,
     dispose() {
-      scene.remove(trunks, conifers, broadleaves);
-      disposeInstancedMesh(trunks);
-      disposeInstancedMesh(conifers);
-      disposeInstancedMesh(broadleaves);
+      for (const mesh of meshes) scene.remove(mesh);
+      for (const mesh of meshes) mesh.geometry?.dispose?.();
+      disposeMaterials(materialRefs);
     },
   };
 }
