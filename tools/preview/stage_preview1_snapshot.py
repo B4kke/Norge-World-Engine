@@ -6,10 +6,14 @@ import json
 import os
 import shutil
 import subprocess
+import urllib.request
 from pathlib import Path
 
 CACHE_PREFIX = "cache://compiled/"
 RAW_MARKERS = ("kartverket", "geonorge", "vegvesen", "nvdb", "overpass", "openstreetmap")
+PREVIEW_TERRAIN_RADIUS = 1
+PREVIEW_TERRAIN_TILE_COUNT = 9
+PREVIEW_SNAPSHOT_MAX_BYTES = 64 * 1024 * 1024
 
 
 def sha256_file(path: Path) -> str:
@@ -51,12 +55,13 @@ def copy_runtime_pair(*, bundle_path: Path, artifact_path: Path, output: Path, b
 
     output.mkdir(parents=True, exist_ok=True)
     bundle_target = output / bundle_name
+    bundle_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(bundle_path, bundle_target)
     compiled_target = output / "compiled" / compiled_relative(bundle)
     compiled_target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(artifact_path, compiled_target)
     return {
-        "bundle": f"./{bundle_name}",
+        "bundle": f"./{Path(bundle_name).as_posix()}",
         "artifact_sha256": actual_sha,
         "artifact_byte_size": actual_size,
         "artifact_role": artifact_ref.get("artifact_role"),
@@ -78,7 +83,86 @@ def compile_vectors(cache_root: Path) -> dict:
     return report
 
 
-def build_terrain(cache_root: Path, working_dir: Path) -> tuple[Path, Path, dict]:
+def _tile_manifest(tile, header: dict) -> dict:
+    bounds = list(header["bounds"])
+    return {
+        "id": tile.tile_id,
+        "horizontal_crs": header["horizontal_crs"],
+        "vertical_datum": header["vertical_datum"],
+        "bounds": bounds,
+        "center_e": (bounds[0] + bounds[2]) / 2,
+        "center_n": (bounds[1] + bounds[3]) / 2,
+        "elevation_min_m": header["elevation_min_m"],
+        "elevation_max_m": header["elevation_max_m"],
+    }
+
+
+def build_terrain_grid(cache_root: Path) -> tuple[list[tuple[object, Path, Path, dict]], dict]:
+    from nwe_compiler.nhm_wcs_acquisition import USER_AGENT, acquire_nhm_wcs
+    from nwe_compiler.nhm_wcs_terrain_artifacts import (
+        compile_nhm_wcs_terrain_artifact,
+        persist_nhm_wcs_terrain_artifact,
+    )
+    from nwe_compiler.tiles import NANNESTAD_TILE, square_tile_grid
+
+    tiles = square_tile_grid(NANNESTAD_TILE, radius=PREVIEW_TERRAIN_RADIUS)
+    if len(tiles) != PREVIEW_TERRAIN_TILE_COUNT:
+        raise RuntimeError(f"expected {PREVIEW_TERRAIN_TILE_COUNT} terrain tiles, got {len(tiles)}")
+
+    response_cache: dict[str, tuple[str | None, bytes]] = {}
+    network_calls: list[str] = []
+
+    def shared_fetcher(url: str, timeout: float, accept: str) -> tuple[str | None, bytes]:
+        is_service_metadata = "GetCapabilities" in url or "DescribeCoverage" in url
+        if is_service_metadata and url in response_cache:
+            return response_cache[url]
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if getattr(response, "status", 200) != 200:
+                raise RuntimeError(f"provider returned HTTP {response.status}: {url}")
+            result = (response.headers.get("Content-Type"), response.read())
+        network_calls.append(url)
+        if is_service_metadata:
+            response_cache[url] = result
+        return result
+
+    results: list[tuple[object, Path, Path, dict]] = []
+    for tile in tiles:
+        acquired = acquire_nhm_wcs(
+            cache_root,
+            tile=tile,
+            refresh=True,
+            timeout=180,
+            fetcher=shared_fetcher,
+        )
+        compiled = compile_nhm_wcs_terrain_artifact(acquired, tile=tile)
+        persisted = persist_nhm_wcs_terrain_artifact(compiled, cache_root, tile=tile)
+        if not persisted.bundle_path or not persisted.artifact_path:
+            raise RuntimeError(f"{tile.tile_id}: terrain artifact was not persisted")
+        results.append(
+            (
+                tile,
+                Path(persisted.bundle_path),
+                Path(persisted.artifact_path),
+                compiled.artifact_header,
+            )
+        )
+
+    expected_requests = 2 + len(tiles)
+    if len(network_calls) != expected_requests:
+        raise RuntimeError(
+            f"expected {expected_requests} provider requests (2 shared metadata + {len(tiles)} coverage), "
+            f"got {len(network_calls)}"
+        )
+    return results, {
+        "provider_requests": len(network_calls),
+        "shared_service_metadata_requests": 2,
+        "coverage_requests": len(tiles),
+    }
+
+
+def build_legacy_terrain(cache_root: Path, working_dir: Path) -> tuple[Path, Path, dict]:
+    """Historical D-007 single-tile path retained only for explicit legacy proof input."""
     from nwe_compiler.acquisition import TILE_BOUNDS
     from nwe_compiler.raster import warp_dtm_to_canonical_grid
     from nwe_compiler.terrain_acquisition import acquire_dtm1
@@ -98,20 +182,58 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
         shutil.rmtree(output)
     output.mkdir(parents=True)
 
+    terrain_tiles: list[dict] = []
+    terrain_network = {"provider_requests": 0, "shared_service_metadata_requests": 0, "coverage_requests": 0}
+
     if terrain_proof_dir is not None:
+        # Backward-compatible explicit legacy proof staging. Normal live Preview builds
+        # use the direct WCS 3x3 path below.
         terrain_report = read_json(terrain_proof_dir / "dtm1-realdata-proof.json")
         terrain_info = terrain_report["compiled_artifact"]
         terrain_bundle_path = terrain_proof_dir / terrain_info["bundle_file"]
         terrain_artifact_path = terrain_proof_dir / terrain_info["artifact_file"]
         terrain_header = terrain_info["header"]
+        terrain = copy_runtime_pair(
+            bundle_path=terrain_bundle_path,
+            artifact_path=terrain_artifact_path,
+            output=output,
+            bundle_name="terrain.bundle.json",
+        )
+        terrain["tile"] = {
+            "id": terrain_header["tile_id"],
+            "horizontal_crs": terrain_header["horizontal_crs"],
+            "vertical_datum": terrain_header["vertical_datum"],
+            "bounds": terrain_header["bounds"],
+            "center_e": (terrain_header["bounds"][0] + terrain_header["bounds"][2]) / 2,
+            "center_n": (terrain_header["bounds"][1] + terrain_header["bounds"][3]) / 2,
+            "elevation_min_m": terrain_header["elevation_min_m"],
+            "elevation_max_m": terrain_header["elevation_max_m"],
+        }
+        terrain_tiles.append(terrain)
     else:
-        terrain_bundle_path, terrain_artifact_path, terrain_header = build_terrain(cache_root, output.parent / "terrain-work")
-    terrain = copy_runtime_pair(
-        bundle_path=terrain_bundle_path,
-        artifact_path=terrain_artifact_path,
-        output=output,
-        bundle_name="terrain.bundle.json",
-    )
+        terrain_grid, terrain_network = build_terrain_grid(cache_root)
+        center_id = "epsg25832_611000_6677000_1000m"
+        terrain = None
+        terrain_header = None
+        for tile, bundle_path, artifact_path, header in terrain_grid:
+            layer = copy_runtime_pair(
+                bundle_path=bundle_path,
+                artifact_path=artifact_path,
+                output=output,
+                bundle_name=f"terrain/{tile.tile_id}.bundle.json",
+            )
+            layer["tile"] = _tile_manifest(tile, header)
+            terrain_tiles.append(layer)
+            if tile.tile_id == center_id:
+                terrain = dict(layer)
+                terrain_header = header
+        if terrain is None or terrain_header is None:
+            raise RuntimeError(f"3x3 terrain grid did not contain center tile {center_id}")
+        # Stable center alias keeps manifest 0.1 consumers working while the new
+        # terrain_tiles field exposes all nine independently verified runtime tiles.
+        center_bundle_source = output / terrain["bundle"].removeprefix("./")
+        shutil.copyfile(center_bundle_source, output / "terrain.bundle.json")
+        terrain["bundle"] = "./terrain.bundle.json"
 
     vector_report = compile_vectors(cache_root)
     vector_by_source = {item["source"]: item for item in vector_report["results"]}
@@ -141,11 +263,11 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
     header = terrain_header
     bounds = header["bounds"]
     tile_id = header["tile_id"]
-    for layer in (terrain, layers["roads"], layers["buildings"]):
+    for layer in [*terrain_tiles, layers["roads"], layers["buildings"]]:
         if not layer["artifact_sha256"]:
             raise RuntimeError("empty artifact SHA in preview layer")
-    if terrain["artifact_role"] != "terrain-height-grid":
-        raise RuntimeError(f"unexpected terrain role {terrain['artifact_role']}")
+    if any(layer["artifact_role"] != "terrain-height-grid" for layer in terrain_tiles):
+        raise RuntimeError("unexpected terrain role in preview terrain grid")
     if layers["roads"]["artifact_role"] != "road-network":
         raise RuntimeError(f"unexpected roads role {layers['roads']['artifact_role']}")
     if layers["buildings"]["artifact_role"] != "building-footprints":
@@ -163,18 +285,26 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
             "bounds": bounds,
             "center_e": (bounds[0] + bounds[2]) / 2,
             "center_n": (bounds[1] + bounds[3]) / 2,
+            "elevation_min_m": header["elevation_min_m"],
+            "elevation_max_m": header["elevation_max_m"],
         },
         "terrain": terrain,
+        "terrain_tiles": terrain_tiles,
         "roads": layers["roads"],
         "buildings": layers["buildings"],
         "preview_semantics": {
             "raw_source_runtime_calls": 0,
+            "terrain_runtime_grid": "3x3-1km" if len(terrain_tiles) == PREVIEW_TERRAIN_TILE_COUNT else "legacy-single-tile",
+            "terrain_tile_count": len(terrain_tiles),
+            "terrain_source_path": "kartverket-nhm-dtm-25832-wcs-direct-runtime-grid" if len(terrain_tiles) == PREVIEW_TERRAIN_TILE_COUNT else "historical-dtm1-atom",
+            "terrain_provider_requests_during_compile": terrain_network,
+            "vectors_scope": "center-1x1km-only",
             "road_width": "visual-debug-only-3.2m",
             "unresolved_building_height": "visual-debug-only-5m",
             "runtime_distribution": "temporary-preview-runtime-branch-not-final-architecture",
         },
         "attribution": [
-            "DTM1 height data: Kartverket / Geonorge, CC BY 4.0.",
+            "NHM DTM height data: © Kartverket, CC BY 4.0.",
             "Road data: Statens vegvesen, NLOD 1.0.",
             "Building data: © OpenStreetMap contributors, ODbL 1.0.",
         ],
@@ -184,13 +314,13 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
 
     files = [path for path in output.rglob("*") if path.is_file()]
     total_bytes = sum(path.stat().st_size for path in files)
-    if total_bytes > 16 * 1024 * 1024:
+    if total_bytes > PREVIEW_SNAPSHOT_MAX_BYTES:
         raise RuntimeError(f"preview snapshot unexpectedly large: {total_bytes} bytes")
     return manifest
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Stage content-addressed Nannestad Preview 1 runtime artifacts")
+    parser = argparse.ArgumentParser(description="Stage content-addressed Nannestad Preview runtime artifacts")
     parser.add_argument("--terrain-proof-dir", type=Path)
     parser.add_argument("--cache-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -210,7 +340,9 @@ def main() -> None:
         "status": "PASS",
         "preview_id": manifest["preview_id"],
         "tile_id": manifest["tile"]["id"],
+        "terrain_tile_count": len(manifest["terrain_tiles"]),
         "terrain_sha256": manifest["terrain"]["artifact_sha256"],
+        "terrain_artifact_bytes": sum(item["artifact_byte_size"] for item in manifest["terrain_tiles"]),
         "roads_sha256": manifest["roads"]["artifact_sha256"],
         "buildings_sha256": manifest["buildings"]["artifact_sha256"],
         "snapshot_byte_size": sum(path.stat().st_size for path in args.output.rglob("*") if path.is_file()),
