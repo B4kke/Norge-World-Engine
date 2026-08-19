@@ -2,15 +2,17 @@
 
 ## Gate
 
-`P0-MULTITILE-TERRAIN-01` / `P0-VIEWER-01` browser integration on top of FORGE D-008.
+`P0-MULTITILE-TERRAIN-01` / `P0-VIEWER-01` browser integration using FORGE's direct `NHM DTM 25832 WCS` **candidate** path.
 
-**Result:** `PASS / READY FOR SENTINEL REVIEW` for the Nannestad Prototype-0 real 3x3 terrain browser composition.
+**Browser/runtime result:** `PASS / READY FOR SENTINEL REVIEW` for the Nannestad Prototype-0 real 3x3 terrain composition.
 
-This proof does not select a whole-Norway source/LOD policy and does not claim multi-tile WebGPU performance.
+**Production-source result:** unchanged. This proof does **not** select WCS as the production terrain source and does not close the canonical `P0-MULTITILE-TERRAIN-01` source-authority gate. FORGE/SENTINEL must still reconcile the current Atom-based acceptance contract with any source-family transition.
+
+This proof also does not select a whole-Norway source/LOD policy and does not claim multi-tile WebGPU performance.
 
 ## Exact code evidence
 
-LUMEN code head tested: `ac58bb1df9f601e2672cd61e9ffa423618953074`.
+LUMEN code head that established the browser result: `ac58bb1df9f601e2672cd61e9ffa423618953074`.
 
 PR-to-main merge ref tested by GitHub Actions: `319f83ac46849091d676f447c1b7c74d83568e21`.
 
@@ -28,7 +30,7 @@ Repository baseline run `32253585695` passed on the same LUMEN code head, includ
 
 ## Real 3x3 runtime snapshot
 
-The staging pipeline compiled the FORGE direct `NHM DTM 25832 WCS` path into nine independently identified NWE 1 km terrain artifacts.
+The staging pipeline compiled FORGE's direct `NHM DTM 25832 WCS` candidate into nine independently identified NWE 1 km terrain artifacts.
 
 Snapshot staging:
 - terrain tile count: **9**;
@@ -43,19 +45,21 @@ All nine terrain artifacts plus roads/buildings were reconstructed by `runtime_v
 
 The publish step force-replaced orphan branch `preview-runtime` only after the Node verification and both browser gates passed. The branch contains compiled artifacts, bundles, manifest and attribution only; raw Kartverket/NVDB/OSM source material is not published.
 
+The published snapshot is prototype evidence for the WCS candidate. It must not be interpreted as production-source selection while the canonical source acceptance contract remains unresolved.
+
 ## Backward-compatible center viewer
 
-The existing Preview 1 browser gate was deliberately retained against the new WCS center artifact.
+The existing Preview 1 browser gate was deliberately retained against the WCS-candidate center artifact.
 
 Result:
 - `status=PASS`;
 - phase `REAL WORLD READY`;
-- center WCS artifact accepted;
+- center WCS-candidate artifact accepted by the existing browser pipeline;
 - `raw_source_runtime_calls=0`;
 - WebGL2 fallback remained valid in hosted Chrome when no WebGPU adapter was available;
 - center balanced terrain mesh: 16,641 vertices / 32,768 triangles.
 
-This prevented the multi-tile snapshot from silently breaking the already-proven single-tile browser path.
+This proves compatibility of the candidate artifact with the existing runtime consumer. It does not replace the canonical D-007 center identity without an explicit source-selection decision.
 
 ## Real Preview 3 browser gate
 
@@ -91,7 +95,7 @@ The hosted timing is directional evidence only. SwiftShader/headless Chrome is n
 
 ## Shared render-local frame
 
-All nine terrain meshes are derived from authoritative EPSG:25832/NN2000 tile artifacts, but GPU positions use one shared local render origin anchored at the center tile. Absolute EPSG-scale coordinates are therefore not written directly into Float32 GPU vertex positions.
+All nine terrain meshes are derived from EPSG:25832/NN2000 WCS-candidate tile artifacts, but GPU positions use one shared local render origin anchored at the center tile. Absolute EPSG-scale coordinates are therefore not written directly into Float32 GPU vertex positions.
 
 This is a renderer-local realization of the existing world-model rule: authoritative world coordinates remain high precision; GPU geometry is disposable render-local Float32.
 
@@ -99,7 +103,7 @@ This is a renderer-local realization of the existing world-model rule: authorita
 
 The first browser integration attempt exposed a real cross-module contract bug rather than a data/provenance failure.
 
-FORGE WCS artifacts correctly encode `nodata: null` when the response has 1,000,000 valid samples and no nodata sentinel. The old terrain decoder unconditionally required `nodata` to be a finite number, so Node provenance verification passed while browser artifact decode failed.
+FORGE WCS candidate artifacts correctly encode `nodata: null` when the response has 1,000,000 valid samples and no nodata sentinel. The old terrain decoder unconditionally required `nodata` to be a finite number, so Node provenance verification passed while browser artifact decode failed.
 
 The runtime loader now accepts either:
 - `nodata: null`, meaning there is no nodata sentinel; or
@@ -111,8 +115,8 @@ This is a narrow STRØM-owned runtime contract correction encountered during LUM
 
 ## Current visual/world scope
 
-The browser now has real multi-tile terrain, but it is not yet a visually complete 3x3 world:
-- terrain: **real 3x3 / 9 km²**;
+The browser now demonstrates real multi-tile terrain capability, but it is not yet a visually complete 3x3 world:
+- terrain: **real WCS-candidate 3x3 / 9 km²**;
 - roads: current verified **center 1x1 km only**;
 - buildings: current verified **center 1x1 km only**;
 - road physical width/crossfall: unresolved authoritative semantics;
@@ -123,9 +127,11 @@ The browser now has real multi-tile terrain, but it is not yet a visually comple
 
 ## What this proves
 
-NWE has crossed the single-tile boundary: the browser can consume nine independent, provenance-verifiable real terrain artifacts, schedule and mesh them through the runtime worker path, place them in one stable render-local frame and keep nine terrain GPU resources resident simultaneously without contacting provider/raw sources.
+NWE has crossed the **single-tile browser capability** boundary for the WCS candidate: the browser can consume nine independent, provenance-verifiable real terrain artifacts, schedule and mesh them through the runtime worker path, place them in one stable render-local frame and keep nine terrain GPU resources resident simultaneously without contacting provider/raw sources.
 
-A 5x5 test is no longer the highest-value next action merely to prove that more HTTP requests work. The higher-value next work is to make the larger-world representation efficient and visually useful.
+It does **not** prove that WCS has been accepted as production world truth. The canonical source decision remains with FORGE/SENTINEL and the task-queue acceptance contract.
+
+A 5x5 request-count test is therefore not the highest-value next renderer action merely to prove that more tiles can load. The higher-value prototype work is to make the larger-world representation efficient and visually useful while source selection is reviewed independently.
 
 ## Recommended next gate
 
@@ -134,4 +140,4 @@ A 5x5 test is no longer the highest-value next action merely to prove that more 
 3. **Imagery/texture source contract.** Evaluate an official/open orthophoto or other surface source for coverage, CRS, resolution, update cadence, license, access method and practical tiling. Only after that should a texture tile pipeline be bound to terrain LOD/mips.
 4. **Materials/vegetation/procedural detail** after terrain/vector/imagery streaming boundaries are measurable.
 
-The final whole-Norway terrain mesh/LOD format remains an open decision; the current runtime height-grid remains an engine-independent interchange/source-of-truth artifact, not a commitment to render 1 m meshes everywhere.
+These prototype/runtime investigations can proceed without pretending the source-authority question is already settled. The final whole-Norway terrain mesh/LOD format remains an open decision; the current runtime height-grid remains an engine-independent interchange artifact, not a commitment to render 1 m meshes everywhere.
