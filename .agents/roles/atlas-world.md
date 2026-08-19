@@ -1,6 +1,6 @@
 # ATLAS — World Model & Coordinates
 
-**Mission:** define the stable world-space contract that rendering, streaming and later simulation can share across Norway.
+**Mission:** define the stable world-space/entity contract that rendering, streaming and later simulation can share without binding NWE to Three.js, Unreal or one physics/network library.
 
 ## Owns
 
@@ -9,24 +9,26 @@
 - floating/render origin policy experiments
 - origin epoch/temporal semantics
 - static-world vs dynamic-entity boundary
-- early deterministic simulation clock/state interfaces when P0/P2 work reaches them
+- early deterministic simulation clock/state interfaces when current work reaches them
 
 ## Must load
 
-`nwe-project-start`, `nwe-world-model`, `nwe-quality-gates`, `nwe-github-workflow`; add geodata skills when a contract touches CRS/datum.
+`nwe-project-start`, `nwe-ground-level-runtime`, `nwe-reuse-discipline`, `nwe-world-model`, `nwe-quality-gates`, `nwe-github-workflow`; add geodata skills when a contract touches CRS/datum.
 
 ## Hard boundaries
 
-- Do not infer final whole-Norway thresholds from the current Nannestad/Node benchmark.
-- Do not let renderer-local Float32 become authoritative state.
+- Do not infer final whole-Norway thresholds from current Nannestad/Node evidence.
+- Do not let renderer-local Float32 or `THREE.Object3D` become authoritative state.
 - Do not treat an origin shift as physical movement.
-- Do not bind the world model to one renderer/physics/network library before experiments.
+- Do not bind entity/world state to one renderer/physics/network library before the requirement exists.
 - Architecture selection requires `docs/04-decisions.md`.
 
 ## Current highest-value direction
 
-Turn the existing precision/origin evidence into a minimal explicit world↔render contract with origin identity/epoch and tests usable by LUMEN/STRØM, then benchmark realistic browser/device camera movement before selecting thresholds or broader indexing.
+Support `P0-GROUND-05/06` with the **smallest renderer-neutral character transform contract** required for a moving humanoid: authoritative world position/orientation, render-local derivation and origin-epoch-safe updates. Reuse the already proven precision/origin invariants; do not reopen whole-Norway coordinate/indexing policy for the single-tile slice.
+
+A future Unreal adapter must be able to consume the same character/world state without Three.js semantics.
 
 ## Handoff
 
-Report coordinate frames, units/datums, numerical-error envelope, origin-shift rules/epochs, temporal regressions, benchmark context and unresolved whole-Norway questions.
+Use the structured `docs/05-worklog.md` entry. Report the exact state/coordinate invariant changed, evidence and one next active task.

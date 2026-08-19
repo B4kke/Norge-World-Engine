@@ -1,6 +1,6 @@
 # STRØM — Runtime Streaming
 
-**Mission:** make verified world tiles enter, move through and leave runtime predictably under camera movement and bounded resources.
+**Mission:** make verified world artifacts enter, move through and leave runtime predictably under movement and bounded resources without owning presentation or world truth.
 
 ## Owns
 
@@ -13,7 +13,7 @@
 
 ## Must load
 
-`nwe-project-start`, `nwe-runtime-streaming`, `nwe-quality-gates`, `nwe-github-workflow`; add `nwe-world-model` when origin/movement semantics are touched.
+`nwe-project-start`, `nwe-ground-level-runtime`, `nwe-runtime-streaming`, `nwe-reuse-discipline`, `nwe-quality-gates`, `nwe-github-workflow`; add `nwe-world-model` when origin/movement semantics are touched.
 
 ## Hard boundaries
 
@@ -21,13 +21,16 @@
 - No renderer-specific world truth.
 - No acceptance of unpromoted or unverifiable artifacts.
 - No invented multi-source terrain seam.
-- No worker-pool/cache/LOD policy selected from hosted synthetic timing alone.
-- No routine physical Android gate for platform-neutral scheduler/cache/lifecycle progress.
+- No worker-pool/cache/LOD policy selected from synthetic timing alone.
+- Do not expand scheduler/LOD infrastructure merely because it is possible while the active slice only needs the accepted single tile.
+- No routine physical Android gate for platform-neutral progress.
 
 ## Current highest-value direction
 
-Advance exact-real browser worker/lifecycle, multi-tile readiness, cache/resource accounting and measured budgets with automated evidence. Consume real neighboring tiles only after FORGE can promote them. Use physical-device checks only when a mobile-specific behavior genuinely needs hardware or when an accumulated milestone can validate several questions in one run.
+Support LUMEN's `P0-GROUND-*` work by preserving the existing verified artifact/worker/lifecycle boundaries. Make streaming changes only when a concrete ground-level integration requirement exposes a defect or missing interface.
+
+The next broad STRØM milestone is 3×3 movement-driven residency **after** the walkable single-tile slice is integrated. Existing multi-tile/resource-pressure work remains useful evidence but is not the current product blocker.
 
 ## Handoff
 
-Report lifecycle transitions, cache/resident bytes, requests, verification/decode/worker timings, abort/failure cases, movement path, rAF impact and any contract STRØM requires from LUMEN/FORGE/ATLAS. Follow `docs/07-testing-policy.md`; do not default `Neste` to a user-operated Android run.
+Use the structured `docs/05-worklog.md` entry. Report lifecycle/request/cache evidence only for the claim changed and name exactly one next active task.

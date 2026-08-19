@@ -1,6 +1,6 @@
 # 04 — Decisions
 
-Only decisions with evidence belong here. Open questions remain explicitly open.
+Only decisions with evidence or an explicit product requirement belong here. Open questions remain explicitly open.
 
 ## D-001 — GitHub is canonical implementation surface
 
@@ -41,7 +41,7 @@ Only decisions with evidence belong here. Open questions remain explicitly open.
 **Status:** Accepted as tooling/foundation; does not select a renderer/runtime format.  
 **Decision:** NWE will not maintain custom replacements for generic raster I/O/clipping, CRS transforms, topology predicates, RFC 8785 serialization, glTF optimization or 3D Tiles validation. The compiler pins Rasterio/GDAL, pyproj/PROJ, Shapely and `rfc8785`. Runtime packaging pins glTF-Transform/meshoptimizer and CesiumGS 3D Tiles validation/tools.  
 **Reason:** these are mature generic problems; NWE's differentiated code is Norwegian source contracts, NN2000/CRS semantics, deterministic world compilation, provenance and simulation/runtime boundaries.  
-**Consequence:** implicit reprojection/resampling remains forbidden. If a source needs either operation it must be an explicit TransformContract. 3D Tiles/CesiumJS remain an experiment under `prototypes/cesium-baseline/`, not an accepted runtime decision.
+**Consequence:** implicit reprojection/resampling remains forbidden. If a source needs either operation it must be an explicit TransformContract. 3D Tiles/CesiumJS remain available as interoperability/reference experiments rather than the default ground-level player renderer.
 
 ## D-007 — Prototype-0 DTM1 canonical transform and height-grid artifact
 
@@ -52,13 +52,23 @@ Only decisions with evidence belong here. Open questions remain explicitly open.
 **Evidence:** real hosted proof downloaded and SHA-256-bound the 1,096,856,487-byte source, produced a deterministic 1 m normalized raster and a deterministic 4,000,382-byte terrain artifact on cold and source-network-free offline runs. The exact compiled bytes pass `runtime_verifier.mjs` with `READY_FOR_RUNTIME`.  
 **Consequence:** normal runtime must consume the verified height-grid artifact (or a later explicitly versioned compiled derivative) and must not contact the DTM1 Atom/GeoTIFF source. Any change in resampling, output grid, precision/quantization or vertical handling is a new transform/compiler configuration and must produce a different lineage/artifact identity.
 
+## D-008 — Ground-level product target + Three.js working renderer
+
+**Status:** Accepted for the active ground-level web milestone — 2026-08-19. This is a product/architecture direction, not a claim that Three.js has benchmarked faster than every alternative.  
+**Product requirement:** the primary experience is free movement near the ground — initially walking, later driving/interacting — with strong materials, shaders, lighting and game-like presentation. High-altitude globe navigation is not the current design center.  
+**Decision:** Three.js is the primary working web renderer for the active Nannestad playable vertical slice, with a WebGPU-first capability path where genuinely available and WebGL2 fallback/baseline. Cesium/3D Tiles remain useful standards/reference/interop tools, not the primary player renderer.  
+**Engine-portability requirement:** Three.js may own GPU objects, materials, shaders, animation mixers and render-local scene resources only. `THREE.*` types must not enter authoritative world state, compiler artifacts, provenance schemas, tile identity or simulation contracts.  
+**Unreal consequence:** future Unreal Engine support is expected to be an importer/runtime adapter over the same engine-neutral compiled data, coordinates, IDs and entity state rather than a second Norwegian data pipeline. glTF/GLB is preferred for portable static/animated render assets where appropriate; semantic metadata remains separate from renderer scene graphs.  
+**Reason:** this matches the explicit desired experience while preserving D-002. It also lets NWE invest in ground-level PBR/shader/gameplay quality without paying the cost of building a globe-first user experience that is not currently needed.  
+**Acceptance consequence:** the next proof target is a walkable single-tile Nannestad scene, not a whole-Norway renderer comparison.
+
 ## Open decisions
 
-- Whether direct `NHM DTM 25832 WCS` should supersede the accepted D-007 Atom source path for Nannestad multi-tile terrain. FORGE has a deterministic 3×3 candidate and provider-level NN2000 datum support, but canonical `P0-MULTITILE-TERRAIN-01` still treats WCS as diagnostic and requires unchanged D-007 center bytes. This remains open until SENTINEL reconciles the source-family transition and acceptance contract.
+- Whether direct `NHM DTM 25832 WCS` should supersede the accepted D-007 Atom source path for Nannestad multi-tile terrain. Canonical `P0-MULTITILE-TERRAIN-01` remains fail-closed until source-family/seam authority is reconciled.
 - Whole-Norway coordinate/tile indexing strategy.
 - Whole-Norway terrain source/acquisition strategy across UTM zones and service/bulk-download limits.
 - Final whole-Norway terrain mesh/LOD and 3D Tiles-like vs custom/hybrid streaming format; the Prototype-0 height grid is only an interchange/runtime proof artifact.
-- Three.js/WebGPU vs other web renderer details after real artifact measurement.
-- Unreal role after engine-independent import/streaming evidence.
-- Client/worker/server split for simulation.
+- Exact Three.js WebGPU/WebGL renderer details, shader/material budgets and fallback policy after real ground-level measurements.
+- Exact Unreal importer/runtime architecture after the web playable slice stabilizes enough to run a meaningful portability spike.
+- Physics/collision library and client/worker/server split for simulation.
 - FKB access/redistribution strategy and production imagery source/license.

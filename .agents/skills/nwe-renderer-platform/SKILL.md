@@ -1,28 +1,53 @@
 ---
 name: nwe-renderer-platform
-description: Guides the NWE deployable web renderer, WebGPU/WebGL experiments, GPU instrumentation and exact-commit Vercel Preview while preserving artifact-only world truth.
+description: Guides the NWE ground-level Three.js web renderer, WebGPU/WebGL capability path, GPU instrumentation and exact-commit Vercel Preview while preserving artifact-only world truth and engine portability.
 ---
 
 # NWE Renderer & Web Platform
 
-Primary surface: `apps/world-viewer`. Vite and Vercel are delivery/measurement infrastructure, **not** a selected renderer architecture.
+Primary surface: `apps/world-viewer`.
 
-The renderer consumes only runtime-verified compiled artifacts through the shared browser/runtime boundaries. It must never fetch Kartverket, NVDB, OSM/Overpass or other authoritative raw-source endpoints. Full provenance verification happens before geometry/resource creation.
+## Active direction
 
-Treat **WebGPU as the primary candidate experiment** for the GPU-first web direction, with a WebGL2 fallback/baseline where practical. Do not declare WebGPU, Three.js, Cesium or a custom renderer selected until comparable evidence justifies it. Keep backend interfaces replaceable.
+Three.js is the **working web renderer** for the current walkable Nannestad milestone. The product design center is meter-scale walking/driving and high-quality materials/shaders, not high-altitude globe navigation.
 
-Measure backend/capability, artifact verification/decode, worker cost, GPU upload/apply, input→first-visible, frame p50/p95/p99, largest rAF gap, draw calls, triangles/vertices, retained bytes, resource disposal and movement/streaming behavior. Hosted/headless results are directional for device-specific claims, but they remain valid automated evidence for browser/runtime integration.
+Use a WebGPU-first capability path where the browser exposes a genuine usable adapter and retain WebGL2 as fallback/baseline. Do not fabricate a WebGPU comparison when the environment falls back.
 
-Preserve world/render separation: high-precision world state and origin epochs come from `nwe-world-model`; lifecycle/caching comes from `nwe-runtime-streaming`. Renderer-local Float32 buffers are disposable derivatives.
+This does not make Three.js the world engine. The renderer consumes verified renderer-neutral artifacts/world state and creates disposable Three.js/GPU resources.
+
+## Hard boundaries
+
+- Never fetch Kartverket, NVDB, OSM/Overpass or other authoritative raw sources from normal runtime.
+- Full runtime artifact/provenance verification happens before geometry/resource creation.
+- No `THREE.*` type in compiler output, schemas, authoritative world coordinates, tile identity, provenance or simulation state.
+- High-precision world state and origin epochs come from `nwe-world-model`; render-local Float32 data is disposable.
+- Lifecycle/caching decisions come from `nwe-runtime-streaming`; LUMEN owns resource realization/disposal, not tile authority.
+- Prefer glTF/GLB for portable static/animated render assets where suitable; record asset license/source separately from scene objects.
+
+## Ground-level quality priorities
+
+Order work by the active queue rather than generic renderer polish:
+1. renderer adapter + human-scale camera;
+2. real terrain mesh/material;
+3. road-surface meshes;
+4. building meshes/materials;
+5. licensed humanoid + animation;
+6. locomotion/grounding/camera;
+7. bounded lighting/shadows/fog/shader pass;
+8. one integrated acceptance run.
+
+Favor shared materials, batching/instancing, stable material semantics and measured near-player quality. Do not build global globe/SSE/LOD infrastructure unless a measured ground-level requirement demands it.
+
+## Measurements
+
+Measure only what informs the current claim: backend/capability, artifact verification/decode, worker cost, GPU upload/apply, input→first-visible, frame p50/p95/p99, largest rAF gap, draw calls, triangles/vertices, retained bytes and resource disposal as relevant.
 
 For every renderer PR:
-- production build must pass;
-- browser smoke/benchmark must use explicit real vs synthetic labels;
-- when deployment access exists, create or confirm a Vercel Preview for the exact branch commit and smoke-check it;
+- production build passes;
+- one targeted browser smoke covers the new behavior;
+- explicit real vs synthetic labels remain intact;
+- when deployment access exists, create/confirm Vercel Preview for the exact branch commit;
 - do not promote production without explicit user request;
-- keep visual polish behind correctness/streaming/performance gates unless it directly improves QA;
-- do **not** require a fresh physical Android run by default.
+- do not require a fresh physical Android run by default.
 
-Physical Android/mobile testing follows `docs/07-testing-policy.md`: use it only for device-specific claims or occasional accumulated milestones, and batch several questions into one run. A renderer PR may progress on automated/hosted/browser evidence without forcing user-operated handset testing.
-
-A pretty scene with wrong provenance, coordinates or source access is a failed renderer.
+A pretty scene with wrong coordinates/provenance is a failed renderer. A correct scene trapped inside Three.js-specific world contracts is also a failed architecture.
