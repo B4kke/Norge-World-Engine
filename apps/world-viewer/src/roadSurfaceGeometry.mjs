@@ -117,7 +117,9 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
       const b = a + 1;
       const c = a + 2;
       const d = a + 3;
-      indices.push(a, b, c, b, d, c);
+      // Left/right vertex pairs are emitted in local X/Z. Winding must face +Y so
+      // computed normals and tangent-space normal maps stay stable at ground level.
+      indices.push(a, c, b, b, c, d);
     }
 
     pathCount += 1;
@@ -138,6 +140,7 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
       width_semantics: 'renderer-only-fallback',
       miter_limit: miterLimit,
       uv_period_m: uvPeriodMeters,
+      winding: 'counter-clockwise-upward',
       path_count: pathCount,
       segment_count: segmentCount,
       centerline_length_m: centerlineLengthM,
