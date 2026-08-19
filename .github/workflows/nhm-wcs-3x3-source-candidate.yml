@@ -1,0 +1,100 @@
+name: nhm-wcs-3x3-source-candidate
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/nhm_wcs_source_candidate.py'
+      - 'engine/compiler/src/nwe_compiler/nhm_wcs_3x3_candidate.py'
+      - 'engine/compiler/tests/test_nhm_wcs_source_candidate.py'
+      - 'engine/compiler/tests/test_nhm_wcs_3x3_candidate.py'
+      - 'engine/compiler/tools/run_nhm_wcs_3x3_candidate.py'
+      - '.github/workflows/nhm-wcs-3x3-source-candidate.yml'
+  workflow_dispatch:
+
+jobs:
+  direct-wcs-3x3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Candidate contract and seam regressions
+        run: |
+          pytest -q \
+            engine/compiler/tests/test_nhm_wcs_source_candidate.py \
+            engine/compiler/tests/test_nhm_wcs_3x3_candidate.py
+
+      - name: Execute direct 1km WCS 3x3 twice plus offline replay
+        run: |
+          mkdir -p /tmp/nwe-wcs-3x3-data /tmp/nwe-wcs-3x3-proof
+          python engine/compiler/tools/run_nhm_wcs_3x3_candidate.py \
+            --data-dir /tmp/nwe-wcs-3x3-data \
+            --proof-dir /tmp/nwe-wcs-3x3-proof \
+            --timeout 180 \
+            | tee /tmp/nwe-wcs-3x3-proof/run.log
+          python -m json.tool /tmp/nwe-wcs-3x3-proof/nhm-wcs-3x3-source-candidate.json > /dev/null
+
+      - name: Assert experiment invariants
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('/tmp/nwe-wcs-3x3-proof/nhm-wcs-3x3-source-candidate.json')
+          proof = json.loads(path.read_text(encoding='utf-8'))
+          if proof['grid']['tile_count'] != 9:
+              raise SystemExit('direct WCS candidate did not return nine tiles')
+          if proof['direct_grid_seams']['seam_count'] != 12:
+              raise SystemExit('direct WCS candidate did not expose twelve internal seams')
+          if not proof['live_repeat_all_grid_sha256_equal']:
+              raise SystemExit('repeated live WCS request changed one or more elevation grids')
+          if not proof['offline_cached_repeat']['all_grid_sha256_equal_to_first_live']:
+              raise SystemExit('source-network-free cached replay changed one or more elevation grids')
+          for tile_id, record in proof['live_first'].items():
+              if record['width'] != 1000 or record['height'] != 1000:
+                  raise SystemExit(f'{tile_id}: WCS response is not 1000x1000')
+              if record['pixel_size'] != [1.0, 1.0]:
+                  raise SystemExit(f'{tile_id}: WCS response is not exact 1m')
+              if record['crs'] != 'EPSG:25832':
+                  raise SystemExit(f'{tile_id}: WCS response is not EPSG:25832')
+              if record['valid_samples'] != 1_000_000:
+                  raise SystemExit(f'{tile_id}: WCS response contains nodata')
+          if proof['claim_calibration']['production_source_selected']:
+              raise SystemExit('experiment must not silently select WCS as production source')
+          if proof['claim_calibration']['production_3x3_promoted']:
+              raise SystemExit('experiment must not forge a production 3x3 promotion')
+          print(json.dumps({
+              'tile_count': proof['grid']['tile_count'],
+              'seam_count': proof['direct_grid_seams']['seam_count'],
+              'live_grid_repeat': proof['live_repeat_all_grid_sha256_equal'],
+              'live_raw_response_repeat': proof['live_repeat_all_response_sha256_equal'],
+              'offline_grid_repeat': proof['offline_cached_repeat']['all_grid_sha256_equal_to_first_live'],
+              'seam_summary': proof['direct_grid_seams']['summary'],
+              'transfer': proof['transfer'],
+              'center_comparison': proof['center_comparison'],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Remove source rasters before evidence upload
+        run: |
+          rm -rf /tmp/nwe-wcs-3x3-data
+          rm -f /tmp/nwe-wcs-3x3-proof/run.log
+          if find /tmp/nwe-wcs-3x3-proof -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) -print -quit | grep -q .; then
+            echo 'raw geodata unexpectedly remains in WCS proof directory' >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nhm-wcs-3x3-source-candidate-${{ github.sha }}
+          path: /tmp/nwe-wcs-3x3-proof/nhm-wcs-3x3-source-candidate.json
+          if-no-files-found: error
+          retention-days: 7
