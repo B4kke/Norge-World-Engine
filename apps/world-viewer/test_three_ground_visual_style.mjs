@@ -30,12 +30,23 @@ assert.equal(lighting.sun.shadow.camera.left, -70);
 assert.equal(lighting.sun.shadow.camera.right, 70);
 assert.equal(lighting.sun.shadow.camera.top, 70);
 assert.equal(lighting.sun.shadow.camera.bottom, -70);
+assert.equal(lighting.sun.shadow.autoUpdate, false, 'shadow map must not regenerate on every render');
 assert.equal(lighting.snapshot().shadow.strategy, 'single-player-following-directional-frustum');
+assert.equal(lighting.snapshot().shadow.update_distance_m, 8);
+assert.equal(lighting.snapshot().shadow.update_count, 1, 'initial shadow anchor must request one shadow render');
 assert.equal(scene.fog.near, GROUND_VISUAL_STYLE.fogNearM);
 assert.equal(scene.fog.far, GROUND_VISUAL_STYLE.fogFarM);
 
+const smallMove = lighting.updateAnchor([4, 6, -3]);
+assert.deepEqual(smallMove.sun.requested_anchor, [4, 6, -3]);
+assert.deepEqual(smallMove.sun.anchor, [0, 0, 0], 'sub-threshold movement must reuse the current shadow map');
+assert.equal(smallMove.shadow.update_count, 1);
+assert.deepEqual(lighting.sunTarget.position.toArray(), [0, 1, 0]);
+
 const movedLighting = lighting.updateAnchor([25, 6, -40]);
 assert.deepEqual(movedLighting.sun.anchor, [25, 6, -40]);
+assert.equal(movedLighting.shadow.update_count, 2);
+assert.equal(lighting.sun.shadow.needsUpdate, true);
 assert.deepEqual(lighting.sunTarget.position.toArray(), [25, 7, -40]);
 assert.deepEqual(lighting.sun.position.toArray(), [-40, 126, 10]);
 
