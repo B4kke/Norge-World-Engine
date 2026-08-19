@@ -1,0 +1,31 @@
+name: strom-admission-fairness
+
+on:
+  pull_request:
+    paths:
+      - 'engine/streaming/tile_scheduler.mjs'
+      - 'engine/streaming/retained_byte_budget.mjs'
+      - 'engine/streaming/retained_budget_lifecycle_adapter.mjs'
+      - 'engine/streaming/test_retained_admission_fairness.mjs'
+      - 'engine/streaming/benchmark_retained_admission_fairness.mjs'
+      - '.github/workflows/strom-admission-fairness.yml'
+  workflow_dispatch:
+
+jobs:
+  admission-fairness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check engine/streaming/test_retained_admission_fairness.mjs
+          node --check engine/streaming/benchmark_retained_admission_fairness.mjs
+      - name: Regressions
+        run: node engine/streaming/test_retained_admission_fairness.mjs
+      - name: Benchmark
+        run: |
+          node engine/streaming/benchmark_retained_admission_fairness.mjs | tee /tmp/nwe-retained-admission-fairness.json
+          python -m json.tool /tmp/nwe-retained-admission-fairness.json > /dev/null
