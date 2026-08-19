@@ -88,7 +88,9 @@ If a new change does not alter one of those claims, do not create another test l
 ## P0-GROUND-06 — Character movement + terrain grounding + camera
 **Priority:** 5  
 **Owner:** LUMEN + ATLAS  
-**Status:** OPEN  
+**Status:** OPEN / ATLAS WORLD-TRANSFORM SUB-BOUNDARY IMPLEMENTED IN DRAFT PR #72; LUMEN INTEGRATION PENDING  
+
+**ATLAS boundary:** `nwe.character-world-transform/0.1-candidate` defines stable entity identity, authoritative Float64 `WorldPosition`, renderer-neutral heading, projected-world planar movement, world-height updates for grounding consumers and origin-epoch-scoped render-local derivation. It deliberately contains no `THREE.*`, asset, animation, input, terrain sampling, camera or physics-engine state.
 
 **Implement:** renderer-neutral character world transform, keyboard movement, practical touch input, terrain height/raycast grounding, simple radius/capsule abstraction and third-person follow camera. Avoid choosing a full physics engine unless simple grounding proves insufficient.
 
