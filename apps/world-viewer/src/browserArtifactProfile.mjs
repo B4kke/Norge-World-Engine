@@ -1,7 +1,13 @@
 import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifier_web.mjs';
 import { monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
-const PROFILE_SCHEMA = 'nwe.browser-artifact-profile/0.2';
+const PROFILE_SCHEMA = 'nwe.browser-artifact-profile/0.3';
+
+const PERCENTILE_MIN_SAMPLES = Object.freeze({
+  p50: 3,
+  p95: 20,
+  p99: 100,
+});
 
 export function normalizeProfileIterations(value, { min = 1, max = 20 } = {}) {
   const parsed = Number(value);
@@ -9,6 +15,23 @@ export function normalizeProfileIterations(value, { min = 1, max = 20 } = {}) {
     throw new RangeError(`iterations must be an integer within [${min}, ${max}]`);
   }
   return parsed;
+}
+
+export function classifyPercentileEvidence(sampleCount) {
+  if (!Number.isInteger(sampleCount) || sampleCount < 0) {
+    throw new RangeError('sampleCount must be a non-negative integer');
+  }
+  const classify = (minimum) => ({
+    status: sampleCount >= minimum ? 'SUPPORTED' : 'INSUFFICIENT_SAMPLES',
+    minimum_samples: minimum,
+  });
+  return {
+    sample_count: sampleCount,
+    p50: classify(PERCENTILE_MIN_SAMPLES.p50),
+    p95: classify(PERCENTILE_MIN_SAMPLES.p95),
+    p99: classify(PERCENTILE_MIN_SAMPLES.p99),
+    max: { status: sampleCount > 0 ? 'OBSERVED' : 'NO_SAMPLES' },
+  };
 }
 
 function assertRuntimeVerificationPass(result) {
@@ -28,6 +51,7 @@ function summarizeSamples(samples) {
   if (!samples.length) return null;
   return {
     iterations: samples.length,
+    percentile_evidence: classifyPercentileEvidence(samples.length),
     verification_ms: summarizeFrameGaps(samples.map((sample) => sample.verification_ms)),
     utf8_decode_ms: summarizeFrameGaps(samples.map((sample) => sample.utf8_decode_ms)),
     json_parse_ms: summarizeFrameGaps(samples.map((sample) => sample.json_parse_ms)),
@@ -90,6 +114,7 @@ export async function profileVerifiedJsonArtifact({
     artifact_sha256: bundle.artifact_ref.sha256 ?? null,
     artifact_bytes: bytes.byteLength,
     iterations: count,
+    percentile_evidence: overall.percentile_evidence,
     verification_ms: overall.verification_ms,
     utf8_decode_ms: overall.utf8_decode_ms,
     json_parse_ms: overall.json_parse_ms,
@@ -104,6 +129,6 @@ export async function profileVerifiedJsonArtifact({
     },
     steady_state: summarizeSamples(steadyStateSamples),
     samples,
-    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. Invalid/non-monotonic phase timing fails closed rather than being filtered out of summaries. It never replaces the production verification path and excludes network time.',
+    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. Numeric percentiles remain descriptive measurements, while percentile_evidence marks p50/p95/p99 as supported only when the sample count reaches explicit minimums; with the bounded 20-iteration profiler, steady-state p95/p99 therefore remain non-acceptance tail evidence. Invalid/non-monotonic phase timing fails closed rather than being filtered out of summaries. It never replaces the production verification path and excludes network time.',
   };
 }
