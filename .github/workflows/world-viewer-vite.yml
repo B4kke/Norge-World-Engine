@@ -45,6 +45,9 @@ jobs:
           node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
           node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
           node --check apps/world-viewer/src/preview1Renderer.mjs
+          node --check apps/world-viewer/src/browserArtifactProfile.mjs
+          node --check apps/world-viewer/src/browserArtifactProfileEntry.mjs
+          node --check apps/world-viewer/run_browser_artifact_profile_smoke.mjs
           node --check apps/world-viewer/run_preview1_renderer_benchmark.mjs
           node --check apps/world-viewer/run_device_evidence_browser_smoke.mjs
           node apps/world-viewer/test_preview_camera_controls.mjs
@@ -53,6 +56,7 @@ jobs:
           node apps/world-viewer/test_webgpu_upload_alignment.mjs
           node apps/world-viewer/test_device_evidence.mjs
           node apps/world-viewer/test_device_evidence_lifecycle.mjs
+          node apps/world-viewer/test_browser_artifact_profile.mjs
 
       - name: Terrain experiment syntax boundary
         run: |
@@ -69,11 +73,27 @@ jobs:
         run: |
           test -f apps/world-viewer/dist/index.html
           test -f apps/world-viewer/dist/device-evidence.html
+          test -f apps/world-viewer/dist/browser-artifact-profile.html
           test -d apps/world-viewer/dist/assets
           find apps/world-viewer/dist -maxdepth 2 -type f -print
 
       - name: Browser environment
         run: (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
+
+      - name: Exact-real browser provenance/decode profile
+        run: |
+          node apps/world-viewer/run_browser_artifact_profile_smoke.mjs \
+            --output /tmp/nwe-browser-artifact-profile.json \
+            --timeout-ms 90000 \
+            --iterations 5
+          cat /tmp/nwe-browser-artifact-profile.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-viewer-browser-artifact-profile-${{ github.sha }}
+          path: /tmp/nwe-browser-artifact-profile.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Exact Preview 1 renderer A/B on accepted compiled artifacts
         run: |
