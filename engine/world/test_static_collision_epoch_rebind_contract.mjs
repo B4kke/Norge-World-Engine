@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { createWorldFrame } from './world_contract.mjs';
 import { createPhysicsSpatialFrame } from './physics_state_contract.mjs';
 import { createPhysicsFrameMaintenanceEvent } from './physics_frame_event_contract.mjs';
 import { createStaticCollisionLifecycleState } from './static_collision_lifecycle_contract.mjs';
 import { planStaticCollisionEpochRebind } from './static_collision_epoch_rebind_contract.mjs';
 
-const WORLD = Object.freeze({ id:'world:test', horizontalCrs:'EPSG:25832', horizontalUnit:'metre', verticalDatum:'NN2000', verticalUnit:'metre' });
+const WORLD = createWorldFrame({ id:'world:test', horizontalCrs:'EPSG:25832', verticalDatum:'NN2000' });
 const frame0 = createPhysicsSpatialFrame({ physicsFrameId:'physics:test', worldFrame:WORLD, epoch:0, anchorWorld:{worldFrameId:WORLD.id,easting:500000,northing:6650000,height:100} });
 const frame1 = createPhysicsSpatialFrame({ physicsFrameId:'physics:test', worldFrame:WORLD, epoch:1, anchorWorld:{worldFrameId:WORLD.id,easting:501000,northing:6649250,height:100} });
 const maintenance = createPhysicsFrameMaintenanceEvent({ tick:42, worldFrame:WORLD, fromFrame:frame0, toFrame:frame1 });
