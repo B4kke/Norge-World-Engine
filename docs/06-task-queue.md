@@ -20,6 +20,11 @@ The next task must advance the walkable Nannestad milestone in `docs/08-revised-
 
 If a new change does not alter one of those claims, do not create another test loop for it.
 
+## Agent capability maintenance — does not change P0 order
+
+- `AGENT-SKILLS-GPU-01` — **IMPLEMENTED / STATIC CI PENDING in draft PR #76**: adapted the ten MIT-licensed `CloudAI-X/threejs-skills` concept areas into renderer-neutral NWE GPU skills. WebGPU is first-class, WebGL2 remains fallback/baseline, WGSL/GLSL remain distinct native shader languages, and Three.js/TSL is explicitly an adapter rather than engine/world truth.
+- This capability work does not reorder `P0-GROUND-*`; agents must still follow the playable queue below.
+
 ---
 
 # P0 — TONIGHT / PLAYABLE NANNESTAD
