@@ -183,3 +183,30 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Continue the active playable slice; when `P0-GROUND-05` is the next integrated LUMEN task, use `nwe-gpu-assets` + `nwe-gpu-animation` for the licensed humanoid integration.
+
+## 2026-08-19 23:09 CEST — LUMEN — P0-GROUND-06
+
+**What**
+- Integrated the merged ATLAS character-transform contract into the normal Preview 1 runtime instead of letting Three own character world position.
+- Added accepted-DTM grounding, explicit `[east,north,up] -> [east,up,-north]` render adaptation, signed-zero canonicalization and origin-shift invariance coverage.
+- Bound the CC0 KayKit Knight as a one-way render-pose sink with walk/idle animation state, keyboard + touch movement controls and a third-person follow-orbit camera.
+- Added a CI-only 1.00 m movement probe that checks authoritative world delta, DTM grounding, walk -> idle, renderer-pose agreement and camera follow in exact Chrome.
+- Recovered the completed GROUND-02/03/04/05 status into canonical task memory; detailed GROUND-02/03/04 entries also remain in the Drive active log from the prior LUMEN recovery session.
+
+**Why**
+- `P0-GROUND-06` was the last gameplay/runtime blocker before the first bounded graphics pass. The milestone needed a character that can actually move over verified Nannestad terrain while preserving the world/render ownership boundary.
+
+**Result / evidence**
+- FACT: exact head `4fd753767106e3d56957ff555d7069f0c4d7e5b4` passed all five standard hosted workflows: `baseline` run 32302005719, `world-viewer-vite` run 32302005703, `viewer-benchmark` run 32302005752, `preview1-realdata-publish` run 32302005712 and `preview3-realdata-publish` run 32302005733.
+- FACT: exact Preview 1 Chrome acceptance requires a 1.00 m authoritative movement, accepted-DTM/NN2000 grounding, walk -> idle animation transition, derived/render pose agreement and third-person camera target following the character.
+- FACT: PR #77 merged to `main` as `8971dff662f4743be8b48302c1b4f1b286ead858`.
+- TRUTH BOUNDARY: authoritative position/heading remains ATLAS Float64 world state; Three receives derived Float32 pose only. The 0.02 m character ground lift, 6.5 m follow distance and +1.2 m follow target height are renderer-only presentation parameters.
+
+**Changed**
+- Merged PR #77 / branch `agent/lumen-ground-06`.
+- Character world controller, runtime compositor, input/touch controls, movement acceptance probe, humanoid render-pose sink and third-person camera integration under `apps/world-viewer`.
+- Exact Preview 1 browser smoke and viewer build regressions.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`; Drive active log is synchronized in the same LUMEN session.
+
+**Next**
+- `P0-GROUND-07`: implement the first bounded lighting/shadow/atmosphere/tone-mapping pass without changing world truth or destroying the proven navigation budget.
