@@ -39,13 +39,23 @@ This is intentionally stricter than pretending a backend can maintain arbitrary 
 
 Strict structural companion: `engine/world/schemas/physics-frame-topology-transition-v0.1.schema.json`.
 
+## Hosted validation
+
+Exact code head `9c4f180f49ea633d697a814d4e56262acddf3440`:
+
+- `atlas-rapier-physics` run `32212619882` / #37: **SUCCESS**;
+- syntax checks for the topology contract/test and JSON parse of the strict schema: **SUCCESS**;
+- `Run physics split-merge topology regressions`: **SUCCESS**, output `PASS (12 adversarial cases)`;
+- existing maintenance-event, maintenance-batch, membership and Rapier contact/rebase probes remained green in the same job;
+- repository `baseline` run `32212619835` / #1253: **SUCCESS**, preserving the broader compiler/provenance/streaming/viewer/contract baseline after sync with current `main`.
+
 ## Contract implication
 
 Physics-frame topology is simulation/replay representation state, not geographic world truth. Authoritative entity positions remain in the world frame. Frame maintenance runs first; topology/membership transitions then reference exact current epochs. A constraint graph may restrict legal frame repartitioning, so split/merge cannot be inferred later from renderer transforms or backend island IDs.
 
 ## Claim calibration
 
-This is structural/synthetic evidence until hosted CI executes the regression. It proves neither that same-frame-only constraints are the final architecture nor that a specific physics backend preserves solver state through split/merge. No entry is added to `docs/04-decisions.md`.
+The topology contract is now hosted structural/synthetic evidence. It proves the candidate invariants execute deterministically and fail closed under the covered adversarial cases. It does **not** prove that same-frame-only constraints are the final architecture, that a specific physics backend preserves solver state through split/merge, or that any whole-Norway/physics threshold is selected. No entry is added to `docs/04-decisions.md`.
 
 ## Next
 
