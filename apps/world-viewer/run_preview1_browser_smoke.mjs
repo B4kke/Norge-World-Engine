@@ -60,6 +60,12 @@ function readManifest(runtimeRoot) {
   return manifest;
 }
 
+function numericComponent(value, index) {
+  const component = Number(value?.[index]);
+  if (!Number.isFinite(component)) throw new Error(`character render component ${index} is not finite: ${JSON.stringify(value)}`);
+  return component;
+}
+
 function assertBrowserResult(report, manifest, serverRequests) {
   if (!report || report.schema !== 'nwe.world-preview-browser-smoke/0.1') {
     throw new Error(`browser report schema missing: ${report?.schema ?? 'none'}`);
@@ -107,6 +113,46 @@ function assertBrowserResult(report, manifest, serverRequests) {
     throw new Error(`terrain scheduler mismatch ${JSON.stringify(result.terrain?.scheduler)}`);
   }
 
+  const characterRuntime = result.character;
+  const characterWorld = characterRuntime?.character;
+  if (characterRuntime?.schema !== 'nwe.preview1-character-runtime-state/0.1' || characterWorld?.schema !== 'nwe.preview1-character-world-controller/0.1') {
+    throw new Error(`character runtime/world proof missing: ${JSON.stringify(characterRuntime)}`);
+  }
+  if (characterWorld.grounding?.source !== 'accepted-dtm-grid' || characterWorld.grounding?.verticalDatum !== 'NN2000') {
+    throw new Error(`character grounding semantics invalid: ${JSON.stringify(characterWorld.grounding)}`);
+  }
+  const authoritativePosition = characterWorld.worldTransform?.position;
+  for (const key of ['easting', 'northing', 'height']) {
+    if (!Number.isFinite(Number(authoritativePosition?.[key]))) throw new Error(`character authoritative ${key} missing: ${JSON.stringify(authoritativePosition)}`);
+  }
+  if (characterWorld.worldTransform?.worldFrameId !== 'nwe.preview1.epsg25832-nn2000/0.1') {
+    throw new Error(`character world frame invalid: ${characterWorld.worldTransform?.worldFrameId}`);
+  }
+  const threePose = characterWorld.threePose;
+  if (threePose?.coordinateAdapter !== 'atlas-east-north-up -> three-east-up-minus-north') {
+    throw new Error(`character coordinate adapter invalid: ${threePose?.coordinateAdapter}`);
+  }
+  const rendererCharacter = result.renderer?.character;
+  const rendererPose = rendererCharacter?.render_pose;
+  if (rendererCharacter?.state !== 'idle' || !rendererPose) {
+    throw new Error(`renderer character binding missing: ${JSON.stringify(rendererCharacter)}`);
+  }
+  if (rendererCharacter?.license !== 'CC0-1.0' || rendererCharacter?.runtime_dependency !== 'commit-pinned-renderer-asset') {
+    throw new Error(`renderer character provenance invalid: ${JSON.stringify(rendererCharacter)}`);
+  }
+  const worldLocalX = numericComponent(threePose.position, 0);
+  const worldLocalY = numericComponent(threePose.position, 1);
+  const worldLocalZ = numericComponent(threePose.position, 2);
+  const renderedX = numericComponent(rendererPose.position, 0);
+  const renderedY = numericComponent(rendererPose.position, 1);
+  const renderedZ = numericComponent(rendererPose.position, 2);
+  if (Math.abs(renderedX - worldLocalX) > 1e-5 || Math.abs(renderedZ - worldLocalZ) > 1e-5 || Math.abs((renderedY - worldLocalY) - 0.02) > 1e-5) {
+    throw new Error(`renderer character pose diverged from ATLAS-derived pose: ${JSON.stringify({ threePose, rendererPose })}`);
+  }
+  if (rendererPose.heading_radians !== characterWorld.worldTransform.headingRadians) {
+    throw new Error(`renderer/world heading mismatch: ${rendererPose.heading_radians}/${characterWorld.worldTransform.headingRadians}`);
+  }
+
   const firstFrame = result.renderer?.first_frame;
   if (!firstFrame || !['webgpu', 'webgl2'].includes(firstFrame.backend)) {
     throw new Error(`renderer first-frame proof missing: ${JSON.stringify(firstFrame)}`);
@@ -141,6 +187,14 @@ function assertBrowserResult(report, manifest, serverRequests) {
       graphics_profile: result.graphics_profile,
       fallback: result.renderer.fallback ?? null,
       first_frame: firstFrame,
+    },
+    character: {
+      world_frame_id: characterWorld.worldTransform.worldFrameId,
+      grounding: characterWorld.grounding,
+      authoritative_position: authoritativePosition,
+      renderer_state: rendererCharacter.state,
+      renderer_pose: rendererPose,
+      presentation_ground_lift_m: 0.02,
     },
     terrain: {
       sha256: result.terrain.artifact_sha256,
@@ -267,10 +321,6 @@ async function main() {
     clearTimeout(timeout);
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     await new Promise((resolvePromise) => server.close(resolvePromise));
-    // Chrome can briefly keep profile files open after the process group receives
-    // SIGTERM. Cleanup is non-authoritative on an ephemeral runner, so a known
-    // transient profile-lock race must not turn an already validated browser proof
-    // into a false CI failure.
     try {
       rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     } catch (error) {
