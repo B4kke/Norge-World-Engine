@@ -58,6 +58,33 @@ async function testCancelledWaiterNeverMaterializes() {
   assert.equal(adapter.snapshot().budget.accountedBytes, 0);
 }
 
+async function testAbortAfterMaterializationCleansPayloadAndReservation() {
+  let releaseMaterialization;
+  const materialized = new Promise((resolve) => { releaseMaterialization = resolve; });
+  const disposed = [];
+  const controller = new AbortController();
+  const adapter = createRetainedBudgetLifecycleAdapter({
+    maxRetainedBytes: 100,
+    estimateTileBytes: () => 100,
+    loadTile: async () => {
+      await materialized;
+      return { payload: { id: 'late' }, byteSize: 100 };
+    },
+    disposeTile: async (_tile, payload, context) => disposed.push({ payload, context }),
+  });
+
+  const promise = adapter.loadTile(tile('a'), { signal: controller.signal });
+  controller.abort(new DOMException('camera moved', 'AbortError'));
+  releaseMaterialization();
+  await assert.rejects(promise, (error) => error?.name === 'AbortError');
+  const snapshot = adapter.snapshot();
+  assert.equal(snapshot.budget.accountedBytes, 0);
+  assert.equal(snapshot.budget.activeReservations, 0);
+  assert.equal(snapshot.committedTiles, 0);
+  assert.equal(disposed.length, 1);
+  assert.equal(disposed[0].context.reason, 'retained-budget-load-aborted-after-materialization');
+}
+
 async function testUnderestimateFailsClosedAndCleansPayload() {
   const disposed = [];
   const adapter = createRetainedBudgetLifecycleAdapter({
@@ -117,7 +144,8 @@ async function testOversizeEstimateFailsBeforeMaterialization() {
 
 await testWaitsUntilDisposeReleasesCommittedBytes();
 await testCancelledWaiterNeverMaterializes();
+await testAbortAfterMaterializationCleansPayloadAndReservation();
 await testUnderestimateFailsClosedAndCleansPayload();
 await testDisposeFailureKeepsAccountingCommitted();
 await testOversizeEstimateFailsBeforeMaterialization();
-console.log('retained budget lifecycle adapter regressions: PASS (5 cases)');
+console.log('retained budget lifecycle adapter regressions: PASS (6 cases)');
