@@ -14,9 +14,9 @@ Normal progress is automated-first: targeted regressions, hosted CI, exact-artif
 
 ## Active execution plan
 
-`docs/08-revised-engine-chain.md` is the active implementation order. The immediate milestone is a **walkable single-tile Nannestad vertical slice** using the already accepted terrain, road and building artifacts.
+`docs/08-revised-engine-chain.md` is the active implementation order. The first **walkable single-tile Nannestad vertical slice** has established the renderer, verified terrain/roads/buildings, character movement/camera and first lighting/shadow pass. SENTINEL's integrated P0 acceptance remains a bounded milestone gate; it must not reset the now-proven visible-quality direction.
 
-Current order:
+Completed playable-slice order:
 1. Three.js ground-level renderer adapter and human-scale camera;
 2. accepted terrain mesh with real material/shader treatment;
 3. road-surface meshes from accepted NVDB paths;
@@ -24,8 +24,19 @@ Current order:
 5. licensed humanoid glTF/GLB asset with idle/walk locomotion;
 6. terrain grounding/simple collision abstraction + third-person camera;
 7. lighting, shadows, fog and first visual-quality pass;
-8. one integrated browser acceptance run and Preview;
-9. only then resume broader geometry enrichment, vegetation, imagery, 3×3 streaming/terrain seam work, LOD and large-area scaling.
+8. one integrated browser acceptance/Preview gate owned by SENTINEL.
+
+### Current visible-quality order — product priority 2026-08-20
+
+After the playable foundation, prioritize the changes with the largest immediate ground-level place-recognition value:
+
+1. **Vegetation/trees first:** deterministic GPU-instanced vegetation immediately, while keeping synthetic placement explicit until a source-backed vegetation/land-cover contract replaces it. Promote a small licensed tree/bush asset set when reproducible acquisition/hash provenance is ready.
+2. **Road semantics + asphalt:** source-backed physical width/lane/surface/type/intersection semantics, shoulders/edges and progressively markings. Renderer fallback width remains non-authoritative until replaced.
+3. **Building enrichment:** improve source-backed heights/relations/roof semantics, then map a small Norwegian-relevant facade/roof material set onto those semantics without fabricating geometry truth.
+4. **Imagery/orthophoto:** add real imagery only after coverage, CRS, resolution, update cadence, license, attribution, preprocessing/cache and redistribution are verified; runtime consumes compiled texture tiles, never a raw provider dependency.
+5. **Props:** lampposts, signs, guardrails, fences, bushes and similar repeatable street-level assets, using source-backed placement where available and clearly bounded procedural placement otherwise.
+
+Renderer-neutral material IDs and the asset-promotion pipeline support these five steps; they are not separate blockers that should delay visible progress. Broader 3×3 streaming, terrain seam work and LOD resume only when the visible single-tile world or traversal measurements justify them.
 
 ## P0 — Walkable Nannestad
 
@@ -35,28 +46,34 @@ Current order:
 - real compiled OSM building footprints;
 - full runtime provenance verification;
 - browser terrain worker path and renderer-resource lifecycle;
-- world-state vs render-local precision/origin invariants.
+- world-state vs render-local precision/origin invariants;
+- ground-level renderer, animated character, authoritative movement/grounding/camera and bounded lighting/shadow pass.
 
-### Active P0 outcome
-One real Nannestad tile must feel like a 3D place at human scale: terrain, roads, building volumes, materials, a controllable human asset and a ground-level camera, all consuming verified runtime artifacts with zero raw-source calls.
+### P0 outcome
+One real Nannestad tile must feel like a 3D place at human scale: terrain, roads, building volumes, materials, a controllable human asset and a ground-level camera, all consuming verified runtime artifacts with zero raw-source geodata calls.
 
 This P0 does **not** require whole-Norway streaming, complete building semantics or production photorealism.
 
 ## P1 — Ground-level world quality
 
-- source-backed building heights/relations/roof enrichment;
-- physical road width/lane/surface semantics;
+Execution priority is the visible-quality order above:
+- deterministic instanced vegetation now; source-backed classification/placement and licensed promoted assets next;
+- physical road width/lane/surface/type/intersection semantics plus asphalt/edge/marking treatment;
+- source-backed building heights/relations/roof enrichment plus reusable facade/roof material semantics;
+- production imagery/orthophoto only under a verified license/cache/redistribution model;
+- representative street-level props with batching/instancing and explicit placement authority.
+
+Cross-cutting support:
 - reusable renderer-neutral material IDs + Three.js PBR/shader implementations;
-- deterministic instanced vegetation and representative props;
-- better collision/physics boundary and character controller;
-- production imagery/orthophoto only under a verified license/cache/redistribution model.
+- asset provenance/promotion and compact glTF/GLB/texture derivatives;
+- better collision/physics boundary and character controller when visible interaction requires it.
 
 ## P2 — Multi-tile world runtime
 
 - resolve authoritative neighboring-terrain seam/source-family policy;
 - movement-driven 3×3 residency and budgets;
-- multi-layer terrain/road/building tile lifecycle;
-- measured terrain LOD only where traversal proves the need;
+- multi-layer terrain/road/building/vegetation tile lifecycle;
+- measured terrain/object LOD only where traversal proves the need;
 - scale to 10×10 then 25×25 with bounded working-set resources.
 
 ## P3 — Simulation foundation
