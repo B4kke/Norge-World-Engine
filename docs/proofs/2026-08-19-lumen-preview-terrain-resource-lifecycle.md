@@ -28,23 +28,23 @@ The movement probe requires:
 3. return to center -> scheduler cache hit, terrain renderer resource active again;
 4. resolver remains `1 -> 1`, `loads_started_delta=0`, `cache_hits_delta=1`;
 5. renderer terrain resource deltas are exactly `+1 destroy / +1 create`;
-6. renderer backend and tile/artifact identity do not change;
+6. renderer backend, runtime tile id and runtime terrain artifact identity do not change;
 7. `physical_vram_release_observed=false`.
 
-Device evidence rejects movement evidence that lacks this renderer lifecycle or attempts to claim physical VRAM reclamation. The stable WebGL2/WebGPU comparison contract includes lifecycle state/count structure but intentionally excludes renderer backend and lifecycle timings so matched cross-backend A/B remains possible.
+Device evidence rejects movement evidence that lacks this renderer lifecycle, has a renderer/checkpoint tile or artifact identity inconsistent with the runtime result, or attempts to claim physical VRAM reclamation. The stable WebGL2/WebGPU comparison contract includes lifecycle state/count structure but intentionally excludes renderer backend and lifecycle timings so matched cross-backend A/B remains possible.
 
 ## Exact hosted Chrome evidence
 
-Code head: `254680e9e994b638509736a16086723a0cc6a9e3`  
+Final code head: `2458a6815b82e5b401ead4fbbe0733f454c3e9c1`  
 Stack base: SENTINEL #37 head `9614730fa188e4039ba60edebc8de189f9470c74`
 
 GitHub Actions:
 
-- `world-viewer-vite` run `32199290166` / #181 — **PASS**;
-- `baseline` run `32199290131` / #1049 — **PASS**;
-- `viewer-benchmark` run `32199290255` / #180 — **PASS**.
+- `world-viewer-vite` run `32199657378` / #185 — **PASS**;
+- `baseline` run `32199657387` / #1057 — **PASS**;
+- `viewer-benchmark` run `32199657282` / #184 — **PASS**.
 
-The pull-request test build embeds GitHub's PR test merge identity `9e03298161ce30a1565723bbe02210574892df10`; the Actions workflow itself is associated with LUMEN head `254680e9...`. The distinction is recorded rather than treating the test merge SHA as the branch head.
+The pull-request test build embeds GitHub's final PR test merge identity `2bb565ef5c80d3ce95fc51376a974aa3ed92645f`; the Actions workflow itself is associated with LUMEN head `2458a681...`. The distinction is recorded rather than treating the test merge SHA as the branch head.
 
 Exact accepted runtime artifacts:
 
@@ -77,14 +77,30 @@ Movement evidence:
 - resource destroy delta `1`;
 - physical VRAM release observed `false`.
 
-Hosted timer observations for this run were ~0 ms destroy and ~0.9 ms cache reactivation. These values are coarse hosted/headless measurements and are not Android acceptance or GPU-budget evidence.
+Hosted timer observations for the final run were ~0.1 ms terrain-resource deactivate and ~1.0 ms cache reactivation. These values are coarse hosted/headless measurements and are not Android acceptance or GPU-budget evidence.
 
 Actions proof artifact:
 
-- artifact ID `9346923795`;
-- ZIP digest `sha256:0b347f684da8e08c1ab6bfb60de26ba597ed862e150c57ac56eb7ea2c4396460`;
+- artifact ID `9347034724`;
+- ZIP digest `sha256:6da50b7dd221bb98642f53750b89c00c723071a0b31c5a124f22b011507c1752`;
 - proof schema `nwe.device-evidence-browser-smoke-proof/0.2`;
 - status `PASS`.
+
+## Adversarial identity regression
+
+The first valid hosted lifecycle pass was followed by a self-review that found one generic evidence weakness: checkpoints could be internally consistent with the renderer while not explicitly matching the runtime result's terrain identity. The final head closes that gap.
+
+`test_device_evidence.mjs` now rejects:
+
+- missing renderer lifecycle;
+- missing cached checkpoint;
+- false physical-VRAM claim;
+- renderer backend mismatch;
+- renderer/checkpoint artifact SHA that does not match `result.terrain.artifact_sha256`;
+- movement tile id that does not match the runtime tile;
+- incomplete trace.
+
+The full device-evidence regression suite is now executed by `world-viewer-vite`, not merely stored in the repo.
 
 ## WebGPU boundary
 
@@ -117,4 +133,4 @@ FORGE #35 still has `production_seam_authority=false`. The WCS candidate-source 
 2. Capture fresh Android WebGL2 device evidence on the exact integrated commit and require the same resource checkpoints.
 3. Capture WebGPU only on a device/browser where an adapter is actually available; do not promote build-only evidence.
 4. Keep real neighboring terrain fail-closed until FORGE establishes source/seam authority.
-5. After real neighbors exist, run multi-tile resource churn, resident/GPU budgets and then a measured spatial LOD experiment.
+5. In parallel, measure exact-terrain geometric error/cost for the existing 65/129/257 mesh resolutions before proposing any spatial LOD threshold.
