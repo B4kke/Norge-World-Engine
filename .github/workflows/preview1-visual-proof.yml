@@ -36,6 +36,14 @@ jobs:
           test -f /tmp/nwe-preview-runtime/nannestad-preview-1/manifest.json
           python -m json.tool /tmp/nwe-preview-runtime/nannestad-preview-1/manifest.json > /dev/null
 
+      - name: Exact accepted road-ribbon geometry gate
+        shell: bash
+        run: |
+          set -eu
+          runtime_root=/tmp/nwe-preview-runtime/nannestad-preview-1
+          roads_relative="$(node -e "const fs=require('fs'); const m=JSON.parse(fs.readFileSync('$runtime_root/manifest.json','utf8')); process.stdout.write(String(m.roads.compiled_path).replace(/^\.\//,''));")"
+          node apps/world-viewer/inspect_real_road_surface.mjs "$runtime_root/$roads_relative"
+
       - name: Capture REAL WORLD READY screenshot
         shell: bash
         run: |
