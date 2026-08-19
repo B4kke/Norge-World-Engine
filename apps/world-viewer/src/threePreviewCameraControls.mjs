@@ -1,5 +1,12 @@
 import { installPreviewCameraControls } from './previewCameraControls.mjs';
 
+export const THREE_GROUND_CAMERA_LIMITS = Object.freeze({
+  minDistance: 1.5,
+  maxDistance: 4200,
+  minPitch: -1.25,
+  maxPitch: 1.25,
+});
+
 function finiteVector3(value, label) {
   if (!Array.isArray(value) || value.length !== 3 || value.some((item) => !Number.isFinite(item))) {
     throw new TypeError(`${label} must be a finite [x,y,z] vector`);
@@ -37,6 +44,8 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
   if (!canvas || !camera?.position || typeof camera.lookAt !== 'function') throw new TypeError('canvas and Three camera are required');
   const initial = cameraStateFromPose([camera.position.x, camera.position.y, camera.position.z], target);
   const state = { ...initial, target: [...initial.target] };
+  const previousTouchAction = canvas.style?.touchAction ?? '';
+  if (canvas.style) canvas.style.touchAction = 'none';
 
   const sync = () => {
     applyCameraState(camera, state);
@@ -44,6 +53,7 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
   };
 
   const remove = installPreviewCameraControls(canvas, state, sync, {
+    limits: THREE_GROUND_CAMERA_LIMITS,
     resetCamera: () => {
       state.yaw = initial.yaw;
       state.pitch = initial.pitch;
@@ -55,7 +65,10 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
   return {
     state,
     sync,
-    dispose: remove,
+    dispose() {
+      remove();
+      if (canvas.style) canvas.style.touchAction = previousTouchAction;
+    },
     snapshot() {
       return {
         yaw: state.yaw,
