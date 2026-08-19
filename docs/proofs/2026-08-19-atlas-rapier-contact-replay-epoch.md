@@ -73,6 +73,17 @@ This correction is part of the evidence: claims below use the normalized metric 
 - if replay resumes from backend-local state, the physics-frame identity/epoch and any frame-maintenance events required to interpret that state must be known;
 - authoritative snapshots should remain world-frame based until a stronger, measured backend-specific persistence policy is selected.
 
+## Follow-up implemented in the same ATLAS round
+
+The inference above was converted into an explicit candidate interface instead of remaining prose only:
+
+- `engine/world/physics_frame_event_contract.mjs` implements `nwe.physics-frame-maintenance-event/0.1-candidate`;
+- `engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json` defines the strict wire shape;
+- `engine/world/test_physics_frame_event_contract.mjs` covers 8 adversarial cases: deterministic serialization, application, stale epoch, skipped epoch, foreign frame, tampered delta, render/presentation leakage and ordered multi-island replay;
+- GitHub Actions `atlas-rapier-physics` run #19 passed the event regressions together with the existing Rapier probes.
+
+The event records `tick`, authoritative `worldFrameId`, independent `physicsFrameId`, consecutive epochs, authoritative from/to world anchors, derived world delta and reason. It is a replay input candidate, not a claim that rebasing is physical movement or that backend-local snapshots become authoritative.
+
 ## Still open
 
 - physics engine and precision;
@@ -88,4 +99,4 @@ This correction is part of the evidence: claims below use the normalized metric 
 
 ## Next gate
 
-Make physics-frame maintenance a concrete versioned replay event contract (`tick`, frame identity, from/to epoch, authoritative world-space delta) and adversarially test serialization/replay ordering, stale epochs and multiple islands. Then reproduce the most informative contact-rich case in browser/device WASM before proposing a production physics policy.
+Reproduce the contact-rich fixed-vs-rebased case in actual browser/device WASM and test event-ordered replay across multiple physics islands. Then evaluate whether the selected backend offers an origin-shift mechanism that preserves solver invariants better than manual body translation. No production threshold or whole-Norway coordinate policy should be chosen before those measurements.
