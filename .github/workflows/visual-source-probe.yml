@@ -25,6 +25,7 @@ jobs:
           python -m py_compile tools/visual-data/probe_visual_order_selections.py
           python -m py_compile tools/visual-data/probe_sr16_metadata_links.py
           python -m py_compile tools/visual-data/probe_vegetation_real_sample.py
+          python -m py_compile tools/visual-data/probe_nibio_capabilities_catalog.py
 
       - name: Probe current official source contracts
         run: |
@@ -32,6 +33,7 @@ jobs:
           python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json >/dev/null
           python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json >/dev/null
           python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json >/dev/null
+          python tools/visual-data/probe_nibio_capabilities_catalog.py --output /tmp/nwe-nibio-capabilities-catalog.json >/dev/null
           python - <<'PY'
           import json
 
@@ -39,6 +41,8 @@ jobs:
               report = json.load(handle)
           with open('/tmp/nwe-sr16-metadata-links.json', encoding='utf-8') as handle:
               metadata = json.load(handle)
+          with open('/tmp/nwe-nibio-capabilities-catalog.json', encoding='utf-8') as handle:
+              catalog = json.load(handle)
 
           def atom_summary(atom):
               return {
@@ -72,6 +76,23 @@ jobs:
                   'split_raster_metadata': metadata_summary('sr16_raster_split'),
                   'open_raster_legacy_candidate_metadata': metadata_summary('sr16_raster_open_legacy_candidate'),
                   'vector_metadata': metadata_summary('sr16_vector'),
+                  'nibio_capabilities_catalog': {
+                      'status': catalog['status'],
+                      'probes': [
+                          {
+                              'requested_url': item.get('requested_url'),
+                              'status': item.get('status'),
+                              'http': item.get('http'),
+                              'body_kind': item.get('body_kind'),
+                              'top_level_type': item.get('top_level_type'),
+                              'top_level_keys': item.get('top_level_keys'),
+                              'top_level_count': item.get('top_level_count'),
+                              'matching_context': item.get('matching_context'),
+                              'error': item.get('error'),
+                          }
+                          for item in catalog['probes']
+                      ],
+                  },
               },
               'ar50': {
                   'capabilities_http': ar50_cap['http'],
@@ -98,5 +119,6 @@ jobs:
             /tmp/nwe-visual-order-selection.json
             /tmp/nwe-sr16-metadata-links.json
             /tmp/nwe-vegetation-real-source-probe.json
+            /tmp/nwe-nibio-capabilities-catalog.json
           if-no-files-found: error
           retention-days: 14
