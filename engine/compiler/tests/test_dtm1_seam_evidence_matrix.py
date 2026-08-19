@@ -19,7 +19,10 @@ def test_current_nannestad_matrix_remains_fail_closed():
     assert core["source_bound"] is True
     assert core["provider_authorized"] is False
     assert "10 m excess" in core["blocker"]
+    assert "225000000 m2" in core["blocker"]
     assert "provider_generation_distribution_contract_sha256" in core["provenance_fields"]
+    assert "provider_edge_domain_contract_sha256" in core["provenance_fields"]
+    assert "provider_export_maptile_area_m2" in core["provenance_fields"]
     assert by_name["project_priority"]["discriminating_for_nannestad"] is False
 
 
