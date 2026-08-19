@@ -32,20 +32,6 @@ export const POLY_HAVEN_VEGETATION_ASSETS = Object.freeze([
     require_lod_marker: false,
     url: `${POLY_HAVEN_BASE}/fir_sapling/fir_sapling_1k.gltf`,
   }),
-  Object.freeze({
-    schema: 'nwe.render-asset/0.1',
-    id: 'polyhaven-tree-small-02-1k',
-    provider: 'Poly Haven',
-    source_slug: 'tree_small_02',
-    source_page: 'https://polyhaven.com/a/tree_small_02',
-    license: 'CC0-1.0',
-    class_id: 1,
-    runtime_resolution: '1k',
-    source_triangle_count: 5000000,
-    lod_policy: 'lowest-available-polyhaven-lod',
-    require_lod_marker: true,
-    url: `${POLY_HAVEN_BASE}/tree_small_02/tree_small_02_1k.gltf`,
-  }),
 ]);
 
 function lodIndex(name) {
