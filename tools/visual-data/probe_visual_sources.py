@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Probe current open imagery/vegetation download contracts without downloading geodata.
+"""Probe current open imagery/vegetation source contracts without downloading geodata.
 
-This records only small metadata/capability/codelist responses. It never downloads source
-TIFF/GDB/GML content and is safe to upload as CI evidence.
+This records only small metadata/capability/codelist/service-capability responses. It never
+downloads source TIFF/GDB/GML feature content and is safe to upload as CI evidence.
 """
 from __future__ import annotations
 
@@ -30,14 +30,17 @@ DATASETS = {
         "provider": "NIBIO",
         "purpose": "forest/vegetation vector comparison only",
     },
-    "ar50_arealtype": {
-        "metadata_uuid": "41f6b000-c394-41c5-8ebb-07a0a3ec914f",
+    "ar50_wfs": {
+        "mode": "wfs_capabilities",
+        "metadata_uuid": "a7949917-033c-4e78-8c0f-e30323ce353a",
         "provider": "NIBIO",
         "purpose": "coarse nationwide non-forest vegetation mask candidate",
+        "url": "https://wfs.nibio.no/cgi-bin/ar50_2?Service=WFS&Request=GetCapabilities",
+        "required_markers": ["wfs_capabilities", "ar50"],
     },
 }
 
-USER_AGENT = "NorgeWorldEngine-VisualSourceProbe/0.1 (+https://github.com/B4kke/Norge-World-Engine)"
+USER_AGENT = "NorgeWorldEngine-VisualSourceProbe/0.2 (+https://github.com/B4kke/Norge-World-Engine)"
 
 
 def fetch_json(url: str, timeout: float = 30.0) -> tuple[Any, dict[str, Any]]:
@@ -46,6 +49,21 @@ def fetch_json(url: str, timeout: float = 30.0) -> tuple[Any, dict[str, Any]]:
         raw = response.read()
         value = json.loads(raw.decode("utf-8"))
         return value, {
+            "url": response.geturl(),
+            "status": response.status,
+            "content_type": response.headers.get("Content-Type"),
+            "bytes": len(raw),
+        }
+
+
+def fetch_text(url: str, timeout: float = 30.0) -> tuple[str, dict[str, Any]]:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/xml,text/xml,*/*;q=0.5"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        raw = response.read()
+        return raw.decode("utf-8", errors="replace"), {
             "url": response.geturl(),
             "status": response.status,
             "content_type": response.headers.get("Content-Type"),
@@ -127,8 +145,28 @@ def summarize_codelist(value: Any) -> dict[str, Any]:
     }
 
 
-def probe_dataset(name: str, config: dict[str, str]) -> dict[str, Any]:
-    uuid = config["metadata_uuid"]
+def probe_wfs_capabilities(name: str, config: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {**config, "name": name, "service": None, "errors": []}
+    url = str(config["url"])
+    try:
+        text, http = fetch_text(url)
+        lowered = text.lower()
+        required = [str(marker).lower() for marker in config.get("required_markers", [])]
+        missing = [marker for marker in required if marker not in lowered]
+        result["service"] = {
+            "http": http,
+            "required_markers": required,
+            "missing_markers": missing,
+        }
+        result["status"] = "PASS" if not missing else "INCOMPLETE"
+    except Exception as error:
+        result["errors"].append({"phase": "service_capabilities", "url": url, "error": repr(error)})
+        result["status"] = "INCOMPLETE"
+    return result
+
+
+def probe_download_dataset(name: str, config: dict[str, Any]) -> dict[str, Any]:
+    uuid = str(config["metadata_uuid"])
     result: dict[str, Any] = {**config, "name": name, "metadata": None, "capabilities": [], "errors": []}
 
     metadata_url = f"https://kartkatalog.geonorge.no/api/getdata/{uuid}"
@@ -173,13 +211,19 @@ def probe_dataset(name: str, config: dict[str, str]) -> dict[str, Any]:
     return result
 
 
+def probe_dataset(name: str, config: dict[str, Any]) -> dict[str, Any]:
+    if config.get("mode") == "wfs_capabilities":
+        return probe_wfs_capabilities(name, config)
+    return probe_download_dataset(name, config)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
     report = {
-        "schema": "nwe.visual-source-capability-probe/0.1",
+        "schema": "nwe.visual-source-capability-probe/0.2",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "policy": {
             "downloads_geodata": False,
