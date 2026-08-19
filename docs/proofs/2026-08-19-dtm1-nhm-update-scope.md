@@ -31,6 +31,28 @@ The contract fails closed if a caller tries to claim an explicit DTM1 overlap ru
 
 `engine/compiler/tools/probe_dtm1_nhm_update_scope.py` fetches the current official metadata page, records response byte size and SHA-256, requires the provider's latest-project/NHM-update markers, and emits only JSON evidence. The dedicated CI gate also checks that no TIFF/LAS/LAZ is present in the checkout/evidence path.
 
+## Live hosted evidence
+
+GitHub Actions run `32241787397` passed on head `4a871a38a275aca1b0a8cd32cf527d7e0a2cb1b5` after the workflow dependency declaration was corrected to install pytest explicitly.
+
+The live provider response returned HTTP 200 and all required semantic markers were present:
+
+- `latest_project_display = true`
+- `updates_national_height_model = true`
+- `digital_terrain_model_service = true`
+
+The provider metadata response was **86,425 bytes**, SHA-256 `88749fb5dde2d9331bd67f73da8a6c4aa57ae5c4d56a427ccbafb9735b85b95b`.
+
+The emitted evidence JSON retained the authority boundary:
+
+- `nhm_update_semantics_supported = true`
+- `downloadable_dtm1_source_bound = false`
+- `explicit_dtm1_overlap_rule = false`
+- `production_seam_authority = false`
+- `authority_status = UNPROVEN`
+
+Evidence artifact `9361065275` is **588 bytes** with digest `sha256:9727edb47d81b1a653ba8192ae2360d54cba546e04e172815ce095d5826b7fae`. Raw-geodata exclusion passed; no TIFF/LAS/LAZ is part of the proof artifact.
+
 ## Seam-matrix consequence
 
 The `newest_project` candidate is now calibrated more precisely. Provider-owned newest/update semantics exist in more than one surface:
