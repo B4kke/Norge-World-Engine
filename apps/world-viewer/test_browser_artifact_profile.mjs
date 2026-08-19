@@ -96,4 +96,28 @@ await assert.rejects(
   SyntaxError,
 );
 
+let backwardTick = 0;
+await assert.rejects(
+  profileVerifiedJsonArtifact({
+    bundle,
+    bytes,
+    iterations: 1,
+    now: () => [5, 4][backwardTick++],
+    verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
+  }),
+  /PROFILE_INVALID_TIMING: verification/,
+);
+
+let nonFiniteTick = 0;
+await assert.rejects(
+  profileVerifiedJsonArtifact({
+    bundle,
+    bytes,
+    iterations: 1,
+    now: () => [0, Number.NaN][nonFiniteTick++],
+    verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
+  }),
+  /PROFILE_INVALID_TIMING: verification/,
+);
+
 console.log('browser artifact profile regressions: PASS');
