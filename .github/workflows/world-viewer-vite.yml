@@ -68,7 +68,7 @@ jobs:
 
       - name: Build Vite world viewer
         env:
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NWE_BUILD_GIT_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run build --workspace @nwe/world-viewer
 
       - name: Assert static deployment output
@@ -84,7 +84,7 @@ jobs:
 
       - name: Exact-real browser provenance/decode profile
         env:
-          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NWE_BUILD_GIT_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           node apps/world-viewer/run_browser_artifact_profile_smoke.mjs \
             --output /tmp/nwe-browser-artifact-profile.json \
