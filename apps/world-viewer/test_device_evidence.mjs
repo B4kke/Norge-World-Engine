@@ -245,6 +245,15 @@ const wrongBackend = structuredClone(result);
 wrongBackend.terrain.movement_probe.renderer_backend = 'webgpu';
 assert.throws(() => build({ result: wrongBackend }), /DEVICE_EVIDENCE_STREAMING_RENDERER_BACKEND_MISMATCH/);
 
+const wrongRendererArtifact = structuredClone(result);
+wrongRendererArtifact.renderer.terrain_resource_lifecycle.artifact_sha256 = 'other-terrain-sha';
+for (const checkpoint of wrongRendererArtifact.terrain.movement_probe.renderer_resource_checkpoints) checkpoint.artifact_sha256 = 'other-terrain-sha';
+assert.throws(() => build({ result: wrongRendererArtifact }), /DEVICE_EVIDENCE_STREAMING_RENDERER_ARTIFACT_MISMATCH/);
+
+const wrongMovementTile = structuredClone(result);
+wrongMovementTile.terrain.movement_probe.tile_id = 'other-tile';
+assert.throws(() => build({ result: wrongMovementTile }), /DEVICE_EVIDENCE_STREAMING_MOVEMENT_TILE_MISMATCH/);
+
 const missingTrace = structuredClone(result);
 delete missingTrace.terrain.streaming_trace;
 assert.throws(() => build({ result: missingTrace }), /DEVICE_EVIDENCE_STREAMING_TRACE_MISSING/);
