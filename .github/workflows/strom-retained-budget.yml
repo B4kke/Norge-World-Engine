@@ -1,0 +1,28 @@
+name: strom-retained-budget
+
+on:
+  pull_request:
+    paths:
+      - 'engine/streaming/retained_byte_budget.mjs'
+      - 'engine/streaming/test_retained_byte_budget.mjs'
+      - 'engine/streaming/benchmark_retained_byte_budget.mjs'
+      - '.github/workflows/strom-retained-budget.yml'
+  workflow_dispatch:
+
+jobs:
+  retained-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check engine/streaming/retained_byte_budget.mjs
+          node --check engine/streaming/test_retained_byte_budget.mjs
+          node --check engine/streaming/benchmark_retained_byte_budget.mjs
+      - name: Regressions
+        run: node engine/streaming/test_retained_byte_budget.mjs
+      - name: Benchmark
+        run: node engine/streaming/benchmark_retained_byte_budget.mjs
