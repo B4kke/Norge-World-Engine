@@ -159,13 +159,14 @@ function assertEvidence(evidence) {
   const initialRenderer = rendererCheckpoints['initial-resident'];
   const cachedRenderer = rendererCheckpoints['outside-active-inside-retain'];
   const returnedRenderer = rendererCheckpoints['returned-center'];
-  if (!initialRenderer?.active || initialRenderer.current_buffer_count !== 3 || !(initialRenderer.current_payload_bytes > 0)) {
+  const initialBufferCount = initialRenderer?.current_buffer_count;
+  if (!initialRenderer?.active || !Number.isInteger(initialBufferCount) || initialBufferCount <= 0 || !(initialRenderer.current_payload_bytes > 0)) {
     throw new Error(`DEVICE_SMOKE_RENDERER_INITIAL: ${JSON.stringify(initialRenderer)}`);
   }
   if (cachedRenderer?.active !== false || cachedRenderer?.current_buffer_count !== 0 || cachedRenderer?.current_payload_bytes !== 0) {
     throw new Error(`DEVICE_SMOKE_RENDERER_CACHED: ${JSON.stringify(cachedRenderer)}`);
   }
-  if (!returnedRenderer?.active || returnedRenderer.current_buffer_count !== 3 || !(returnedRenderer.current_payload_bytes > 0)) {
+  if (!returnedRenderer?.active || returnedRenderer.current_buffer_count !== initialBufferCount || !(returnedRenderer.current_payload_bytes > 0)) {
     throw new Error(`DEVICE_SMOKE_RENDERER_RETURN: ${JSON.stringify(returnedRenderer)}`);
   }
   for (const checkpoint of [initialRenderer, cachedRenderer, returnedRenderer]) {

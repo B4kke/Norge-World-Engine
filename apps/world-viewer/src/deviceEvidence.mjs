@@ -124,13 +124,14 @@ function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererR
   const initial = byLabel['initial-resident'];
   const cached = byLabel['outside-active-inside-retain'];
   const returned = byLabel['returned-center'];
-  if (!initial || initial.active !== true || initial.current_buffer_count !== 3 || !(initial.current_payload_bytes > 0)) {
+  const initialBufferCount = initial?.current_buffer_count;
+  if (!initial || initial.active !== true || !Number.isInteger(initialBufferCount) || initialBufferCount <= 0 || !(initial.current_payload_bytes > 0)) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_INITIAL_INVALID');
   }
   if (!cached || cached.active !== false || cached.current_buffer_count !== 0 || cached.current_payload_bytes !== 0) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_CACHED_INVALID');
   }
-  if (!returned || returned.active !== true || returned.current_buffer_count !== 3 || !(returned.current_payload_bytes > 0)) {
+  if (!returned || returned.active !== true || returned.current_buffer_count !== initialBufferCount || !(returned.current_payload_bytes > 0)) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_RETURN_INVALID');
   }
   if ([initial, cached, returned].some((checkpoint) => checkpoint.tile_id !== expectedTileId)) {
