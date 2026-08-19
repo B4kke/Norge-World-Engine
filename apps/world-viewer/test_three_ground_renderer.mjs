@@ -17,6 +17,7 @@ assert.match(renderer, /geometry\.setAttribute\('color'/, 'renderer-only macro v
 assert.match(renderer, /new THREE\.DataTexture/, 'terrain must retain a source-safe local fallback if external presentation textures fail');
 assert.match(renderer, /THREE\.RepeatWrapping/, 'terrain fallback texture must repeat across normalized tile UVs');
 assert.match(renderer, /TERRAIN_DETAIL_PERIOD_M\s*=\s*5/, 'terrain fallback detail scale must stay explicitly meter-based');
+assert.match(renderer, /TERRAIN_NORMAL_STRENGTH\s*=\s*0\.18/, 'terrain normal detail must remain conservative at walking distance');
 assert.match(renderer, /loadPolyHavenSurfaceTextures/, 'ground renderer must integrate the bounded Poly Haven surface adapter');
 assert.match(renderer, /sceneGeometry\.roads\.uvs/, 'existing meter-based road UVs must be bound to the road mesh');
 assert.match(renderer, /buildingsResolved\.walls\.uvs/, 'source-height building wall UVs must be bound');
@@ -26,6 +27,9 @@ assert.match(renderer, /buildingsFallback\.roofs\.uvs/, 'fallback-height roof UV
 assert.match(renderer, /new THREE\.MeshStandardMaterial/, 'ground renderer must use a real lit PBR-compatible material path');
 assert.match(renderer, /roughnessMap:\s*terrainSurfaceTexture/, 'terrain must retain roughness variation as a fallback');
 assert.match(renderer, /vertexColors:\s*true/, 'terrain material must consume renderer-only macro variation');
+assert.match(renderer, /shadow_role:\s*'receive-only'/, 'coarse terrain must receive shadows without casting faceted self-shadows');
+assert.match(renderer, /coarse-dtm-self-shadow-suppressed/, 'terrain shadow policy must explain the visual artifact guard');
+assert.match(renderer, /shadowDrawCandidates\s*=\s*shadowBuildingDrawCandidates \+ humanoidShadowMeshCount/, 'terrain must not be counted as a shadow caster in the P0 coarse mesh');
 assert.match(renderer, /geometry_displacement:\s*false/, 'terrain styling must explicitly preserve accepted DTM geometry');
 assert.doesNotMatch(renderer, /displacementMap\s*:/, 'renderer must not visually displace accepted DTM geometry');
 assert.match(renderer, /resolvedWallMaterial/, 'source-backed building walls must have a dedicated material class');
