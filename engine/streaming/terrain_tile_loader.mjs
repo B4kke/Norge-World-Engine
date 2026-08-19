@@ -85,7 +85,7 @@ function validateHeader(header) {
   if (!(header.pixel_size_m > 0)) {
     throw new TerrainTileLoadError('ARTIFACT_HEADER_INVALID', 'pixel_size_m must be > 0');
   }
-  finite(header.nodata, 'nodata');
+  if (header.nodata != null) finite(header.nodata, 'nodata');
   finite(header.elevation_min_m, 'elevation_min_m');
   finite(header.elevation_max_m, 'elevation_max_m');
   if (header.elevation_max_m < header.elevation_min_m) {
@@ -154,7 +154,7 @@ export function decodeTerrainHeightGridArtifact(artifactBytes) {
   let actualMin = Infinity;
   let actualMax = -Infinity;
   for (const value of elevations) {
-    if (!Number.isFinite(value) || value === header.nodata) {
+    if (!Number.isFinite(value) || (header.nodata != null && value === header.nodata)) {
       throw new TerrainTileLoadError('ARTIFACT_ELEVATION_INVALID', 'artifact contains nodata/non-finite elevation');
     }
     actualMin = Math.min(actualMin, value);

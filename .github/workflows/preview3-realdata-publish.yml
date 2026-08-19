@@ -1,0 +1,157 @@
+name: preview3-realdata-publish
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/world-viewer/**'
+      - 'tools/preview/stage_preview3_snapshot.py'
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - 'requirements-dev.txt'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/preview3-realdata-publish.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/world-viewer/**'
+      - 'tools/preview/stage_preview3_snapshot.py'
+      - 'engine/compiler/**'
+      - 'engine/streaming/**'
+      - 'engine/schemas/**'
+      - 'requirements-dev.txt'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/preview3-realdata-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview3-realdata-publish-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-verify-preview3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install World Compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile isolated real 3x3 candidate snapshot
+        run: |
+          mkdir -p /tmp/nwe-preview3-cache /tmp/nwe-preview3
+          python tools/preview/stage_preview3_snapshot.py \
+            --cache-root /tmp/nwe-preview3-cache \
+            --output /tmp/nwe-preview3 \
+            --commit-sha "$GITHUB_SHA" \
+            | tee /tmp/nwe-preview3-stage.json
+          python -m json.tool /tmp/nwe-preview3/manifest.json > /dev/null
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install runtime and World Viewer dependencies
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
+
+      - name: Verify all candidate runtime bytes before browser use
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const root = '/tmp/nwe-preview3';
+          const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+          if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') {
+            throw new Error(`unexpected preview manifest ${manifest.schema}/${manifest.status}`);
+          }
+          if (!Array.isArray(manifest.terrain_tiles) || manifest.terrain_tiles.length !== 9) {
+            throw new Error(`expected 9 terrain tiles, got ${manifest.terrain_tiles?.length ?? 'missing'}`);
+          }
+          const terrainIds = manifest.terrain_tiles.map((entry) => entry?.tile?.id);
+          if (new Set(terrainIds).size !== 9 || !terrainIds.includes(manifest.tile.id)) {
+            throw new Error(`invalid terrain tile set ${JSON.stringify(terrainIds)}`);
+          }
+
+          function verifyLayer(label, layer) {
+            const bundlePath = path.join(root, layer.bundle.replace(/^\.\//, ''));
+            const artifactPath = path.join(root, layer.compiled_path.replace(/^\.\//, ''));
+            const bundle = JSON.parse(fs.readFileSync(bundlePath, 'utf8'));
+            const bytes = new Uint8Array(fs.readFileSync(artifactPath));
+            const verification = verifyRuntimeBundle(bundle, bytes);
+            if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') {
+              throw new Error(`${label}: ${verification.code}: ${verification.detail}`);
+            }
+            if (bundle.artifact_ref.sha256 !== layer.artifact_sha256) {
+              throw new Error(`${label}: manifest/artifact SHA mismatch`);
+            }
+          }
+
+          for (const entry of manifest.terrain_tiles) verifyLayer(`terrain:${entry.tile.id}`, entry);
+          verifyLayer('roads', manifest.roads);
+          verifyLayer('buildings', manifest.buildings);
+          NODE
+
+      - name: Build deployable World Viewer
+        run: npm run build --workspace @nwe/world-viewer
+
+      - name: Real Preview 3x3 browser composition gate
+        run: |
+          node --check apps/world-viewer/run_preview3_browser_smoke.mjs
+          node apps/world-viewer/run_preview3_browser_smoke.mjs \
+            --runtime-root /tmp/nwe-preview3 \
+            --dist-root apps/world-viewer/dist \
+            --output /tmp/nwe-preview3-browser-proof.json \
+            --timeout-ms 120000
+          cat /tmp/nwe-preview3-browser-proof.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview3-browser-proof-${{ github.sha }}
+          path: |
+            /tmp/nwe-preview3-browser-proof.json
+            /tmp/nwe-preview3-stage.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish isolated candidate runtime snapshot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          rm -rf /tmp/nwe-preview3-publish
+          mkdir -p /tmp/nwe-preview3-publish/nannestad-preview-3
+          cp -R /tmp/nwe-preview3/. /tmp/nwe-preview3-publish/nannestad-preview-3/
+          cd /tmp/nwe-preview3-publish
+          git init
+          git checkout --orphan preview-runtime-3x3
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cat > README.md <<'TXT'
+          # Norge World Engine Preview 3 candidate runtime artifacts
+
+          This orphan branch is an isolated transport snapshot for the Nannestad 3x3 terrain candidate.
+          It contains only compiled, provenance-bound runtime artifacts and attribution metadata.
+          It does not replace the accepted Preview 1 / D-007 source path and does not select WCS as production world truth.
+          Raw Kartverket/NVDB/OSM source data is never published here.
+          TXT
+          git add README.md nannestad-preview-3
+          git commit -m "Publish isolated Nannestad Preview 3 candidate ${GITHUB_SHA}"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin HEAD:preview-runtime-3x3

@@ -45,6 +45,7 @@ function buildHeightGridArtifact({
   width = 4,
   height = 4,
   bounds = [0, 0, 4, 4],
+  nodata = -32767,
 } = {}) {
   const header = {
     schema: 'nwe.terrain-height-grid-artifact/0.1',
@@ -55,7 +56,7 @@ function buildHeightGridArtifact({
     width,
     height,
     pixel_size_m: 1,
-    nodata: -32767,
+    nodata,
     storage: 'float32-le-row-major-north-to-south',
     elevation_min_m: Math.min(...values),
     elevation_max_m: Math.max(...values),
@@ -223,6 +224,14 @@ async function testDecoderReadsCanonicalArtifact() {
   assert.deepEqual([...decoded.elevations], [...syntheticGrid()]);
 }
 
+async function testDecoderAcceptsExplicitNoNodataContract() {
+  const { artifactBytes } = buildHeightGridArtifact({ nodata: null });
+  const decoded = decodeTerrainHeightGridArtifact(artifactBytes);
+  assert.equal(decoded.header.nodata, null);
+  assert.equal(decoded.sampleCount, 16);
+  assert.deepEqual([...decoded.elevations], [...syntheticGrid()]);
+}
+
 async function testDecoderFailsClosedOnTrailingOrTruncatedBytes() {
   const { artifactBytes } = fixture();
   assert.throws(
@@ -325,13 +334,14 @@ async function testSchedulerLoadsVerifiedTerrainWorkerPayload() {
 
 async function main() {
   await testDecoderReadsCanonicalArtifact();
+  await testDecoderAcceptsExplicitNoNodataContract();
   await testDecoderFailsClosedOnTrailingOrTruncatedBytes();
   await testFullVerifierPrecedesWorkerDispatch();
   await testSemanticDecodePrecedesWorkerDispatch();
   await testTileIdentityMismatchFailsAfterVerificationBeforeWorker();
   await testAbortBeforeResolutionDoesNoWork();
   await testSchedulerLoadsVerifiedTerrainWorkerPayload();
-  console.log('terrain runtime pipeline regressions: PASS (7 cases)');
+  console.log('terrain runtime pipeline regressions: PASS (8 cases)');
 }
 
 main().catch((error) => {
