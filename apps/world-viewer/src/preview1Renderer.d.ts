@@ -35,6 +35,7 @@ export function createPreview1Renderer(options: any): Promise<{
     max_dpr: number;
     pixel_ratio: number;
     msaa_samples: number | null;
+    power_preference?: string;
     draw_calls_per_frame: number;
     gpu_buffer_count: number;
     gpu_buffer_payload_bytes: number;
@@ -71,10 +72,18 @@ type HumanoidRenderState = {
   source_git_blob_sha1: string;
   source_byte_size: number;
   license: string;
+  source_request_url: string;
+  source_request_origin: string;
+  runtime_dependency: 'commit-pinned-renderer-asset' | string;
   state: 'idle' | 'walk';
   idle_clip: string;
   walk_clip: string;
   render_mesh_count: number;
   normalized_height_m: number;
   renderer_only_spawn: true;
+  animation_state_probe: {
+    schema: 'nwe.humanoid-animation-state-probe/0.1' | string;
+    status: 'PASS' | string;
+    states: readonly ['idle', 'walk', 'idle'] | readonly string[];
+  } | null;
 };
