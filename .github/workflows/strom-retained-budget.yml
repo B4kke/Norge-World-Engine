@@ -6,6 +6,8 @@ on:
       - 'engine/streaming/retained_byte_budget.mjs'
       - 'engine/streaming/test_retained_byte_budget.mjs'
       - 'engine/streaming/benchmark_retained_byte_budget.mjs'
+      - 'engine/streaming/retained_budget_lifecycle_adapter.mjs'
+      - 'engine/streaming/test_retained_budget_lifecycle_adapter.mjs'
       - '.github/workflows/strom-retained-budget.yml'
   workflow_dispatch:
 
@@ -22,7 +24,11 @@ jobs:
           node --check engine/streaming/retained_byte_budget.mjs
           node --check engine/streaming/test_retained_byte_budget.mjs
           node --check engine/streaming/benchmark_retained_byte_budget.mjs
+          node --check engine/streaming/retained_budget_lifecycle_adapter.mjs
+          node --check engine/streaming/test_retained_budget_lifecycle_adapter.mjs
       - name: Regressions
-        run: node engine/streaming/test_retained_byte_budget.mjs
+        run: |
+          node engine/streaming/test_retained_byte_budget.mjs
+          node engine/streaming/test_retained_budget_lifecycle_adapter.mjs
       - name: Benchmark
         run: node engine/streaming/benchmark_retained_byte_budget.mjs
