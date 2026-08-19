@@ -67,3 +67,36 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-01`: LUMEN implements the Three.js ground-level renderer adapter in `apps/world-viewer` without changing compiler/provenance semantics.
+
+## 2026-08-19 19:34 CEST — LUMEN — P0-GROUND-01
+
+**What**
+- Added a thin Three.js ground renderer adapter over the accepted Preview 1 typed-array scene buffers instead of rebuilding loader/compiler/runtime logic.
+- Pinned `three@0.185.0`; routed `createPreview1Renderer` through `three/webgpu` / `THREE.WebGPURenderer` with explicit WebGL2 fallback/baseline.
+- Converted accepted terrain, road and building buffers to Three `BufferGeometry` after existing runtime verification and preserved terrain resource activate/deactivate lifecycle hooks.
+- Added human-scale perspective startup at sampled terrain + 1.7 m eye height, basic lit materials/fog/light and made the root viewer target the accepted single-tile ground scene. Preview 3 remains separate.
+- Added structural regressions and aligned the stale viewer CI root-entry assertion with the new ground-level root.
+
+**Why**
+- This was the shortest path from the already proven real-data/runtime foundation to a renderer suitable for walking-distance graphics while keeping world/compiler/provenance reusable by a future Unreal adapter.
+
+**Result / evidence**
+- FACT: `baseline`, `world-viewer-vite` and `viewer-benchmark` pass on the Three.js implementation head.
+- FACT: hosted Chrome/WebGL2 rendered the accepted Nannestad tile with 16,641 terrain vertices / 32,768 triangles, 246 compiled road paths and 135 building footprints, 4 draw calls, 7 runtime requests and 0 raw-source runtime calls.
+- FACT: production Vite build, browser provenance/decode profile, terrain resource lifecycle smoke and DedicatedWorker gate pass.
+- LIMITATION: hosted WebGPU probe is unavailable (`A valid external Instance reference no longer exists.`), so no WebGPU performance comparison is claimed. This does not invalidate the proven Three renderer boundary or WebGL2 fallback.
+- An automatically triggered cold real-data compile/publish workflow is still running; it is additional foundation revalidation, not required to re-prove the accepted source artifacts for this renderer-only task.
+
+**Changed**
+- Branch `agent/lumen-ground-01`, draft PR #69.
+- `apps/world-viewer/src/threeGroundRenderer.mjs`.
+- `apps/world-viewer/src/preview1Renderer.mjs`.
+- `apps/world-viewer/package.json`.
+- `apps/world-viewer/index.html`.
+- `apps/world-viewer/test_three_ground_renderer.mjs`.
+- `apps/world-viewer/test_root_entrypoint.mjs`.
+- `.github/workflows/world-viewer-vite.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P0-GROUND-02`: upgrade the proven Three terrain mesh from a basic lit material to walking-distance terrain materials/detail coordinates without changing accepted DTM geometry.
