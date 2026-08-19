@@ -45,6 +45,10 @@ function terrainHeight(payload, easting, northing) {
   return height;
 }
 
+function positiveZero(value) {
+  return value === 0 ? 0 : value;
+}
+
 export function atlasRenderTransformToThreePose(renderTransform) {
   if (!(renderTransform?.position instanceof Float32Array) || renderTransform.position.length !== 3) {
     throw new TypeError('ATLAS_RENDER_TRANSFORM_POSITION_REQUIRED');
@@ -55,7 +59,11 @@ export function atlasRenderTransformToThreePose(renderTransform) {
     worldFrameId: renderTransform.worldFrameId,
     originSeriesId: renderTransform.originSeriesId,
     originEpoch: renderTransform.originEpoch,
-    position: new Float32Array([east, up, -north]),
+    position: new Float32Array([
+      positiveZero(east),
+      positiveZero(up),
+      positiveZero(-north),
+    ]),
     headingRadians: renderTransform.headingRadians,
     coordinateAdapter: 'atlas-east-north-up -> three-east-up-minus-north',
   });
