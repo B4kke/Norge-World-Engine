@@ -1,9 +1,12 @@
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { installPreviewCameraControls } from './previewCameraControls.mjs';
+import { buildBuildingSurfaceGeometry } from './buildingSurfaceGeometry.mjs';
 import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 
 const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
+const BUILDING_FALLBACK_HEIGHT_M = 5;
+const BUILDING_GROUND_LIFT_M = 0.08;
 
 function identity() {
   return new Float32Array([
@@ -92,55 +95,11 @@ function worldPointToLocal(point, origin, sampleHeight, lift = 0) {
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
 }
 
-function pushQuad(positions, indices, a, b, c, d) {
-  const base = positions.length / 3;
-  positions.push(...a, ...b, ...c, ...d);
-  indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-}
-
-function polygonWithoutDuplicateClosure(polygon) {
-  if (!Array.isArray(polygon)) return [];
-  const points = polygon.filter((point) => Array.isArray(point) && point.length >= 2);
-  if (points.length > 2) {
-    const first = points[0];
-    const last = points.at(-1);
-    if (Number(first[0]) === Number(last[0]) && Number(first[1]) === Number(last[1])) return points.slice(0, -1);
-  }
-  return points;
-}
-
-function appendBuilding(feature, positions, indices, origin, sampleHeight, fallbackHeight) {
-  const polygon = polygonWithoutDuplicateClosure(feature.polygon);
-  if (polygon.length < 3) return false;
-  const height = Number.isFinite(feature.height_m) ? Number(feature.height_m) : fallbackHeight;
-  const base = polygon.map((point) => {
-    const e = Number(point[0]);
-    const n = Number(point[1]);
-    const h = sampleHeight(e, n);
-    return [e - origin.e, h - origin.h + 0.08, origin.n - n];
-  });
-  const top = base.map((point) => [point[0], point[1] + height, point[2]]);
-  for (let i = 0; i < base.length; i += 1) {
-    const j = (i + 1) % base.length;
-    pushQuad(positions, indices, base[i], base[j], top[j], top[i]);
-  }
-  const roofBase = positions.length / 3;
-  for (const point of top) positions.push(...point);
-  for (let i = 1; i + 1 < top.length; i += 1) indices.push(roofBase, roofBase + i, roofBase + i + 1);
-  return true;
-}
-
-function buildBuildingGeometry(buildingsArtifact, origin, sampleHeight, { resolved, fallbackHeight = 5 } = {}) {
-  const positions = [];
-  const indices = [];
-  let count = 0;
-  for (const feature of buildingsArtifact?.features ?? []) {
-    const hasHeight = Number.isFinite(feature.height_m);
-    if (hasHeight !== resolved) continue;
-    if (appendBuilding(feature, positions, indices, origin, sampleHeight, fallbackHeight)) count += 1;
-  }
-  const IndexArray = positions.length / 3 <= 65535 ? Uint16Array : Uint32Array;
-  return { positions: new Float32Array(positions), indices: new IndexArray(indices), count };
+function footprintPointToLocal(point, origin, sampleHeight) {
+  const easting = Number(point?.[0]);
+  const northing = Number(point?.[1]);
+  if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid building footprint point');
+  return [easting - origin.e, sampleHeight(easting, northing) - origin.h, origin.n - northing];
 }
 
 export function createPreviewCamera() {
@@ -183,8 +142,18 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
     widthMeters: ROAD_VISUAL_WIDTH_M,
   });
-  const buildingsResolved = buildBuildingGeometry(buildingsArtifact, origin, sampleHeight, { resolved: true });
-  const buildingsFallback = buildBuildingGeometry(buildingsArtifact, origin, sampleHeight, { resolved: false, fallbackHeight: 5 });
+  const buildingProjectPoint = (point) => footprintPointToLocal(point, origin, sampleHeight);
+  const buildingsResolved = buildBuildingSurfaceGeometry(buildingsArtifact, {
+    projectPoint: buildingProjectPoint,
+    resolved: true,
+    groundLiftMeters: BUILDING_GROUND_LIFT_M,
+  });
+  const buildingsFallback = buildBuildingSurfaceGeometry(buildingsArtifact, {
+    projectPoint: buildingProjectPoint,
+    resolved: false,
+    fallbackHeightMeters: BUILDING_FALLBACK_HEIGHT_M,
+    groundLiftMeters: BUILDING_GROUND_LIFT_M,
+  });
   return {
     header: terrainPayload.artifact.header,
     origin,
@@ -204,8 +173,13 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       building_footprints: buildingsArtifact?.features?.length ?? 0,
       source_backed_building_heights: buildingsResolved.count,
       unresolved_building_heights: buildingsFallback.count,
+      building_resolved_height_semantics: buildingsResolved.metadata.height_semantics,
+      building_fallback_height_semantics: buildingsFallback.metadata.height_semantics,
+      building_wall_triangles: buildingsResolved.metadata.wall_triangles + buildingsFallback.metadata.wall_triangles,
+      building_roof_triangles: buildingsResolved.metadata.roof_triangles + buildingsFallback.metadata.roof_triangles,
+      building_roof_triangulation: buildingsResolved.metadata.roof_triangulation,
       debug_road_width_m: ROAD_VISUAL_WIDTH_M,
-      debug_unresolved_building_height_m: 5,
+      debug_unresolved_building_height_m: BUILDING_FALLBACK_HEIGHT_M,
     },
   };
 }
