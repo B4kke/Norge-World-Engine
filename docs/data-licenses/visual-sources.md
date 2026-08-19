@@ -170,10 +170,10 @@ No exact instance schema, tree-density cap, species-mix heuristic, asset set, LO
 
 ## `P1-VEGETATION-01-SAMPLE` — PASS
 
-The bounded real-source gate is now proven on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`:
+The bounded real-source gate is proven on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`:
 
 - `baseline` run `32312909195`: PASS;
-- `visual-source-probe` heavy admission run `32312909181`: PASS;
+- heavy source-admission execution in `visual-source-probe` run `32312909181`: PASS;
 - evidence artifact ID `9387116220` (14-day CI retention);
 - same-cache normalization A1/A2: byte-identical;
 - independent AR50 acquisition B: semantically identical after excluding only proven volatile `kopidato`;
@@ -184,7 +184,7 @@ The bounded real-source gate is now proven on code-bearing head `5594fe073edf0c2
 - raw/bulk provider files were neither committed nor uploaded as CI artifacts;
 - truth boundary remains source polygons/attributes only — **no tree placement or runtime vegetation artifact was promoted**.
 
-The heavyweight materialize/decode/replay gate lives in `.github/workflows/vegetation-source-sample.yml` as an explicit `workflow_dispatch` gate. Ordinary PR source checks stay in the lighter `visual-source-probe` workflow.
+The proof above was intentionally executed through the ordinary source workflow while the gate was being developed so every stage was visible on the PR. After PASS, the heavyweight materialize/decode/replay path was removed from ordinary PR execution. The reusable heavy gate now lives only in `.github/workflows/vegetation-source-sample.yml` as explicit `workflow_dispatch`; normal `visual-source-probe` runs retain source-contract/metadata/sample probes without the 125 MB decode/replay cycle.
 
 ## Implementation order relative to the active queue
 
