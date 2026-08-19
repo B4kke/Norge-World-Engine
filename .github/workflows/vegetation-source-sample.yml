@@ -25,16 +25,19 @@ jobs:
           ogrinfo --formats | grep -i SOSI
           ogrinfo --formats | grep -i GML
 
-      - name: Syntax check vegetation source gate
+      - name: Syntax and compiler contract checks
         run: |
           python -m py_compile tools/visual-data/materialize_vegetation_source_cache.py
           python -m py_compile tools/visual-data/normalize_vegetation_source_sample.py
           python -m py_compile tools/visual-data/verify_vegetation_source_sample.py
+          python -m py_compile tools/visual-data/compile_vegetation_representative_sample.py
+          python -m py_compile tools/visual-data/verify_vegetation_representative_sample.py
+          pytest -q engine/compiler/tests/test_vegetation.py
 
       - name: Materialize bounded provider cache
         run: |
-          rm -rf /tmp/nwe-vegetation-cache /tmp/nwe-vegetation-normalize
-          mkdir -p /tmp/nwe-vegetation-normalize
+          rm -rf /tmp/nwe-vegetation-cache /tmp/nwe-vegetation-normalize /tmp/nwe-vegetation-compiled
+          mkdir -p /tmp/nwe-vegetation-normalize /tmp/nwe-vegetation-compiled
           python tools/visual-data/materialize_vegetation_source_cache.py \
             --work-dir /tmp/nwe-vegetation-cache \
             --output /tmp/nwe-vegetation-materialization.json
@@ -78,7 +81,7 @@ jobs:
             --output /tmp/nwe-vegetation-normalize/normalized-b.json \
             --evidence /tmp/nwe-vegetation-normalize/evidence-b.json
 
-      - name: Verify deterministic candidate sample
+      - name: Verify deterministic normalized candidate sample
         run: |
           python tools/visual-data/verify_vegetation_source_sample.py \
             --materialization /tmp/nwe-vegetation-materialization.json \
@@ -89,6 +92,37 @@ jobs:
             --normalized-a2 /tmp/nwe-vegetation-normalize/normalized-a2.json \
             --output /tmp/nwe-vegetation-sample-evidence.json
 
+      - name: Compile representative artifact A1
+        run: |
+          python tools/visual-data/compile_vegetation_representative_sample.py \
+            --input /tmp/nwe-vegetation-normalize/normalized-a1.json \
+            --output /tmp/nwe-vegetation-compiled/artifact-a1.json \
+            --evidence /tmp/nwe-vegetation-compiled/evidence-a1.json
+
+      - name: Compile representative artifact A2
+        run: |
+          python tools/visual-data/compile_vegetation_representative_sample.py \
+            --input /tmp/nwe-vegetation-normalize/normalized-a2.json \
+            --output /tmp/nwe-vegetation-compiled/artifact-a2.json \
+            --evidence /tmp/nwe-vegetation-compiled/evidence-a2.json
+
+      - name: Compile representative artifact B
+        run: |
+          python tools/visual-data/compile_vegetation_representative_sample.py \
+            --input /tmp/nwe-vegetation-normalize/normalized-b.json \
+            --output /tmp/nwe-vegetation-compiled/artifact-b.json \
+            --evidence /tmp/nwe-vegetation-compiled/evidence-b.json
+
+      - name: Verify representative artifact determinism
+        run: |
+          python tools/visual-data/verify_vegetation_representative_sample.py \
+            --artifact-a1 /tmp/nwe-vegetation-compiled/artifact-a1.json \
+            --artifact-a2 /tmp/nwe-vegetation-compiled/artifact-a2.json \
+            --evidence-a1 /tmp/nwe-vegetation-compiled/evidence-a1.json \
+            --evidence-a2 /tmp/nwe-vegetation-compiled/evidence-a2.json \
+            --evidence-b /tmp/nwe-vegetation-compiled/evidence-b.json \
+            --output /tmp/nwe-vegetation-representative-verification.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: vegetation-source-sample-${{ github.sha }}
@@ -98,5 +132,9 @@ jobs:
             /tmp/nwe-vegetation-normalize/evidence-a1.json
             /tmp/nwe-vegetation-normalize/evidence-b.json
             /tmp/nwe-vegetation-normalize/normalized-a1.json
+            /tmp/nwe-vegetation-compiled/evidence-a1.json
+            /tmp/nwe-vegetation-compiled/evidence-b.json
+            /tmp/nwe-vegetation-compiled/artifact-a1.json
+            /tmp/nwe-vegetation-representative-verification.json
           if-no-files-found: error
           retention-days: 14
