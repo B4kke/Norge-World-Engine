@@ -46,6 +46,7 @@ async function testNearerTilePreemptsLowerPriorityResidentAfterOutOfOrderLoads()
 
   assert.equal(snapshot.metrics.residentBudgetOvercommitBytes, 0);
   assert.equal(snapshot.metrics.residentBudgetPreemptions, 1);
+  assert.equal(snapshot.metrics.residentBudgetPreemptionFailures, 0);
   assert.equal(snapshot.metrics.residentBudgetDeferrals, 0);
   assert.equal(snapshot.records.find((record) => record.id === 'near').state, 'resident');
   assert.equal(snapshot.records.find((record) => record.id === 'far').state, 'cached');
@@ -88,6 +89,7 @@ async function testOversizedHigherPriorityTileDoesNotEvictUsefulResident() {
 
   assert.deepEqual(loads, ['far-small', 'near-big']);
   assert.equal(snapshot.metrics.residentBudgetPreemptions, 0, 'an impossible candidate must not evict useful resident state');
+  assert.equal(snapshot.metrics.residentBudgetPreemptionFailures, 0);
   assert.equal(snapshot.metrics.residentBudgetDeferrals, 1);
   assert.equal(snapshot.records.find((record) => record.id === 'far-small').state, 'resident');
   assert.equal(snapshot.records.find((record) => record.id === 'near-big').state, 'cached');
@@ -120,15 +122,58 @@ async function testEqualDistanceUsesTileIdTieBreakForPreemption() {
   const snapshot = await scheduler.whenIdle();
 
   assert.equal(snapshot.metrics.residentBudgetPreemptions, 1);
+  assert.equal(snapshot.metrics.residentBudgetPreemptionFailures, 0);
   assert.equal(snapshot.records.find((record) => record.id === 'a').state, 'resident');
   assert.equal(snapshot.records.find((record) => record.id === 'b').state, 'cached');
+}
+
+async function testFailedPreemptionDefersCandidateWithoutBreakingSchedulerLoop() {
+  const tiles = [
+    { id: 'near', centerE: 0, centerN: 0 },
+    { id: 'far', centerE: 900, centerN: 0 },
+  ];
+  const events = [];
+  const scheduler = new TileStreamingScheduler({
+    activeRadiusMeters: 1000,
+    retainRadiusMeters: 2000,
+    maxResidentTiles: 2,
+    maxConcurrentLoads: 1,
+    maxCacheBytes: 1000,
+    maxResidentBytes: 100,
+    loadTile: async (tile) => ({ payload: { id: tile.id }, byteSize: 100 }),
+    deactivateTile: async (_tile, _payload, { reason }) => {
+      if (reason === 'resident-budget-preempted') throw new Error('renderer refused deactivation');
+    },
+    onEvent: (event) => events.push(event),
+  });
+
+  await scheduler.update({ e: 900, n: 0 }, [tiles[1]]);
+  await scheduler.whenIdle();
+  assert.equal(scheduler.snapshot().records.find((record) => record.id === 'far').state, 'resident');
+
+  await scheduler.update({ e: 0, n: 0 }, tiles);
+  const snapshot = await scheduler.whenIdle();
+
+  assert.equal(snapshot.metrics.residentBudgetOvercommitBytes, 0);
+  assert.equal(snapshot.metrics.residentBudgetPreemptions, 0);
+  assert.equal(snapshot.metrics.residentBudgetPreemptionFailures, 1);
+  assert.equal(snapshot.metrics.deactivationFailures, 1);
+  assert.equal(snapshot.metrics.residentBudgetDeferrals, 1);
+  assert.equal(snapshot.metrics.lifecycleFailures, 0, 'contained preemption failure must not poison the async load lifecycle');
+  assert.equal(snapshot.records.find((record) => record.id === 'far').state, 'resident');
+  assert.equal(snapshot.records.find((record) => record.id === 'near').state, 'cached');
+  assert.equal(snapshot.metrics.bytesResident, 100);
+  assert.equal(snapshot.metrics.bytesCached, 100);
+  assert.equal(events.filter((event) => event.type === 'resident-budget-preemption-failed').length, 1);
+  assert.equal(events.filter((event) => event.type === 'activation-deferred-budget').length, 1);
 }
 
 async function main() {
   await testNearerTilePreemptsLowerPriorityResidentAfterOutOfOrderLoads();
   await testOversizedHigherPriorityTileDoesNotEvictUsefulResident();
   await testEqualDistanceUsesTileIdTieBreakForPreemption();
-  console.log('resident budget priority regressions: PASS (3 cases)');
+  await testFailedPreemptionDefersCandidateWithoutBreakingSchedulerLoop();
+  console.log('resident budget priority regressions: PASS (4 cases)');
 }
 
 main().catch((error) => {
