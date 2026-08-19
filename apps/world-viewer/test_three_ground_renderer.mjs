@@ -22,7 +22,12 @@ assert.match(renderer, /bumpMap:\s*terrainSurfaceTexture/, 'terrain must carry l
 assert.match(renderer, /vertexColors:\s*true/, 'terrain material must consume renderer-only macro variation');
 assert.match(renderer, /geometry_displacement:\s*false/, 'terrain styling must explicitly preserve accepted DTM geometry');
 assert.doesNotMatch(renderer, /displacementMap\s*:/, 'renderer must not visually displace accepted DTM geometry');
-assert.match(renderer, /draw_calls_per_frame:\s*4/, 'terrain material pass must not add draw calls');
+assert.match(renderer, /resolvedWallMaterial/, 'source-backed building walls must have a dedicated material class');
+assert.match(renderer, /resolvedRoofMaterial/, 'source-backed building roofs must have a dedicated material class');
+assert.match(renderer, /fallbackWallMaterial/, 'fallback-height building walls must remain visually distinct');
+assert.match(renderer, /fallbackRoofMaterial/, 'fallback-height building roofs must remain visually distinct');
+assert.match(renderer, /building_materials:\s*\{/, 'runtime stats must expose building material semantics');
+assert.match(renderer, /draw_calls_per_frame:\s*2 \+ buildingDrawCalls/, 'draw-call stats must account for separate batched wall\/roof layers');
 assert.match(renderer, /camera\.position\.set\(0, centerGround \+ 1\.7, 14\)/, 'camera must start at human eye height over sampled ground');
 assert.match(renderer, /renderer_adapter:\s*'three-ground\/0\.1'/, 'runtime stats must identify the Three renderer adapter');
 assert.match(renderer, /terrain_material:\s*\{/, 'runtime stats must expose terrain material evidence');
