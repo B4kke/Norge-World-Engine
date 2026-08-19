@@ -30,7 +30,7 @@ Every completed work session appends exactly one entry using this structure:
 
 ## Logging rules
 
-- Always record **date, local time/timezone, agent and task ID** in the heading.
+- Always record **date, local time/timezone + agent + task ID** in the heading.
 - `What` says what changed, not what the agent intended to do.
 - `Why` ties the work to the active queue in `docs/06-task-queue.md`.
 - `Result / evidence` is concise. Link proof files rather than pasting full logs.
@@ -100,3 +100,30 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-02`: upgrade the proven Three terrain mesh from a basic lit material to walking-distance terrain materials/detail coordinates without changing accepted DTM geometry.
+
+## 2026-08-19 21:30 CEST — ATLAS — P0-GROUND-06A
+
+**What**
+- Added the minimal renderer-neutral `nwe.character-world-transform/0.1-candidate` contract on top of the existing `WorldPosition` / `RenderOrigin` foundation.
+- Defined stable character entity identity, authoritative Float64 world position, a renderer-neutral heading convention, heading-relative planar movement, explicit world-height updates for grounding consumers and render-local derivation scoped to render-origin series/epoch.
+- Kept GLB/assets, animation, keyboard/touch input, Three.js object binding, terrain sampling/raycast implementation, third-person camera and physics-engine selection out of ATLAS ownership.
+- Added six focused regressions and wired them into the existing repository baseline rather than creating another harness.
+
+**Why**
+- `P0-GROUND-05/06` needs a character transform that LUMEN can render without allowing `THREE.Object3D` or render-origin-local Float32 state to become world truth. This is the smallest ATLAS contribution that unblocks the playable character boundary without overlapping renderer work.
+
+**Result / evidence**
+- FACT: isolated local Node syntax/regression execution of the new contract logic passes.
+- FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires byte-equivalent authoritative transform values while allowing derived local coordinates to change.
+- FACT: the contract rejects foreign world frames and non-finite movement/heading/height inputs.
+- HOSTED CI: GitHub baseline/ATLAS workflows are running on draft PR #72; no hosted PASS is claimed until completion.
+
+**Changed**
+- Branch `agent/atlas-ground-06a`, draft PR #72.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `.github/workflows/baseline.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P0-GROUND-06`: LUMEN consumes the ATLAS transform boundary when character integration reaches movement/grounding; ATLAS should only adjust the contract if that integration exposes a concrete world-state mismatch.
