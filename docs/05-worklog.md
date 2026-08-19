@@ -51,6 +51,54 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - The Cesium Vite build and installed npm workspace resolution are not locally proven because package download is blocked; the JCS/runtime test used the exact upstream `canonicalize` v3.0.0 source staged only in the temporary test workspace.
 - P0-REALDATA-01 remains open: this change provides the normalizer/toolchain but does not materialize the production DTM1 15 km GeoTIFF.
 
+**Neste**
+- Use a dependency-capable runner to execute the complete baseline, then materialize the authoritative DTM1 raw → normalized Nannestad artifact. Once a compiled GLB/tileset exists, run the Cesium/custom-viewer comparison instead of adding more viewer features.
+
+## 2026-08-17 — NVDB/OSM vector compiler adapters
+
+**Gjort**
+- Continued on a stacked branch from the latest unmerged `agent/core-geospatial-tooling` state rather than rebuilding from `main` or from historical Drive HTML prototypes.
+- Added `nwe_compiler.roads`: deterministic duplicate suppression, 0.25 m endpoint snapping and graph collapse through degree-2 nodes while preserving NVDB sequence IDs as provenance. This targets the Forsøk 14 observation `443 raw -> 443 paths` where browser logic failed to merge source segmentation.
+- Added `nwe_compiler.sources.nvdb`: segmented road WKT ingestion, explicit EPSG:25833 -> EPSG:25832 reprojection with `always_xy=True`, NN2000 Z preservation, sentinel/invalid Z -> null and Shapely-based 1 km tile clipping. Z at new clip vertices is reconstructed from the original source segment instead of trusting GEOS Z behavior.
+- Added `nwe_compiler.sources.osm_buildings`: OSM Main API/Overpass way ingestion, WGS84 -> EPSG:25832, Shapely polygon validity/area/tile gates, explicit `height` and `building:levels` provenance and unresolved height rather than an authoritative heuristic.
+- Added six vector regressions covering road merge, junction boundaries, NVDB reprojection/Z policy, clip-boundary Z interpolation, OSM building normalization and invalid bow-tie rejection.
+- Opened draft stacked PR #4 against `agent/core-geospatial-tooling`; no merge performed.
+
+**Bevist**
+- Android Forsøk 14 supplied 443 NVDB raw segments and 133 OSM building footprints; source acquisition is feasible, while its browser road graph did not reduce raw segmentation.
+- Local focused vector suite: `6 passed in 0.15s`.
+- The first custom line-clipping implementation was rejected during self-review because repo policy prefers pinned Shapely for generic geometry. It was replaced before handoff and a boundary-Z regression was added.
+- PR #4 is mergeable into the stacked core branch.
+- PR #4 baseline run #67 reproduced the infrastructure failure: one job, `steps: []`, `runner_id: 0`, failure before repository commands execute.
+
+**Endret**
+- Branch: `agent/nvdb-osm-compiler-adapters`, stacked on the current core geospatial tooling branch. No merge to `main`.
+- Compiler now has production-direction vector normalization primitives beside the existing DTM/raster/provenance foundation.
+
+**Neste**
+- Persist real Nannestad NVDB/OSM responses outside Git as raw cache, bind SourceSnapshot/retrieval/license identity, run these adapters over the real 443/133 sample and emit deterministic normalized/compiled vector artifacts with RFC 8785 hashes. Viewer/runtime must then consume artifacts with zero raw NVDB/OSM contact.
+
+## 2026-08-17 — Persisted vector-artifact vertical
+
+**Gjort**
+- Synced PR #4 onto the latest `agent/core-geospatial-tooling` head and preserved the corrected Rasterio 1.5.0/provenance state. Removed an unrelated README drift found during stacked-PR QA.
+- Recovered the exact working NVDB/OSM source requests from Drive `Forsøk 14` and revalidated the live endpoints. The compiler now derives its own source envelopes from all four EPSG:25832 tile corners rather than copying the browser's two-corner OSM bbox.
+- Added `nwe_compiler.acquisition`: source contracts, live fetch boundary, JSON validation, SHA-256 content-addressed raw cache, cache integrity checks, `--offline` fail-closed behavior and SourceSnapshot metadata/licensing.
+- Added `nwe_compiler.vector_artifacts`: deterministic normalized road/building JSON, compiled runtime artifacts, CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle compatible with `engine/streaming/runtime_verifier.mjs`.
+- Added `nwe-compile-vectors --refresh|--offline` CLI with raw/normalized/compiled counts, bytes, hashes, cache state and phase timings.
+- Added dependency-free `apps/world-viewer/artifact_consumer.mjs`: bundle + compiled-artifact only, WebCrypto SHA-256/size verification and fail-before-fetch rejection of NVDB/OSM/raw-source transports.
+- Documented Prototype-0 NVDB NLOD and OSM ODbL contracts in `docs/data-licenses/vector-sources.md`; no whole-Norway acquisition decision was made.
+
+**Bevist**
+- Exact code copied to the branch was exercised in an isolated repo mirror: existing vector tests + acquisition/cache/artifact structural regressions = `12 passed` (0.19–0.20 s across repeated run).
+- Viewer artifact-boundary regression PASS: 2 cases, happy path performs exactly two requests (bundle + compiled artifact), malicious NVDB transport is rejected before a second request; reported raw source calls = 0.
+- Cold/warm raw-cache fixture proves a second identical acquisition uses cached bytes and performs zero fetcher calls; offline cache miss fails closed.
+- Live NVDB V4 returned segmented `LINESTRING Z` data for the Nannestad query and live OSM API v0.6 returned ODbL-attributed map elements/building ways, confirming the current source shapes remain available.
+
+**Ikke bevist / blokkert**
+- The execution container has no outbound DNS, so the actual live response bytes cannot be persisted into its ignored `data/raw` workspace. GitHub Actions is still zero-step blocked. Therefore no new production raw SHA-256, actual compiler `raw -> normalized -> compiled` count, artifact SHA or cold/warm timing from the live 443/133-class source set is claimed here.
+- Python `rfc8785` remains unavailable in this isolated container. Structural artifact tests inject a deterministic test serializer; production code defaults to the pinned RFC 8785 implementation and full JCS execution remains a dependency-capable-runner gate.
+
 **Endret**
 - PR #4 now carries the acquisition/cache/artifact/viewer boundary rather than browser-local source compilation. Raw geodata remains outside Git by construction.
 
@@ -294,7 +342,7 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Endret**
 - Branch: `agent/agent-system-v2`; `main` remains untouched.
-- `.agents/skills/*`, `.agents/roles/*`, `AGENTS.md`, README, worklog and task queue now describe Agent v2.
+- `.agents/skills/*`, `.agents/roles/*`, `AGENTS.md`, `README.md`, worklog and task queue now describe Agent v2.
 - No engine/runtime/renderer architecture decision was added to `docs/04-decisions.md`.
 
 **Neste**
@@ -397,23 +445,3 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Resume the highest-value engine work from `docs/06-task-queue.md`; do not schedule a physical Android run unless a genuinely device-specific blocker or accumulated milestone justifies it.
-
-## 2026-08-19 — LUMEN browser provenance/decode profiler
-
-**Gjort**
-- Synced persistent `agent/lumen-hourly` with merged LUMEN #46 on current `main` without force, then kept the branch diff limited to the new browser profiling surface.
-- Added deployable `browser-artifact-profile.html` for accepted Nannestad road/building artifacts. Production loading still uses `loadCompiledJsonArtifact` and full RuntimeVerificationBundle reconstruction before artifact use.
-- Added isolated replay measurement that re-runs the same shared browser verifier on already-fetched compiled bytes and separately times strict UTF-8 JSON decode; replay is measurement-only and never a verification cache/bypass.
-- Added bounded iterations, negative regressions, Vite output and proof `docs/proofs/2026-08-19-lumen-browser-provenance-profile.md`.
-
-**Bevist**
-- Exact code-bearing head `47121e170710bd0793c3045215ee2e06394c3cd1` passed `baseline` run `32210783376`, `world-viewer-vite` run `32210783377` and `viewer-benchmark` run `32210783359` before this documentation-only append. Viewer build output includes the profiler page and its focused regression reports PASS.
-- Existing exact-real Chrome gates on the same code head retained full `RUNTIME_VERIFICATION_PASS` for accepted artifacts and 0 raw-source runtime calls. Hosted WebGPU remained unavailable, so no WebGPU/WebGL2 comparison is inferred.
-- Exact-head Vercel Preview was attempted but blocked by the free-plan `api-deployments-free-per-day` limit; no older deployment is treated as evidence for this head.
-
-**Endret**
-- Draft PR #50 is the only open LUMEN PR and remains unmerged; SENTINEL owns cross-agent review/merge.
-- `docs/04-decisions.md` remains unchanged because no renderer, provenance-cache or worker policy is selected.
-
-**Neste**
-- Run the profiler in automated hosted Chrome once deployment/browser execution is available, collect controlled verification-vs-decode distributions on the exact accepted vector artifacts, and only then decide whether worker placement or caching merits a separate experiment.
