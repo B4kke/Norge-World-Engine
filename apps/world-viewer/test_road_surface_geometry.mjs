@@ -26,6 +26,11 @@ const corner = buildRoadSurfaceGeometry({
 assert.equal(corner.metadata.path_count, 1);
 assert.equal(corner.metadata.segment_count, 2);
 assert.equal(corner.metadata.width_semantics, 'renderer-only-fallback');
+assert.equal(corner.metadata.minimum_point_spacing_m, 1.25);
+assert.equal(corner.metadata.point_spacing_semantics, 'renderer-only-sampling');
+assert.equal(corner.metadata.source_point_count, 3);
+assert.equal(corner.metadata.sampled_point_count, 3);
+assert.equal(corner.metadata.removed_sample_count, 0);
 assert.equal(corner.metadata.winding, 'counter-clockwise-upward');
 assert.equal(corner.positions.length / 3, 6, 'one shared left/right pair must be emitted per centerline point');
 assert.equal(corner.indices.length, 12, 'two connected surface quads must emit four triangles');
@@ -59,7 +64,24 @@ assert.equal(deduped.metadata.segment_count, 1, 'duplicate centerline points mus
 assert.equal(deduped.positions.length / 3, 4);
 assertUpwardWinding(deduped);
 
+const denselySampled = buildRoadSurfaceGeometry({
+  paths: [{ points: [[0, 0, 0], [0.4, 0, 0], [0.8, 0, 0], [1.2, 0, 0], [3, 0, 0]] }],
+}, { projectPoint: identityProject });
+assert.equal(denselySampled.metadata.source_point_count, 5);
+assert.equal(denselySampled.metadata.sampled_point_count, 2, 'sub-threshold renderer samples must be compacted');
+assert.equal(denselySampled.metadata.removed_sample_count, 3);
+assert.equal(denselySampled.metadata.segment_count, 1);
+assert.equal(denselySampled.metadata.point_spacing_semantics, 'renderer-only-sampling');
+assertUpwardWinding(denselySampled);
+
+const unsimplified = buildRoadSurfaceGeometry({
+  paths: [{ points: [[0, 0, 0], [0.4, 0, 0], [3, 0, 0]] }],
+}, { projectPoint: identityProject, minimumPointSpacingMeters: 0 });
+assert.equal(unsimplified.metadata.sampled_point_count, 3, 'sampling must remain explicitly disableable for diagnostics');
+assert.equal(unsimplified.metadata.removed_sample_count, 0);
+
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, widthMeters: 0 }), /widthMeters/);
+assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, minimumPointSpacingMeters: -1 }), /minimumPointSpacingMeters/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, {}), /projectPoint/);
 
 console.log('ROAD_SURFACE_GEOMETRY_PASS');
