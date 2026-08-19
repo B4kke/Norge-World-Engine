@@ -30,6 +30,11 @@ DATASETS = {
         "provider": "NIBIO",
         "purpose": "forest/vegetation vector comparison only",
     },
+    "ar50_arealtype": {
+        "metadata_uuid": "41f6b000-c394-41c5-8ebb-07a0a3ec914f",
+        "provider": "NIBIO",
+        "purpose": "coarse nationwide non-forest vegetation mask candidate",
+    },
 }
 
 USER_AGENT = "NorgeWorldEngine-VisualSourceProbe/0.1 (+https://github.com/B4kke/Norge-World-Engine)"
