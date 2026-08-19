@@ -1,0 +1,124 @@
+import { assertCompiledTransport, loadCompiledJsonArtifact } from '../artifact_consumer.mjs';
+import { profileVerifiedJsonArtifact, normalizeProfileIterations } from './browserArtifactProfile.mjs';
+import { monotonicNow } from './rendererObservability.mjs';
+
+const DEFAULT_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
+const output = document.querySelector('#output');
+const runButton = document.querySelector('#run');
+
+function absoluteUrl(reference, base) {
+  return new URL(reference, base).href;
+}
+
+function browserContext() {
+  return {
+    user_agent: navigator.userAgent ?? null,
+    user_agent_data: navigator.userAgentData ? {
+      mobile: navigator.userAgentData.mobile ?? null,
+      platform: navigator.userAgentData.platform ?? null,
+      brands: Array.isArray(navigator.userAgentData.brands) ? navigator.userAgentData.brands : null,
+    } : null,
+    device_pixel_ratio: window.devicePixelRatio ?? null,
+  };
+}
+
+function queryConfig() {
+  const params = new URLSearchParams(location.search);
+  return {
+    manifestUrl: params.get('manifest') || DEFAULT_MANIFEST,
+    iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: 20 }),
+  };
+}
+
+async function run() {
+  runButton.disabled = true;
+  output.textContent = 'Running…';
+  const { manifestUrl, iterations } = queryConfig();
+  const requests = [];
+  const guardedFetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input?.url;
+    assertCompiledTransport(String(url ?? ''));
+    requests.push(String(url));
+    return fetch(input, init);
+  };
+
+  try {
+    const startedAt = monotonicNow();
+    assertCompiledTransport(manifestUrl);
+    const manifestResponse = await guardedFetch(manifestUrl, { cache: 'no-store' });
+    if (!manifestResponse.ok) throw new Error(`PROFILE_MANIFEST_FETCH_FAILED: ${manifestResponse.status}`);
+    const manifest = await manifestResponse.json();
+    if (manifest?.schema !== 'nwe.world-preview-manifest/0.1') {
+      throw new Error(`PROFILE_MANIFEST_SCHEMA: ${manifest?.schema ?? 'missing'}`);
+    }
+
+    const manifestBase = new URL(manifestUrl, location.href).href;
+    const layers = [
+      { name: 'roads', expectedRole: 'road-network', bundleUrl: absoluteUrl(manifest.roads?.bundle, manifestBase) },
+      { name: 'buildings', expectedRole: 'building-footprints', bundleUrl: absoluteUrl(manifest.buildings?.bundle, manifestBase) },
+    ];
+
+    const layerReports = {};
+    for (const layer of layers) {
+      const productionStartedAt = monotonicNow();
+      const loaded = await loadCompiledJsonArtifact({
+        bundleUrl: layer.bundleUrl,
+        expectedRole: layer.expectedRole,
+        fetchImpl: guardedFetch,
+      });
+      const productionLoadMs = monotonicNow() - productionStartedAt;
+      const replay = await profileVerifiedJsonArtifact({
+        bundle: loaded.bundle,
+        bytes: loaded.bytes,
+        iterations,
+      });
+      layerReports[layer.name] = {
+        bundle_url: layer.bundleUrl,
+        artifact_url: loaded.artifactUrl,
+        artifact_sha256: loaded.artifactRef.sha256,
+        artifact_bytes: loaded.bytes.byteLength,
+        production_load_ms: productionLoadMs,
+        production_verification_code: loaded.verification.code,
+        isolated_replay: replay,
+      };
+    }
+
+    const report = {
+      schema: 'nwe.browser-provenance-profile-report/0.1',
+      status: 'PASS',
+      claim_scope: 'hosted/browser verification+JSON-decode profiling only',
+      manifest_url: manifestBase,
+      tile_id: manifest.tile?.id ?? null,
+      iterations,
+      layers: layerReports,
+      requests,
+      raw_source_calls: 0,
+      timing_ms: { total: monotonicNow() - startedAt },
+      build: {
+        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+      },
+      browser: browserContext(),
+      note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass.',
+    };
+    output.textContent = JSON.stringify(report, null, 2);
+    globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+  } catch (error) {
+    const report = {
+      schema: 'nwe.browser-provenance-profile-report/0.1',
+      status: 'ERROR',
+      error: error instanceof Error ? error.message : String(error),
+      build: {
+        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+      },
+    };
+    output.textContent = JSON.stringify(report, null, 2);
+    globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+  } finally {
+    runButton.disabled = false;
+  }
+}
+
+runButton.addEventListener('click', () => { void run(); });
+void run();
