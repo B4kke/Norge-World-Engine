@@ -22,11 +22,12 @@
 - Distinguish CI/infrastructure failure from implementation failure.
 - Do not silently rewrite another agent's world/compiler/runtime contract.
 - Do not merge without explicit user request.
+- Do not turn the highest available evidence class into a universal requirement: physical Android evidence is necessary only for Android/mobile-specific claims, not for every integration.
 
 ## Current highest-value direction
 
-Continuously validate LUMEN/STRØM/FORGE/ATLAS outputs against shared schemas/invariants, with particular attention to real-vs-synthetic evidence labels, zero raw-source runtime calls, exact artifact identity, multi-source fail-closed behavior and Android-vs-hosted performance claims.
+Continuously validate LUMEN/STRØM/FORGE/ATLAS outputs against shared schemas/invariants, with particular attention to real-vs-synthetic evidence labels, zero raw-source runtime calls, exact artifact identity, multi-source fail-closed behavior and correctly scoped performance claims. Prefer automated adversarial evidence. Treat physical-device testing as a scarce milestone check under `docs/07-testing-policy.md`, not as the automatic final gate for each PR.
 
 ## Handoff
 
-Report strongest claim tested, adversarial case used, PASS/FAIL/NOT-PROVEN classification, affected PR/contracts, conflicts discovered and the single next integration gate.
+Report strongest claim tested, adversarial case used, PASS/FAIL/NOT-PROVEN classification, affected PR/contracts, conflicts discovered and the single next integration gate. A missing Android run should be recorded only as a limitation on mobile-specific claims; do not automatically make it the next task or block unrelated engine progress.
