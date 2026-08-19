@@ -1,0 +1,43 @@
+name: strom-retained-budget
+
+on:
+  pull_request:
+    paths:
+      - 'engine/streaming/tile_scheduler.mjs'
+      - 'engine/streaming/test_tile_scheduler_load_admission.mjs'
+      - 'engine/streaming/retained_byte_budget.mjs'
+      - 'engine/streaming/test_retained_byte_budget.mjs'
+      - 'engine/streaming/benchmark_retained_byte_budget.mjs'
+      - 'engine/streaming/retained_budget_lifecycle_adapter.mjs'
+      - 'engine/streaming/test_retained_budget_lifecycle_adapter.mjs'
+      - 'engine/streaming/benchmark_retained_admission_priority.mjs'
+      - '.github/workflows/strom-retained-budget.yml'
+  workflow_dispatch:
+
+jobs:
+  retained-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check engine/streaming/tile_scheduler.mjs
+          node --check engine/streaming/test_tile_scheduler_load_admission.mjs
+          node --check engine/streaming/retained_byte_budget.mjs
+          node --check engine/streaming/test_retained_byte_budget.mjs
+          node --check engine/streaming/benchmark_retained_byte_budget.mjs
+          node --check engine/streaming/retained_budget_lifecycle_adapter.mjs
+          node --check engine/streaming/test_retained_budget_lifecycle_adapter.mjs
+          node --check engine/streaming/benchmark_retained_admission_priority.mjs
+      - name: Regressions
+        run: |
+          node engine/streaming/test_tile_scheduler_load_admission.mjs
+          node engine/streaming/test_retained_byte_budget.mjs
+          node engine/streaming/test_retained_budget_lifecycle_adapter.mjs
+      - name: Benchmarks
+        run: |
+          node engine/streaming/benchmark_retained_byte_budget.mjs
+          node engine/streaming/benchmark_retained_admission_priority.mjs
