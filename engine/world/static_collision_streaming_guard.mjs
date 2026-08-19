@@ -10,6 +10,11 @@ function requireFunction(value, label) {
   return value;
 }
 
+function requireTick(value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new TypeError('simulation tick must be a non-negative safe integer');
+  return value;
+}
+
 function requireIdentity(identity) {
   if (identity == null) return null;
   if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
@@ -27,15 +32,21 @@ function requireIdentity(identity) {
  * authority: a bound collision is preflighted against simulation dependencies
  * before payload disposal, and lifecycle state is committed only after the
  * downstream disposal succeeds.
+ *
+ * STRØM callbacks do not carry simulation time, so callers must provide the
+ * current authoritative simulation tick explicitly. The guard never invents a
+ * tick from scheduler generation, wall-clock time or renderer lifecycle state.
  */
 export function createStaticCollisionStreamingGuard({
   initialState,
   getCurrentPhysicsFrame,
+  getSimulationTick,
   getCollisionIdentity,
   disposeTile = async () => {},
 } = {}) {
   if (!initialState || typeof initialState !== 'object') throw new TypeError('initialState is required');
   requireFunction(getCurrentPhysicsFrame, 'getCurrentPhysicsFrame');
+  requireFunction(getSimulationTick, 'getSimulationTick');
   requireFunction(getCollisionIdentity, 'getCollisionIdentity');
   requireFunction(disposeTile, 'disposeTile');
 
@@ -61,7 +72,7 @@ export function createStaticCollisionStreamingGuard({
       event: createStaticCollisionLifecycleEvent({
         schema: STATIC_COLLISION_LIFECYCLE_SCHEMA,
         phase: STATIC_COLLISION_LIFECYCLE_PHASE,
-        tick,
+        tick: requireTick(tick),
         action,
         collisionId: identity.collisionId,
         tileId,
@@ -79,7 +90,7 @@ export function createStaticCollisionStreamingGuard({
   function setDependencies({ tick, tile, payload, dependentEntityIds }) {
     const identity = requireIdentity(getCollisionIdentity(tile, payload));
     if (identity == null) throw new Error(`tile ${tile?.id ?? '<unknown>'} has no bound static collision`);
-    const collision = collisionFor(identity, tile.id);
+    collisionFor(identity, tile.id);
     const { event, currentPhysicsFrame } = makeEvent({
       tick,
       action: 'SET_DEPENDENCIES',
@@ -88,7 +99,7 @@ export function createStaticCollisionStreamingGuard({
       dependentEntityIds,
     });
     state = applyStaticCollisionLifecycleEvent({ state, event, currentPhysicsFrame });
-    return collision.dependentEntityIds.length !== state.collisions.find((entry) => entry.collisionId === identity.collisionId).dependentEntityIds.length;
+    return state;
   }
 
   async function guardedDisposeTile(tile, payload, context = {}) {
@@ -97,7 +108,7 @@ export function createStaticCollisionStreamingGuard({
 
     collisionFor(identity, tile.id);
     const { event, currentPhysicsFrame } = makeEvent({
-      tick: context.tick ?? 0,
+      tick: getSimulationTick(),
       action: 'EVICT',
       tileId: tile.id,
       identity,
