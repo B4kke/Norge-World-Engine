@@ -39,6 +39,8 @@ jobs:
           node --check engine/world/test_static_collision_lifecycle_contract.mjs
           node --check engine/world/static_collision_streaming_guard.mjs
           node --check engine/world/test_static_collision_streaming_guard.mjs
+          node --check engine/world/static_collision_occupancy_contract.mjs
+          node --check engine/world/test_static_collision_occupancy_contract.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
@@ -50,6 +52,7 @@ jobs:
           python -m json.tool engine/world/schemas/physics-frame-topology-transition-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/static-world-collision-binding-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/static-collision-lifecycle-event-v0.1.schema.json > /dev/null
+          python -m json.tool engine/world/schemas/static-collision-occupancy-snapshot-v0.1.schema.json > /dev/null
 
       - name: Run physics frame maintenance event regressions
         run: node engine/world/test_physics_frame_event_contract.mjs
@@ -71,6 +74,9 @@ jobs:
 
       - name: Run STRØM scheduler to ATLAS collision guard regressions
         run: node engine/world/test_static_collision_streaming_guard.mjs
+
+      - name: Run solver-derived static collision occupancy regressions
+        run: node engine/world/test_static_collision_occupancy_contract.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
