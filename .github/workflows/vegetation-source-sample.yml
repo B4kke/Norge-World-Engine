@@ -1,0 +1,146 @@
+name: vegetation-source-sample
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install compiler dependencies
+        run: python -m pip install --disable-pip-version-check -e engine/compiler
+
+      - name: Ensure mature GDAL/OGR GML tooling
+        run: |
+          if ! command -v ogrinfo >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends gdal-bin
+          fi
+          ogrinfo --version
+          ogrinfo --formats | grep -i GML
+
+      - name: Syntax check vegetation source gate
+        run: |
+          python -m py_compile tools/visual-data/materialize_vegetation_source_cache.py
+          python -m py_compile tools/visual-data/normalize_vegetation_source_sample.py
+
+      - name: Materialize bounded provider cache
+        run: |
+          rm -rf /tmp/nwe-vegetation-cache /tmp/nwe-vegetation-normalize
+          mkdir -p /tmp/nwe-vegetation-normalize
+          python tools/visual-data/materialize_vegetation_source_cache.py \
+            --work-dir /tmp/nwe-vegetation-cache \
+            --output /tmp/nwe-vegetation-materialization.json
+
+      - name: Normalize twice from identical cache with source network disabled
+        env:
+          PROJ_NETWORK: 'OFF'
+          GML_DOWNLOAD_SCHEMA: 'NO'
+          http_proxy: 'http://127.0.0.1:9'
+          https_proxy: 'http://127.0.0.1:9'
+          HTTP_PROXY: 'http://127.0.0.1:9'
+          HTTPS_PROXY: 'http://127.0.0.1:9'
+          NO_PROXY: ''
+          no_proxy: ''
+        run: |
+          python tools/visual-data/normalize_vegetation_source_sample.py \
+            --cache-root /tmp/nwe-vegetation-cache \
+            --manifest /tmp/nwe-vegetation-materialization.json \
+            --ar50-index 0 \
+            --work-dir /tmp/nwe-vegetation-normalize/a1 \
+            --output /tmp/nwe-vegetation-normalize/normalized-a1.json \
+            --evidence /tmp/nwe-vegetation-normalize/evidence-a1.json
+          python tools/visual-data/normalize_vegetation_source_sample.py \
+            --cache-root /tmp/nwe-vegetation-cache \
+            --manifest /tmp/nwe-vegetation-materialization.json \
+            --ar50-index 0 \
+            --work-dir /tmp/nwe-vegetation-normalize/a2 \
+            --output /tmp/nwe-vegetation-normalize/normalized-a2.json \
+            --evidence /tmp/nwe-vegetation-normalize/evidence-a2.json
+          cmp /tmp/nwe-vegetation-normalize/normalized-a1.json /tmp/nwe-vegetation-normalize/normalized-a2.json
+
+      - name: Normalize independent AR50 acquisition and prove semantic stability
+        env:
+          PROJ_NETWORK: 'OFF'
+          GML_DOWNLOAD_SCHEMA: 'NO'
+          http_proxy: 'http://127.0.0.1:9'
+          https_proxy: 'http://127.0.0.1:9'
+          HTTP_PROXY: 'http://127.0.0.1:9'
+          HTTPS_PROXY: 'http://127.0.0.1:9'
+          NO_PROXY: ''
+          no_proxy: ''
+        run: |
+          python tools/visual-data/normalize_vegetation_source_sample.py \
+            --cache-root /tmp/nwe-vegetation-cache \
+            --manifest /tmp/nwe-vegetation-materialization.json \
+            --ar50-index 1 \
+            --work-dir /tmp/nwe-vegetation-normalize/b \
+            --output /tmp/nwe-vegetation-normalize/normalized-b.json \
+            --evidence /tmp/nwe-vegetation-normalize/evidence-b.json
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          materialization = json.loads(Path('/tmp/nwe-vegetation-materialization.json').read_text())
+          a1 = json.loads(Path('/tmp/nwe-vegetation-normalize/evidence-a1.json').read_text())
+          a2 = json.loads(Path('/tmp/nwe-vegetation-normalize/evidence-a2.json').read_text())
+          b = json.loads(Path('/tmp/nwe-vegetation-normalize/evidence-b.json').read_text())
+          bytes_a1 = Path('/tmp/nwe-vegetation-normalize/normalized-a1.json').read_bytes()
+          bytes_a2 = Path('/tmp/nwe-vegetation-normalize/normalized-a2.json').read_bytes()
+          offline_equal = bytes_a1 == bytes_a2
+          semantic_equal = a1['semantic_sha256'] == b['semantic_sha256']
+          if not offline_equal:
+              raise SystemExit('offline replay bytes differ')
+          if not semantic_equal:
+              raise SystemExit('independent AR50 acquisitions normalize to different semantic hashes')
+
+          summary = {
+              'schema': 'nwe.vegetation-source-sample-gate/0.1',
+              'status': 'PASS',
+              'tile': materialization['target_tile'],
+              'source_network_free_offline_replay': True,
+              'offline_replay_byte_identical': offline_equal,
+              'normalized_sha256': hashlib.sha256(bytes_a1).hexdigest(),
+              'semantic_sha256': a1['semantic_sha256'],
+              'independent_ar50_semantic_equal': semantic_equal,
+              'ar50_raw_hashes_equal': materialization['sources']['ar50']['raw_hashes_equal'],
+              'sr16v': {
+                  'metadata_uuid': materialization['sources']['sr16v']['metadata_uuid'],
+                  'source_gml_sha256': materialization['sources']['sr16v']['cache']['gml_sha256'],
+                  'source_gml_bytes': materialization['sources']['sr16v']['cache']['gml_bytes'],
+                  'normalized_feature_count': a1['layers']['sr16v']['stats']['normalized_feature_count'],
+                  'normalized_property_names': a1['layers']['sr16v']['stats']['normalized_property_names'],
+              },
+              'ar50': {
+                  'raw_acquisition_sha256': [item['sha256'] for item in materialization['sources']['ar50']['acquisitions']],
+                  'normalized_feature_count': a1['layers']['ar50']['stats']['normalized_feature_count'],
+                  'normalized_property_names': a1['layers']['ar50']['stats']['normalized_property_names'],
+              },
+              'truth_boundary': 'candidate source normalization only; no tree placement/runtime artifact promoted',
+          }
+          Path('/tmp/nwe-vegetation-sample-evidence.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vegetation-source-sample-${{ github.sha }}
+          path: |
+            /tmp/nwe-vegetation-materialization.json
+            /tmp/nwe-vegetation-sample-evidence.json
+            /tmp/nwe-vegetation-normalize/evidence-a1.json
+            /tmp/nwe-vegetation-normalize/evidence-b.json
+            /tmp/nwe-vegetation-normalize/normalized-a1.json
+          if-no-files-found: error
+          retention-days: 14
