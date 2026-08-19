@@ -100,3 +100,57 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-02`: upgrade the proven Three terrain mesh from a basic lit material to walking-distance terrain materials/detail coordinates without changing accepted DTM geometry.
+
+## 2026-08-19 21:30 CEST — ATLAS — P0-GROUND-06A
+
+**What**
+- Added the minimal renderer-neutral `nwe.character-world-transform/0.1-candidate` contract on top of the existing `WorldPosition` / `RenderOrigin` foundation.
+- Defined stable character entity identity, authoritative Float64 world position, a renderer-neutral heading convention, heading-relative planar movement, explicit world-height updates for grounding consumers and render-local derivation scoped to render-origin series/epoch.
+- Kept GLB/assets, animation, keyboard/touch input, Three.js object binding, terrain sampling/raycast implementation, third-person camera and physics-engine selection out of ATLAS ownership.
+- Added six focused regressions and wired them into the existing repository baseline rather than creating another harness.
+
+**Why**
+- `P0-GROUND-05/06` needs a character transform that LUMEN can render without allowing `THREE.Object3D` or render-origin-local Float32 state to become world truth. This is the smallest ATLAS contribution that unblocks the playable character boundary without overlapping renderer work.
+
+**Result / evidence**
+- FACT: isolated local Node syntax/regression execution of the new contract logic passes.
+- FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires exactly equal authoritative transform values while allowing derived local coordinates to change.
+- FACT: the contract rejects foreign world frames and non-finite movement/heading/height inputs.
+- FACT: code-bearing head `f6b8ed3f480844e07e20cfd5a94d5cc64fba5e8d` passed GitHub `baseline` run `32292789347` and `atlas-rapier-physics` run `32292789343`.
+
+**Changed**
+- Branch `agent/atlas-ground-06a`, draft PR #72.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `.github/workflows/baseline.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P0-GROUND-06`: LUMEN consumes the ATLAS transform boundary when character integration reaches movement/grounding; ATLAS should only adjust the contract if that integration exposes a concrete world-state mismatch.
+
+## 2026-08-19 22:15 CEST — ATLAS — P0-GROUND-06A-OPT
+
+**What**
+- Optimized the character-transform hot path without expanding ATLAS ownership.
+- Replaced validation-by-cloning with allocation-free validation for existing authoritative positions.
+- Added no-op identity fast paths for zero movement, equivalent heading updates and unchanged grounding height.
+- Reused the immutable authoritative `WorldPosition` for heading-only changes and kept physical movement/height changes as the only operations that create a new position.
+- Canonicalized heading to `[0, 2π)` including a single positive zero representation, and fail-closed forged non-canonical character transforms.
+
+**Why**
+- Character movement will execute at simulation/frame cadence. Avoiding redundant immutable-object churn now makes the LUMEN integration cheaper while preserving the existing world/render-origin invariants and renderer-neutral boundary.
+
+**Result / evidence**
+- FACT: regression coverage increased from 6 to 7 cases, including strict object-identity checks for no-op updates and immutable-position reuse for heading-only updates.
+- FACT: compared with the initial implementation, a changed heading update eliminates two redundant `WorldPosition` creations; a planar move/height update eliminates two redundant position creations; no-op updates return the existing transform.
+- FACT: optimized code head `cce1b2367d33ef9a51a909cab0a61c95413c4d45` passed GitHub `baseline` run `32297774095` and `atlas-rapier-physics` run `32297774068`.
+- No wall-clock speedup is claimed; this optimization is structurally proven allocation reduction plus unchanged correctness gates.
+
+**Changed**
+- Draft PR #72, branch `agent/atlas-ground-06a`.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P0-GROUND-06`: LUMEN consumes the optimized ATLAS transform boundary; ATLAS changes it again only if integration exposes a concrete world-state mismatch.
