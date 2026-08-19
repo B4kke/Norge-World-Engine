@@ -85,7 +85,7 @@ Every completed work session appends exactly one entry using this structure:
 - FACT: hosted Chrome/WebGL2 rendered the accepted Nannestad tile with 16,641 terrain vertices / 32,768 triangles, 246 compiled road paths and 135 building footprints, 4 draw calls, 7 runtime requests and 0 raw-source runtime calls.
 - FACT: production Vite build, browser provenance/decode profile, terrain resource lifecycle smoke and DedicatedWorker gate pass.
 - LIMITATION: hosted WebGPU probe is unavailable (`A valid external Instance reference no longer exists.`), so no WebGPU performance comparison is claimed. This does not invalidate the proven Three renderer boundary or WebGL2 fallback.
-- An automatically triggered cold real-data compile/publish workflow is still running; it is additional foundation revalidation, not required to re-prove the accepted source artifacts for this renderer-only task.
+- A cold source/compiler revalidation was automatically started because the viewer path changed, then cancelled when newer branch commits superseded it before the browser step. It is not counted as evidence and is deliberately not restarted solely to re-prove already accepted source/compiler facts for this renderer-only task.
 
 **Changed**
 - Branch `agent/lumen-ground-01`, draft PR #69.
