@@ -51,6 +51,22 @@ Load only what the task needs:
 - SENTINEL may block a claim/PR on missing evidence; it must distinguish implementation failure from infrastructure/tooling failure.
 - No agent merges its own work unless the user explicitly asks for a merge.
 
+## Manual physical-device testing policy
+
+Physical handset/device testing is a **scarce milestone check**, not a default validation step and not a routine P0 blocker.
+
+- Prefer automated regressions, hosted CI, desktop/headless browser runs, exact-artifact smoke tests and reproducible benchmarks for normal development.
+- Do **not** ask the user to manually test Android after ordinary renderer, streaming, compiler, coordinate or integration changes.
+- A missing fresh Android run must not block unrelated engine progress or become the automatic `Neste:` item.
+- Physical-device testing is appropriate only when a genuinely device-specific question cannot be answered credibly by automation, or at an occasional accumulated milestone where one run validates several substantial changes at once.
+- Batch device questions. A requested manual run should answer multiple high-value questions rather than repeat substantially the same scenario from the previous run.
+- Before requesting user action, exhaust available automated/browser evidence and state exactly which unresolved claim requires physical hardware.
+- Android/mobile evidence is required only for claims specifically about Android/mobile behavior or performance. It is **not** required to accept platform-neutral compiler, world-model, provenance, scheduler or browser-runtime progress.
+- Keep harnesses ready so a future milestone device run is cheap and repeatable, but do not turn harness availability into a requirement to use it continuously.
+- Historical `docs/05-worklog.md` entries that say the next step is an Android/device run are historical handoffs and are superseded by the current `docs/06-task-queue.md` plus this policy.
+
+See `docs/07-testing-policy.md` for the project-wide validation hierarchy and manual-device cadence.
+
 ## Architecture invariants
 
 - Separate geographic correctness from photorealism.
@@ -63,9 +79,9 @@ Load only what the task needs:
 - Performance is a requirement: measure CPU, GPU, RAM/VRAM, network/cache, tile latency, worker cost, frame time/rAF gaps and draw calls as soon as relevant.
 - Use the least expensive representation that satisfies the current LOD/accuracy need.
 
-## Current evidence boundary — 2026-08-18
+## Current evidence boundary — 2026-08-19
 
-The accepted single-tile Nannestad terrain plus road/building artifacts are real-data and runtime-verification proven. Full browser provenance and an actual module DedicatedWorker path are also proven. Real neighboring DTM1 terrain is still fail-closed on the unresolved source-overlap/seam policy; Android movement/performance and whole-Norway coordinate/LOD choices remain open. The Vite World Viewer is a deployment/measurement shell, not a selected renderer architecture.
+The accepted single-tile Nannestad terrain plus road/building artifacts are real-data and runtime-verification proven. Full browser provenance, an actual module DedicatedWorker path, exact-real hosted Chrome movement/cache behavior and renderer terrain-resource lifecycle are proven. Real neighboring DTM1 terrain is still fail-closed on the unresolved source-overlap/seam policy; whole-Norway coordinate/LOD choices remain open. Physical Android/WebGPU checks are retained as occasional device-specific milestone evidence, not the default blocker for continued engine development. The Vite World Viewer is a deployment/measurement shell, not a selected renderer architecture.
 
 ## Prototype vs engine
 
@@ -76,4 +92,4 @@ Experiments and historical implementations belong in `prototypes/`. Production-d
 - **Gjort:** actual implementation/investigation.
 - **Bevist:** what is now known from evidence.
 - **Endret:** files/decisions/tasks changed.
-- **Neste:** single highest-value follow-up.
+- **Neste:** single highest-value follow-up. Do not default to requesting a physical-device test unless the manual-device policy specifically justifies one.

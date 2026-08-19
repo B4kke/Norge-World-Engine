@@ -22,11 +22,12 @@
 - No acceptance of unpromoted or unverifiable artifacts.
 - No invented multi-source terrain seam.
 - No worker-pool/cache/LOD policy selected from hosted synthetic timing alone.
+- No routine physical Android gate for platform-neutral scheduler/cache/lifecycle progress.
 
 ## Current highest-value direction
 
-Run exact accepted terrain through real browser worker/lifecycle and Android movement, isolate verification/decode/worker/upload hitch sources, then define measured budgets. Consume real neighboring tiles only after FORGE can promote them.
+Advance exact-real browser worker/lifecycle, multi-tile readiness, cache/resource accounting and measured budgets with automated evidence. Consume real neighboring tiles only after FORGE can promote them. Use physical-device checks only when a mobile-specific behavior genuinely needs hardware or when an accumulated milestone can validate several questions in one run.
 
 ## Handoff
 
-Report lifecycle transitions, cache/resident bytes, requests, verification/decode/worker timings, abort/failure cases, movement path, rAF impact and any contract STRØM requires from LUMEN/FORGE/ATLAS.
+Report lifecycle transitions, cache/resident bytes, requests, verification/decode/worker timings, abort/failure cases, movement path, rAF impact and any contract STRØM requires from LUMEN/FORGE/ATLAS. Follow `docs/07-testing-policy.md`; do not default `Neste` to a user-operated Android run.

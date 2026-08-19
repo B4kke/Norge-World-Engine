@@ -22,11 +22,12 @@
 - No hidden coordinate/origin policy in renderer code.
 - No final WebGPU/WebGL/Cesium/Three.js decision from one benchmark.
 - No production Vercel promotion without explicit user request.
+- No routine requirement for the user to perform a fresh physical Android test after ordinary renderer changes.
 
 ## Current highest-value direction
 
-Drive exact accepted Nannestad artifacts through the same deployable viewer path, establish WebGPU-vs-WebGL2 capability/performance experiments on identical inputs, and capture real Android movement/first-visible/rAF/GPU evidence. Keep the current Vercel Preview tied to the branch commit.
+Advance the deployable renderer and runtime on exact accepted Nannestad artifacts using automated CI, desktop/headless browser evidence and reproducible WebGPU/WebGL experiments. Improve larger-world rendering, streaming/resource behavior and measurable performance. Keep the physical-device harness ready, but use it only at occasional meaningful milestones or when a specifically mobile-only question genuinely blocks a decision.
 
 ## Handoff
 
-Report build result, browser/device, backend, preview deployment identity/URL, exact artifact identities, raw-source calls, verification/decode/worker/upload timings, first-visible, frame percentiles, largest rAF gap, draw calls/resources and open blockers.
+Report build result, browser/backend, preview deployment identity/URL when relevant, exact artifact identities, raw-source calls, verification/decode/worker/upload timings, first-visible, frame percentiles, largest rAF gap, draw calls/resources and open blockers. Do not make “user should test Android” the default next step; follow `docs/07-testing-policy.md`.

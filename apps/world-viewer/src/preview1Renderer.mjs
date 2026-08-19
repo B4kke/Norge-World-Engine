@@ -2,6 +2,33 @@ import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsPro
 import { createPreview1WebGl2Renderer } from './preview1WebGl2Renderer.mjs';
 import { createPreview1WebGpuRenderer } from './preview1WebGpuRenderer.mjs';
 
+function normalizeRendererInterface(renderer) {
+  if (!renderer) return renderer;
+  const invalidate = typeof renderer.invalidate === 'function'
+    ? renderer.invalidate.bind(renderer)
+    : typeof renderer.drawForBenchmark === 'function'
+      ? renderer.drawForBenchmark.bind(renderer)
+      : null;
+  const dispose = typeof renderer.dispose === 'function'
+    ? renderer.dispose.bind(renderer)
+    : typeof renderer.stop === 'function'
+      ? renderer.stop.bind(renderer)
+      : null;
+  if (!invalidate || !dispose) {
+    throw new Error('PREVIEW1_RENDERER_INTERFACE_INVALID');
+  }
+  return {
+    ...renderer,
+    invalidate,
+    dispose,
+  };
+}
+
+function disposeRenderer(renderer) {
+  if (typeof renderer?.dispose === 'function') renderer.dispose();
+  else renderer?.stop?.();
+}
+
 export async function createPreview1Renderer({
   backend = 'auto',
   graphicsProfile = 'balanced',
@@ -24,9 +51,9 @@ export async function createPreview1Renderer({
       // A device/context that exists but cannot submit the real first frame is not
       // a usable Preview 1 backend. Auto mode must fall back before READY.
       await webGpuRenderer.firstFrame;
-      return webGpuRenderer;
+      return normalizeRendererInterface(webGpuRenderer);
     } catch (error) {
-      webGpuRenderer?.dispose?.();
+      disposeRenderer(webGpuRenderer);
       if (rendererPreference === 'webgpu') throw error;
       onBackendFallback({ from: 'webgpu', to: 'webgl2', error });
     }
@@ -34,8 +61,8 @@ export async function createPreview1Renderer({
     throw new Error('WEBGPU_UNAVAILABLE');
   }
 
-  return createPreview1WebGl2Renderer({
+  return normalizeRendererInterface(createPreview1WebGl2Renderer({
     ...options,
     graphicsProfile: profile,
-  });
+  }));
 }

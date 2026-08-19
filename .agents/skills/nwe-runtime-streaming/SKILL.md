@@ -13,6 +13,8 @@ Compose lifecycle as explicit phases: resolve immutable runtime input → verify
 
 Use immutable artifact/lineage identities for cache decisions. Runtime never calls raw Kartverket/NVDB/OSM endpoints. Multi-tile runtime work may proceed only on artifacts the compiler can validly promote; do not synthesize a seam rule in streaming.
 
-Worker pooling, provenance caching, decode placement, hard memory budgets and LOD are open until real browser/Android movement evidence exists. Track verification, decode, worker startup/RTT, upload/apply, first-visible, rAF gaps, cache churn and retained bytes.
+Worker pooling, provenance caching, decode placement, hard memory budgets and LOD remain evidence-driven. Use real browser movement/lifecycle evidence plus automated benchmarks to advance these questions; physical-device evidence is reserved for claims that are actually mobile/device-specific or for occasional accumulated milestones. Do not make Android a routine blocker for platform-neutral streaming work.
 
-Expose clean renderer injection points so LUMEN can compare WebGPU/WebGL without changing lifecycle/world truth.
+Track verification, decode, worker startup/RTT, upload/apply, first-visible, rAF gaps, cache churn and retained bytes. Expose clean renderer injection points so LUMEN can compare WebGPU/WebGL without changing lifecycle/world truth.
+
+Follow `docs/07-testing-policy.md` before requesting any manual handset run.

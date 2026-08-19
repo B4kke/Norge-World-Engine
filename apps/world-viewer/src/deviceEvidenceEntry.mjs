@@ -1,13 +1,20 @@
 import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1.ts';
-import { buildCounterpartEvidenceUrl, buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { resolveGraphicsProfile } from './graphicsProfiles.mjs';
 
 const params = new URLSearchParams(location.search);
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
 const rendererPreference = params.get('renderer') || 'webgl2';
 const graphicsProfile = params.get('graphics') || 'balanced';
 const evidenceTarget = params.get('target') === 'android-chrome' ? 'android-chrome' : 'generic-browser';
+const reportUrl = params.get('report');
 const frameCount = Number(params.get('frames') || '90');
 if (!Number.isInteger(frameCount) || frameCount < 10 || frameCount > 600) throw new Error('DEVICE_EVIDENCE_FRAMES_OUT_OF_RANGE');
+
+const buildIdentity = {
+  git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+  deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+};
 
 let captureSessionId = params.get('session');
 if (!captureSessionId) {
@@ -20,8 +27,7 @@ const canvas = document.querySelector('#device-canvas');
 const status = document.querySelector('#device-status');
 const output = document.querySelector('#device-output');
 const download = document.querySelector('#device-download');
-const counterpart = document.querySelector('#device-counterpart');
-if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement) || !(counterpart instanceof HTMLAnchorElement)) {
+if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement)) {
   throw new Error('DEVICE_EVIDENCE_UI_MISSING');
 }
 
@@ -46,6 +52,63 @@ function setStatus(text, state = '') {
   status.dataset.state = state;
 }
 
+async function postReport(payload) {
+  if (!reportUrl) return;
+  const target = new URL(reportUrl, location.href);
+  if (target.origin !== location.origin) throw new Error('DEVICE_EVIDENCE_REPORT_ORIGIN_MISMATCH');
+  const response = await nativeFetch(target.href, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`DEVICE_EVIDENCE_REPORT_FAILED: ${response.status}`);
+}
+
+function adapterSummary(adapter) {
+  if (!adapter) return { available: false, core_features_and_limits_available: false, info: null };
+  const info = adapter.info ?? null;
+  return {
+    available: true,
+    core_features_and_limits_available: adapter.features?.has?.('core-features-and-limits') ?? false,
+    info: info ? {
+      vendor: info.vendor ?? null,
+      architecture: info.architecture ?? null,
+      device: info.device ?? null,
+      description: info.description ?? null,
+    } : null,
+  };
+}
+
+async function probeWebGpuAdapters() {
+  const gpu = navigator.gpu ?? null;
+  const profile = resolveGraphicsProfile(graphicsProfile);
+  const baseOptions = profile.powerPreference ? { powerPreference: profile.powerPreference } : {};
+  const result = {
+    navigator_gpu_present: Boolean(gpu),
+    graphics_profile: profile.id,
+    power_preference: profile.powerPreference ?? 'default',
+    core: { attempted: false, available: false, core_features_and_limits_available: false, info: null, error: null },
+    compatibility: { attempted: false, available: false, core_features_and_limits_available: false, info: null, error: null },
+  };
+  if (!gpu) return result;
+
+  result.core.attempted = true;
+  try {
+    Object.assign(result.core, adapterSummary(await gpu.requestAdapter(Object.keys(baseOptions).length ? baseOptions : undefined)));
+  } catch (error) {
+    result.core.error = error instanceof Error ? error.message : String(error);
+  }
+
+  result.compatibility.attempted = true;
+  try {
+    Object.assign(result.compatibility, adapterSummary(await gpu.requestAdapter({ ...baseOptions, featureLevel: 'compatibility' })));
+  } catch (error) {
+    result.compatibility.error = error instanceof Error ? error.message : String(error);
+  }
+  return result;
+}
+
 async function run() {
   setStatus('LOADING VERIFIED ARTIFACTS');
   try {
@@ -56,6 +119,7 @@ async function run() {
       graphicsProfile,
       rendererPreference,
       benchmarkFrameCount: frameCount,
+      streamingMovementProbe: true,
       onPhase: (phase) => setStatus(String(phase).toUpperCase()),
     });
     const evidence = buildDeviceEvidence({
@@ -66,16 +130,14 @@ async function run() {
       screenLike: screen,
       canvasLike: canvas,
       devicePixelRatioLike: devicePixelRatio,
-      buildIdentity: {
-        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
-        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
-      },
+      buildIdentity,
       captureSessionId,
       evidenceTarget,
     });
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
     setStatus('DEVICE EVIDENCE PASS', 'pass');
+    await postReport(evidence);
     download.disabled = false;
     download.addEventListener('click', () => {
       const blob = new Blob([json], { type: 'application/json' });
@@ -86,18 +148,26 @@ async function run() {
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, { once: true });
-
-    const requested = String(evidence.renderer?.requested_backend ?? '').toLowerCase();
-    const active = String(evidence.renderer?.active_backend ?? '').toLowerCase();
-    if (requested === active && (active === 'webgl2' || active === 'webgpu')) {
-      counterpart.href = buildCounterpartEvidenceUrl(location.href, { activeBackend: active });
-      counterpart.textContent = active === 'webgl2' ? 'Kjør samme session med WebGPU' : 'Kjør samme session med WebGL2';
-      counterpart.hidden = false;
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const webgpuAdapterProbe = rendererPreference === 'webgpu' && message.includes('WEBGPU')
+      ? await probeWebGpuAdapters()
+      : null;
+    const failure = {
+      schema: 'nwe.world-viewer-device-evidence/0.1',
+      status: 'FAIL',
+      error: message,
+      build: buildIdentity,
+      capture_session_id: captureSessionId,
+      evidence_target: evidenceTarget,
+      requested_renderer: rendererPreference,
+      graphics_profile: graphicsProfile,
+      webgpu_adapter_probe: webgpuAdapterProbe,
+      runtime_requests: runtimeRequests,
+    };
     setStatus(`FAIL CLOSED · ${message}`, 'fail');
-    output.textContent = JSON.stringify({ schema: 'nwe.world-viewer-device-evidence/0.1', status: 'FAIL', error: message, capture_session_id: captureSessionId, evidence_target: evidenceTarget, runtime_requests: runtimeRequests }, null, 2);
+    output.textContent = JSON.stringify(failure, null, 2);
+    try { await postReport(failure); } catch {}
   }
 }
 
