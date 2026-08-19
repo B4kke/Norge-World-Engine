@@ -408,9 +408,11 @@ export class TileStreamingScheduler {
 
   async #deactivate(record, reason) {
     if (record.state !== 'resident') return;
+    record.state = 'deactivating';
     try {
       await this.deactivateTile(record.tile, record.payload, { reason });
     } catch (error) {
+      record.state = 'resident';
       record.error = error;
       this.metrics.deactivationFailures += 1;
       this.#emit('deactivation-failed', {
@@ -595,7 +597,7 @@ export class TileStreamingScheduler {
         error: record.error ? String(record.error?.message ?? record.error) : null,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
-    const counts = Object.fromEntries(['resident', 'activating', 'cached', 'failed'].map((state) => [
+    const counts = Object.fromEntries(['resident', 'deactivating', 'activating', 'cached', 'failed'].map((state) => [
       `${state}Count`,
       records.filter((record) => record.state === state).length,
     ]));
