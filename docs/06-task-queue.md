@@ -15,7 +15,8 @@ The next task must advance the walkable Nannestad milestone in `docs/08-revised-
 - artifact-only browser path with zero raw-source runtime calls: PASS;
 - module DedicatedWorker terrain mesh path: PASS;
 - scheduler/cache/resource lifecycle roundtrip for the accepted terrain tile: PASS;
-- high-precision world state + render-local coordinate/origin invariants: PASS.
+- high-precision world state + render-local coordinate/origin invariants: PASS;
+- Three.js ground renderer adapter over accepted renderer-neutral buffers: PASS in hosted Chrome/WebGL2; hosted WebGPU capability remains unavailable and is not claimed as performance evidence.
 
 If a new change does not alter one of those claims, do not create another test loop for it.
 
@@ -24,32 +25,35 @@ If a new change does not alter one of those claims, do not create another test l
 # P0 — TONIGHT / PLAYABLE NANNESTAD
 
 ## P0-GROUND-01 — Three.js ground-level renderer adapter
+**Priority:** COMPLETED  
+**Owner:** LUMEN  
+**Status:** IMPLEMENTED / HOSTED CHROME WEBGL2 PASS / WEBGPU DEVICE EVIDENCE OPEN, NON-BLOCKING  
+**Goal:** make Three.js the working ground-level presentation layer without making it the world-data model.
+
+**Implemented:**
+- `three@0.185.0` pinned in the World Viewer;
+- `three/webgpu` + `THREE.WebGPURenderer` behind the existing `createPreview1Renderer` boundary;
+- explicit WebGL2 fallback/baseline via `forceWebGL`;
+- accepted terrain/road/building typed-array buffers converted to Three `BufferGeometry` only after existing artifact verification;
+- existing terrain resource lifecycle hooks preserved;
+- perspective camera starts at sampled terrain + 1.7 m eye height;
+- root viewer now targets the accepted single-tile ground scene while Preview 3 remains separately available;
+- no raw-source knowledge or `THREE.*` identity leaked into compiler/world/provenance/streaming contracts.
+
+**Acceptance evidence:** hosted Chrome/WebGL2 rendered the accepted tile with 16,641 terrain vertices / 32,768 triangles, 246 compiled road paths and 135 building footprints at 4 draw calls; runtime request count 7; raw-source runtime calls 0. Production Vite build and existing renderer/resource/browser regressions pass. Hosted WebGPU probe was unavailable, so no WebGPU performance comparison is claimed.
+
+## P0-GROUND-02 — Terrain mesh + walking-distance material
 **Priority:** 1 — START HERE  
 **Owner:** LUMEN  
 **Status:** OPEN  
-**Goal:** make Three.js the working ground-level presentation layer without making it the world-data model.
-
-**Implement:**
-- Three.js renderer inside `apps/world-viewer` behind a small renderer adapter;
-- WebGPU-first capability path where a real adapter exists, WebGL2 fallback/baseline;
-- preserve current browser artifact verification/worker/streaming boundaries;
-- human-scale camera and local render origin;
-- no `THREE.*` types in compiler, schemas, authoritative world state or streaming identity.
-
-**Acceptance:** accepted terrain artifact reaches a Three.js mesh through the adapter; production build passes; existing raw-source-call guard remains zero.
-
-## P0-GROUND-02 — Terrain mesh + walking-distance material
-**Priority:** 2  
-**Owner:** LUMEN  
-**Status:** OPEN  
-**Input:** already accepted DTM1 artifact/worker mesh.
+**Input:** already accepted DTM1 artifact/worker mesh and the now-proven Three.js adapter.
 
 **Implement:** normals, sane UV/detail coordinates, PBR-compatible terrain material, directional lighting response and procedural/source-safe micro/macro variation.
 
 **Acceptance:** terrain looks like ground from approximately 1.7 m eye height and remains geometrically tied to accepted DTM heights.
 
 ## P0-GROUND-03 — Road-surface meshes
-**Priority:** 3  
+**Priority:** 2  
 **Owner:** LUMEN  
 **Status:** OPEN  
 **Input:** accepted compiled NVDB paths.
@@ -61,7 +65,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** the principal road network reads as connected road surfaces at ground level without re-fetching NVDB.
 
 ## P0-GROUND-04 — Building meshes + roofs
-**Priority:** 4  
+**Priority:** 3  
 **Owner:** LUMEN  
 **Status:** OPEN  
 **Input:** 135 accepted compiled building footprints.
@@ -73,7 +77,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** the street-level scene visibly contains the accepted building set and no roof geometry escapes its footprint due to naive bounding-box caps.
 
 ## P0-GROUND-05 — Licensed humanoid glTF/GLB + animation
-**Priority:** 5  
+**Priority:** 4  
 **Owner:** LUMEN  
 **Status:** OPEN  
 
@@ -82,7 +86,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** a human model spawns in Nannestad and animation state changes between idle and movement. No unverified model ripped from a demo/site is admitted.
 
 ## P0-GROUND-06 — Character movement + terrain grounding + camera
-**Priority:** 6  
+**Priority:** 5  
 **Owner:** LUMEN + ATLAS  
 **Status:** OPEN  
 
@@ -91,7 +95,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** the character can walk over normal Nannestad terrain without floating/sinking and world state remains independent from render origin shifts.
 
 ## P0-GROUND-07 — First graphics/shader pass
-**Priority:** 7  
+**Priority:** 6  
 **Owner:** LUMEN  
 **Status:** OPEN  
 
@@ -100,7 +104,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** screenshot/video-level output is visibly beyond debug geometry while automated sample metrics show no obvious regression that makes navigation unusable.
 
 ## P0-GROUND-08 — Integrated acceptance + Preview
-**Priority:** 8 — only after 01–07 integrate  
+**Priority:** 7 — only after 01–07 integrate  
 **Owner:** SENTINEL  
 **Status:** WAITING  
 
