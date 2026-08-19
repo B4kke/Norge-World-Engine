@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nwe.static-world-collision-binding/0.1-candidate",
+  "title": "NWE static world collision binding candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "collisionId",
+    "artifactSha256",
+    "tileId",
+    "worldFrame",
+    "physicsFrame",
+    "tileAnchorWorld",
+    "physicsAnchorWorld"
+  ],
+  "properties": {
+    "schema": { "const": "nwe.static-world-collision-binding/0.1-candidate" },
+    "collisionId": { "type": "string", "minLength": 1 },
+    "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "tileId": { "type": "string", "minLength": 1 },
+    "worldFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "horizontalCrs", "horizontalUnit", "verticalDatum", "verticalUnit"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "horizontalCrs": { "type": "string", "minLength": 1 },
+        "horizontalUnit": { "const": "metre" },
+        "verticalDatum": { "type": "string", "minLength": 1 },
+        "verticalUnit": { "const": "metre" }
+      }
+    },
+    "physicsFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physicsFrameId", "epoch"],
+      "properties": {
+        "physicsFrameId": { "type": "string", "minLength": 1 },
+        "epoch": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tileAnchorWorld": { "$ref": "#/$defs/worldAnchor" },
+    "physicsAnchorWorld": { "$ref": "#/$defs/worldAnchor" }
+  },
+  "$defs": {
+    "worldAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["easting", "northing", "height"],
+      "properties": {
+        "easting": { "type": "number" },
+        "northing": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    }
+  }
+}
