@@ -8,6 +8,7 @@ import { observeStreamingLifecycleAdapters } from '../../../engine/streaming/lif
 import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { installPreview1CharacterControls } from './preview1CharacterControls.mjs';
 import { createPreview1CharacterRuntime } from './preview1CharacterRuntime.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
 import { browserMemorySnapshot, createFrameGapMonitor, monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
@@ -327,6 +328,7 @@ export async function runPreview1({
   const startupFrameMonitor = createFrameGapMonitor();
   startupFrameMonitor.start();
   const rendererFrames: any[] = [];
+  let characterControls: any = null;
 
   try {
     onPhase('manifest');
@@ -363,6 +365,7 @@ export async function runPreview1({
       },
     });
     const characterRuntime = createPreview1CharacterRuntime({ terrainPayload: terrain.payload, renderer });
+    characterControls = installPreview1CharacterControls({ canvas, runtime: characterRuntime });
     terrain.bindRendererLifecycle(renderer);
 
     onPhase('first-frame');
@@ -425,6 +428,7 @@ export async function runPreview1({
         count: buildings.artifact.features?.length ?? 0,
       },
       character: characterRuntime.snapshot(),
+      character_controls: characterControls.snapshot(),
       renderer: {
         ...renderer.stats,
         terrain_resource_lifecycle: terrain.getRendererLifecycle(),
@@ -436,8 +440,9 @@ export async function runPreview1({
     };
     onPhase('ready');
     onReady(result);
-    return { result, renderer, characterRuntime };
+    return { result, renderer, characterRuntime, characterControls };
   } catch (error) {
+    characterControls?.dispose?.();
     startupFrameMonitor.stop();
     throw error;
   }
