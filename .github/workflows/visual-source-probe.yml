@@ -39,6 +39,8 @@ jobs:
               report = json.load(handle)
           with open('/tmp/nwe-sr16-metadata-links.json', encoding='utf-8') as handle:
               metadata = json.load(handle)
+          with open('/tmp/nwe-visual-source-probe.json', encoding='utf-8') as handle:
+              capabilities = json.load(handle)
 
           def atom_summary(atom):
               return {
@@ -51,24 +53,28 @@ jobs:
                   'candidate_data_link_count': atom['candidate_data_link_count'],
               }
 
+          def metadata_summary(key):
+              item = metadata['datasets'][key]
+              return {
+                  'metadata_uuid': item['metadata_uuid'],
+                  'license_access_fields': item['license_access_fields'],
+                  'format_fields': item['format_fields'],
+                  'temporal_fields': item['temporal_fields'],
+                  'distribution_structures': item['distribution_structures'],
+              }
+
           ar50_cap = report['ar50_capabilities']
           ar50 = report['ar50_sample']
           summary = {
               'status': report['status'],
               'tile': report['tile'],
               'sr16': {
-                  'raster': atom_summary(report['sr16_atoms']['raster']),
-                  'vector': atom_summary(report['sr16_atoms']['vector']),
-                  'raster_metadata': {
-                      'license_access_fields': metadata['datasets']['sr16_raster']['license_access_fields'],
-                      'format_fields': metadata['datasets']['sr16_raster']['format_fields'],
-                      'distribution_structures': metadata['datasets']['sr16_raster']['distribution_structures'],
-                  },
-                  'vector_metadata': {
-                      'license_access_fields': metadata['datasets']['sr16_vector']['license_access_fields'],
-                      'format_fields': metadata['datasets']['sr16_vector']['format_fields'],
-                      'distribution_structures': metadata['datasets']['sr16_vector']['distribution_structures'],
-                  },
+                  'raster_atom': atom_summary(report['sr16_atoms']['raster']),
+                  'vector_atom': atom_summary(report['sr16_atoms']['vector']),
+                  'split_raster_metadata': metadata_summary('sr16_raster_split'),
+                  'open_raster_legacy_candidate_metadata': metadata_summary('sr16_raster_open_legacy_candidate'),
+                  'open_raster_legacy_candidate_capabilities': capabilities['datasets']['sr16_raster_open_legacy_candidate'],
+                  'vector_metadata': metadata_summary('sr16_vector'),
               },
               'ar50': {
                   'capabilities_http': ar50_cap['http'],
