@@ -2,6 +2,7 @@ import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifi
 import { monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
 const PROFILE_SCHEMA = 'nwe.browser-artifact-profile/0.3';
+export const PROFILE_MAX_ITERATIONS = 101;
 
 const PERCENTILE_MIN_SAMPLES = Object.freeze({
   p50: 3,
@@ -9,7 +10,7 @@ const PERCENTILE_MIN_SAMPLES = Object.freeze({
   p99: 100,
 });
 
-export function normalizeProfileIterations(value, { min = 1, max = 20 } = {}) {
+export function normalizeProfileIterations(value, { min = 1, max = PROFILE_MAX_ITERATIONS } = {}) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
     throw new RangeError(`iterations must be an integer within [${min}, ${max}]`);
@@ -148,6 +149,6 @@ export async function profileVerifiedJsonArtifact({
     },
     steady_state: summarizeSamples(steadyStateSamples),
     samples,
-    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. Numeric percentiles remain descriptive measurements, while percentile_evidence marks p50/p95/p99 as supported only when the sample count reaches explicit minimums; with the bounded 20-iteration profiler, steady-state p95/p99 therefore remain non-acceptance tail evidence. Invalid/non-monotonic phase timing fails closed rather than being filtered out of summaries. It never replaces the production verification path and excludes network time.',
+    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. Numeric percentiles remain descriptive measurements, while percentile_evidence marks p50/p95/p99 as supported only when the sample count reaches explicit minimums. The profiler permits 101 total iterations so 100 steady-state samples can support the configured p99 evidence threshold without changing production verification semantics. Invalid/non-monotonic phase timing fails closed rather than being filtered out of summaries. It never replaces the production verification path and excludes network time.',
   };
 }

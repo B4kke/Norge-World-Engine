@@ -4,12 +4,15 @@ import {
   classifyProfileBuildIdentity,
   normalizeProfileIterations,
   profileVerifiedJsonArtifact,
+  PROFILE_MAX_ITERATIONS,
 } from './src/browserArtifactProfile.mjs';
 
+assert.equal(PROFILE_MAX_ITERATIONS, 101);
 assert.equal(normalizeProfileIterations(1), 1);
 assert.equal(normalizeProfileIterations('5'), 5);
+assert.equal(normalizeProfileIterations(101), 101);
 assert.throws(() => normalizeProfileIterations(0), /iterations must be an integer/);
-assert.throws(() => normalizeProfileIterations(21), /iterations must be an integer/);
+assert.throws(() => normalizeProfileIterations(102), /iterations must be an integer/);
 assert.throws(() => normalizeProfileIterations(1.5), /iterations must be an integer/);
 
 assert.equal(classifyPercentileEvidence(0).p50.status, 'INSUFFICIENT_SAMPLES');
@@ -36,12 +39,7 @@ assert.equal(classifyProfileBuildIdentity({ gitCommitSha: 'not-a-sha', deploymen
 assert.equal(classifyProfileBuildIdentity({ gitCommitSha: 'not-a-sha', deploymentId: 'dpl_test' }).deployment_bound, true);
 assert.equal(classifyProfileBuildIdentity().status, 'UNBOUND');
 
-const bundle = {
-  artifact_ref: {
-    artifact_role: 'road-network',
-    sha256: 'abc123',
-  },
-};
+const bundle = { artifact_ref: { artifact_role: 'road-network', sha256: 'abc123' } };
 const bytes = new TextEncoder().encode(JSON.stringify({ schema: 'fixture', paths: [] }));
 const ticks = [0, 4, 4, 5, 5, 7, 10, 16, 16, 18, 18, 21];
 let tickIndex = 0;
@@ -73,13 +71,7 @@ assert.deepEqual(profile.samples, [
   { iteration: 1, verification_ms: 4, utf8_decode_ms: 1, json_parse_ms: 2, decode_ms: 3, total_ms: 7 },
   { iteration: 2, verification_ms: 6, utf8_decode_ms: 2, json_parse_ms: 3, decode_ms: 5, total_ms: 11 },
 ]);
-assert.deepEqual(profile.first_replay, {
-  verification_ms: 4,
-  utf8_decode_ms: 1,
-  json_parse_ms: 2,
-  decode_ms: 3,
-  total_ms: 7,
-});
+assert.deepEqual(profile.first_replay, { verification_ms: 4, utf8_decode_ms: 1, json_parse_ms: 2, decode_ms: 3, total_ms: 7 });
 assert.equal(profile.steady_state.iterations, 1);
 assert.equal(profile.steady_state.percentile_evidence.sample_count, 1);
 assert.equal(profile.steady_state.percentile_evidence.p50.status, 'INSUFFICIENT_SAMPLES');
@@ -104,56 +96,26 @@ const single = await profileVerifiedJsonArtifact({
   now: () => [0, 3, 3, 4, 4, 6][singleTick++],
   verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
 });
-assert.deepEqual(single.first_replay, {
-  verification_ms: 3,
-  utf8_decode_ms: 1,
-  json_parse_ms: 2,
-  decode_ms: 3,
-  total_ms: 6,
-});
+assert.deepEqual(single.first_replay, { verification_ms: 3, utf8_decode_ms: 1, json_parse_ms: 2, decode_ms: 3, total_ms: 6 });
 assert.equal(single.steady_state, null);
 
 await assert.rejects(
-  profileVerifiedJsonArtifact({
-    bundle,
-    bytes,
-    iterations: 1,
-    verifyImpl: async () => ({ ok: false, decision: 'REJECTED', code: 'ARTIFACT_SHA256_MISMATCH' }),
-  }),
+  profileVerifiedJsonArtifact({ bundle, bytes, iterations: 1, verifyImpl: async () => ({ ok: false, decision: 'REJECTED', code: 'ARTIFACT_SHA256_MISMATCH' }) }),
   /PROFILE_RUNTIME_VERIFICATION_REJECTED: ARTIFACT_SHA256_MISMATCH \/ REJECTED/,
 );
-
 await assert.rejects(
-  profileVerifiedJsonArtifact({
-    bundle,
-    bytes: new TextEncoder().encode('{'),
-    iterations: 1,
-    verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
-  }),
+  profileVerifiedJsonArtifact({ bundle, bytes: new TextEncoder().encode('{'), iterations: 1, verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }) }),
   SyntaxError,
 );
 
 let backwardTick = 0;
 await assert.rejects(
-  profileVerifiedJsonArtifact({
-    bundle,
-    bytes,
-    iterations: 1,
-    now: () => [5, 4][backwardTick++],
-    verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
-  }),
+  profileVerifiedJsonArtifact({ bundle, bytes, iterations: 1, now: () => [5, 4][backwardTick++], verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }) }),
   /PROFILE_INVALID_TIMING: verification/,
 );
-
 let nonFiniteTick = 0;
 await assert.rejects(
-  profileVerifiedJsonArtifact({
-    bundle,
-    bytes,
-    iterations: 1,
-    now: () => [0, Number.NaN][nonFiniteTick++],
-    verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
-  }),
+  profileVerifiedJsonArtifact({ bundle, bytes, iterations: 1, now: () => [0, Number.NaN][nonFiniteTick++], verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }) }),
   /PROFILE_INVALID_TIMING: verification/,
 );
 

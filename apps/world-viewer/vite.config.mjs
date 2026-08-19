@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
-const gitCommitSha = process.env.VERCEL_GIT_COMMIT_SHA
+const gitCommitSha = process.env.NWE_BUILD_GIT_COMMIT_SHA
+  ?? process.env.VERCEL_GIT_COMMIT_SHA
   ?? process.env.GITHUB_SHA
   ?? process.env.RENDER_GIT_COMMIT
   ?? null;

@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "node test_device_evidence.mjs && node test_device_counterpart.mjs && node test_webgpu_timestamp_probe.mjs && node test_browser_artifact_profile.mjs && vite build",
+    "build": "node test_device_evidence.mjs && node test_device_counterpart.mjs && node test_webgpu_timestamp_probe.mjs && node test_browser_artifact_profile.mjs && node test_browser_decode_placement.mjs && vite build",
     "test:device-evidence": "node test_device_evidence.mjs && node test_device_counterpart.mjs",
     "test:webgpu-timestamp": "node test_webgpu_timestamp_probe.mjs",
     "test:browser-artifact-profile": "node test_browser_artifact_profile.mjs",
+    "test:browser-decode-placement": "node test_browser_decode_placement.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
