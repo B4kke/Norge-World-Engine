@@ -67,7 +67,14 @@ type GroundVisualStyleState = {
   output_color_space: 'SRGBColorSpace' | string;
   shadows_enabled: boolean;
   sky: { color: number; fog_near_m: number; fog_far_m: number };
-  sun: { type: string; intensity: number; cast_shadow: boolean; anchor: readonly number[]; offset: readonly number[] };
+  sun: {
+    type: string;
+    intensity: number;
+    cast_shadow: boolean;
+    requested_anchor: readonly number[];
+    anchor: readonly number[];
+    offset: readonly number[];
+  };
   shadow: {
     strategy: 'single-player-following-directional-frustum' | string;
     map_size: number;
@@ -78,6 +85,8 @@ type GroundVisualStyleState = {
     normal_bias: number;
     intensity: number;
     auto_update: boolean;
+    update_distance_m: number;
+    update_count: number;
   };
 };
 
