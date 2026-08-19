@@ -101,87 +101,56 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `P0-GROUND-02`: upgrade the proven Three terrain mesh from a basic lit material to walking-distance terrain materials/detail coordinates without changing accepted DTM geometry.
 
-## 2026-08-19 20:55 CEST — LUMEN — P0-GROUND-02
+## 2026-08-19 21:30 CEST — ATLAS — P0-GROUND-06A
 
 **What**
-- Upgraded the accepted Nannestad terrain from a flat ground color to a walking-distance PBR material while preserving the accepted DTM positions.
-- Passed worker-provided normals and UVs into Three `BufferGeometry`, added deterministic renderer-only macro vertex-color variation, and generated two tiny source-safe `DataTexture` detail maps with an explicit 5 m repeat period for color, roughness and bump response.
-- Kept terrain geometry displacement disabled and preserved the existing terrain resource lifecycle and single terrain draw.
+- Added the minimal renderer-neutral `nwe.character-world-transform/0.1-candidate` contract on top of the existing `WorldPosition` / `RenderOrigin` foundation.
+- Defined stable character entity identity, authoritative Float64 world position, a renderer-neutral heading convention, heading-relative planar movement, explicit world-height updates for grounding consumers and render-local derivation scoped to render-origin series/epoch.
+- Kept GLB/assets, animation, keyboard/touch input, Three.js object binding, terrain sampling/raycast implementation, third-person camera and physics-engine selection out of ATLAS ownership.
+- Added six focused regressions and wired them into the existing repository baseline rather than creating another harness.
 
 **Why**
-- This was the first open renderer P0 after the Three adapter. The active milestone needed the verified DTM to read as ground at approximately human eye height without introducing imagery/source dependencies or changing world truth.
+- `P0-GROUND-05/06` needs a character transform that LUMEN can render without allowing `THREE.Object3D` or render-origin-local Float32 state to become world truth. This is the smallest ATLAS contribution that unblocks the playable character boundary without overlapping renderer work.
 
 **Result / evidence**
-- FACT: PR #70 was merged as `b08d57461fecc93cc8d349d8dc79c5998321ba9a`; implementation head `980cac3f3f531733aca699a425dd0b8efe1bb588` passed `baseline`, `world-viewer-vite`, `viewer-benchmark`, `preview1-realdata-publish` and `preview3-realdata-publish`.
-- FACT: terrain styling is explicitly renderer-only, `geometry_displacement=false`, and the scene retained one terrain mesh / four total draw calls.
-- LIMITATION: the Vercel status failed on build-rate-limit/plan rather than viewer code; it is not counted as renderer failure or exact Preview evidence.
+- FACT: isolated local Node syntax/regression execution of the new contract logic passes.
+- FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires exactly equal authoritative transform values while allowing derived local coordinates to change.
+- FACT: the contract rejects foreign world frames and non-finite movement/heading/height inputs.
+- FACT: code-bearing head `f6b8ed3f480844e07e20cfd5a94d5cc64fba5e8d` passed GitHub `baseline` run `32292789347` and `atlas-rapier-physics` run `32292789343`.
 
 **Changed**
-- Merged PR #70 / branch `agent/lumen-ground-02`.
-- `apps/world-viewer/src/threeGroundRenderer.mjs`.
-- Terrain-material structural regressions and buffer-count-agnostic renderer lifecycle checks.
-- Google Drive active agent log was recovered in the following LUMEN session because the previous chat completed the code but failed before persisting the handoff.
+- Branch `agent/atlas-ground-06a`, draft PR #72.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `.github/workflows/baseline.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
 
 **Next**
-- `P0-GROUND-03`: build connected road-surface meshes from the accepted compiled NVDB paths with an explicit renderer-only width fallback.
+- `P0-GROUND-06`: LUMEN consumes the ATLAS transform boundary when character integration reaches movement/grounding; ATLAS should only adjust the contract if that integration exposes a concrete world-state mismatch.
 
-## 2026-08-19 21:49 CEST — LUMEN — P0-GROUND-03
+## 2026-08-19 22:15 CEST — ATLAS — P0-GROUND-06A-OPT
 
 **What**
-- Replaced independent per-segment road quads with one connected surface strip per accepted compiled NVDB road path.
-- Added shared left/right vertex pairs at centerline points, duplicate-point removal, capped miter joins, meter-based UVs and explicit road-surface observability.
-- Reduced the renderer-only anti-z-fighting lift from 0.35 m to 0.06 m and kept the existing 3.2 m visual width explicitly labeled `renderer-only-fallback` rather than authoritative physical road width.
-- Added focused geometry and scene-contract regressions and wired them into the normal World Viewer build.
+- Optimized the character-transform hot path without expanding ATLAS ownership.
+- Replaced validation-by-cloning with allocation-free validation for existing authoritative positions.
+- Added no-op identity fast paths for zero movement, equivalent heading updates and unchanged grounding height.
+- Reused the immutable authoritative `WorldPosition` for heading-only changes and kept physical movement/height changes as the only operations that create a new position.
+- Canonicalized heading to `[0, 2π)` including a single positive zero representation, and fail-closed forged non-canonical character transforms.
 
 **Why**
-- `P0-GROUND-03` was the next visible P0 after terrain material. Ground-level roads must read as continuous surfaces without reopening NVDB acquisition or fabricating width semantics.
+- Character movement will execute at simulation/frame cadence. Avoiding redundant immutable-object churn now makes the LUMEN integration cheaper while preserving the existing world/render-origin invariants and renderer-neutral boundary.
 
 **Result / evidence**
-- FACT: draft PR #73 implementation head `f91000d78a11113267dfcd83d5974a9658c87d28` passes all five hosted workflows: `baseline` #1891, `world-viewer-vite` #313, `viewer-benchmark` #261, `preview1-realdata-publish` #397 and `preview3-realdata-publish` #23.
-- FACT: the browser path still consumes the accepted real road artifact (`34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`) with 246 compiled road paths and zero raw-source runtime calls.
-- FACT: road width and the 0.06 m surface lift remain presentation-only; no compiler, provenance or authoritative world-data contract changed.
+- FACT: regression coverage increased from 6 to 7 cases, including strict object-identity checks for no-op updates and immutable-position reuse for heading-only updates.
+- FACT: compared with the initial implementation, a changed heading update eliminates two redundant `WorldPosition` creations; a planar move/height update eliminates two redundant position creations; no-op updates return the existing transform.
+- FACT: optimized code head `cce1b2367d33ef9a51a909cab0a61c95413c4d45` passed GitHub `baseline` run `32297774095` and `atlas-rapier-physics` run `32297774068`.
+- No wall-clock speedup is claimed; this optimization is structurally proven allocation reduction plus unchanged correctness gates.
 
 **Changed**
-- Branch `agent/lumen-ground-03`, draft PR #73.
-- `apps/world-viewer/src/roadSurfaceGeometry.mjs`.
-- `apps/world-viewer/src/preview1SceneGeometry.mjs`.
-- `apps/world-viewer/src/preview1Renderer.d.ts`.
-- `apps/world-viewer/test_road_surface_geometry.mjs`.
-- `apps/world-viewer/test_road_surface_scene_contract.mjs`.
-- `apps/world-viewer/package.json`.
-- `docs/05-worklog.md`, `docs/06-task-queue.md` and Drive active agent log.
+- Draft PR #72, branch `agent/atlas-ground-06a`.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
 
 **Next**
-- `P0-GROUND-04`: replace the current naive building roof fan with polygon-safe roofs and explicit wall/roof material classes while preserving source-backed versus fallback height semantics.
-
-## 2026-08-19 22:07 CEST — LUMEN — P0-GROUND-04
-
-**What**
-- Replaced the naive first-vertex roof fan with polygon-safe 2D footprint triangulation using Three.js' bundled Earcut implementation.
-- Split building render geometry into batched wall and roof typed-array layers while retaining a combined compatibility buffer for existing renderer consumers.
-- Added four bounded Three PBR presentation layers: source-backed walls/roofs and unresolved-height walls/roofs.
-- Preserved source-backed building heights and kept the unresolved 5 m height plus 0.08 m terrain lift explicitly renderer-only.
-- Added a concave L-footprint regression that verifies roof triangles remain inside the footprint and face upward.
-
-**Why**
-- `P0-GROUND-04` was the highest-priority open renderer task. The previous fan triangulation could escape concave footprints, which would make accepted building geometry visibly wrong at street level.
-
-**Result / evidence**
-- FACT: draft PR #74 exact head `73747d7ec6df66ef7c22b14c1a9ba781fbd7c252` passes hosted `baseline` run 32296147674, `world-viewer-vite` run 32296147784 and `viewer-benchmark` run 32296147709.
-- FACT: the normal World Viewer gate passes production build, the concave-roof regression, exact accepted-artifact provenance/decode, DedicatedWorker terrain path, Preview 1 browser rendering and movement/cache/resource lifecycle smoke.
-- FACT: the browser path rendered the accepted 135-building artifact `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd` through the new roof/material path without raw OSM/source acquisition.
-- FACT: the Three renderer remains batched by semantic layer rather than per building; splitting walls/roofs is a bounded draw-call tradeoff, not a 135-building fanout.
-
-**Changed**
-- Branch `agent/lumen-ground-04`, draft PR #74.
-- `apps/world-viewer/src/buildingSurfaceGeometry.mjs`.
-- `apps/world-viewer/src/preview1SceneGeometry.mjs`.
-- `apps/world-viewer/src/threeGroundRenderer.mjs`.
-- `apps/world-viewer/src/preview1Renderer.d.ts`.
-- `apps/world-viewer/test_building_surface_geometry.mjs`.
-- `apps/world-viewer/test_three_ground_renderer.mjs`.
-- `apps/world-viewer/package.json`.
-- `docs/05-worklog.md`, `docs/06-task-queue.md` and Drive active agent log.
-
-**Next**
-- `P0-GROUND-05`: integrate one lightweight humanoid glTF/GLB from a primary source with verified permissive redistribution, and prove idle/walk animation state in the normal viewer without taking ownership of ATLAS' authoritative character transform contract.
+- `P0-GROUND-06`: LUMEN consumes the optimized ATLAS transform boundary; ATLAS changes it again only if integration exposes a concrete world-state mismatch.
