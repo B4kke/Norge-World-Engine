@@ -8,6 +8,10 @@ function nonNegativeFinite(value, label) {
   return value;
 }
 
+function isThenable(value) {
+  return value != null && typeof value.then === 'function';
+}
+
 export class RetainedBudgetEstimateTooLargeError extends Error {
   constructor({ tileId, estimatedBytes, maxBytes }) {
     super(`retained budget estimate exceeds cap for ${tileId}: estimated=${estimatedBytes}, max=${maxBytes}`);
@@ -37,11 +41,15 @@ export function createRetainedBudgetLifecycleAdapter({
   const gate = new RetainedByteBudgetGate({ maxBytes: maxRetainedBytes, clock, onEvent });
   const committedByTile = new Map();
   const waiters = [];
+  const preAdmissions = new Map();
   let nextWaiterId = 1;
   const metrics = {
     waitsQueued: 0,
     waitsGranted: 0,
     waitsCancelled: 0,
+    preAdmissionsGranted: 0,
+    preAdmissionsConsumed: 0,
+    preAdmissionsCancelled: 0,
     oversizeRejects: 0,
     cleanupFailures: 0,
   };
@@ -86,11 +94,15 @@ export function createRetainedBudgetLifecycleAdapter({
     return new DOMException(String(signal?.reason ?? 'aborted'), 'AbortError');
   }
 
-  function reserveWhenAvailable(tileId, estimatedBytes, signal) {
+  function assertEstimateWithinCap(tileId, estimatedBytes) {
     if (estimatedBytes > maxRetainedBytes) {
       metrics.oversizeRejects += 1;
       throw new RetainedBudgetEstimateTooLargeError({ tileId, estimatedBytes, maxBytes: maxRetainedBytes });
     }
+  }
+
+  function reserveWhenAvailable(tileId, estimatedBytes, signal) {
+    assertEstimateWithinCap(tileId, estimatedBytes);
     if (signal?.aborted) throw abortError(signal);
     const immediate = gate.tryReserve(tileId, estimatedBytes);
     if (immediate) return Promise.resolve(immediate);
@@ -126,6 +138,42 @@ export function createRetainedBudgetLifecycleAdapter({
     });
   }
 
+  function takePreAdmission(tileId, admission) {
+    const token = admission?.reservationToken;
+    if (admission?.schema !== 'nwe.retained-load-admission/0.1' || typeof token !== 'string') {
+      throw new TypeError('valid retained load admission token is required');
+    }
+    const current = preAdmissions.get(token);
+    if (!current || current.admission !== admission || current.tileId !== tileId) {
+      throw new Error(`unknown, stale, or mismatched retained load admission: ${token}`);
+    }
+    preAdmissions.delete(token);
+    metrics.preAdmissionsConsumed += 1;
+    emit('retained-budget-pre-admission-consumed', {
+      tileId,
+      reservationToken: token,
+      estimatedBytes: current.estimatedBytes,
+    });
+    return current.reservation;
+  }
+
+  function cancelPreAdmission(admission, reason = 'cancelled-before-load') {
+    const token = admission?.reservationToken;
+    const current = typeof token === 'string' ? preAdmissions.get(token) : null;
+    if (!current || current.admission !== admission) return false;
+    preAdmissions.delete(token);
+    gate.cancel(current.reservation, reason);
+    metrics.preAdmissionsCancelled += 1;
+    emit('retained-budget-pre-admission-cancelled', {
+      tileId: current.tileId,
+      reservationToken: token,
+      estimatedBytes: current.estimatedBytes,
+      reason,
+    });
+    drainWaiters();
+    return true;
+  }
+
   async function cleanupRejectedPayload(tile, result, reason) {
     try {
       await disposeTile(tile, result?.payload, { reason, admitted: false });
@@ -140,15 +188,63 @@ export function createRetainedBudgetLifecycleAdapter({
   }
 
   return Object.freeze({
+    tryAdmitLoad(tile, context = {}) {
+      const tileId = tile?.id;
+      if (typeof tileId !== 'string' || tileId.length === 0) throw new TypeError('tile.id must be a non-empty string');
+      const estimatedCandidate = estimateTileBytes(tile, context);
+      if (isThenable(estimatedCandidate)) {
+        throw new TypeError('estimateTileBytes must be synchronous when tryAdmitLoad is used');
+      }
+      const estimatedBytes = nonNegativeFinite(estimatedCandidate, `${tileId}.estimatedBytes`);
+      assertEstimateWithinCap(tileId, estimatedBytes);
+      const reservation = gate.tryReserve(tileId, estimatedBytes);
+      if (!reservation) return null;
+      const admission = Object.freeze({
+        schema: 'nwe.retained-load-admission/0.1',
+        tileId,
+        reservationToken: reservation.token,
+        estimatedBytes,
+      });
+      preAdmissions.set(reservation.token, { admission, reservation, tileId, estimatedBytes });
+      metrics.preAdmissionsGranted += 1;
+      emit('retained-budget-pre-admission-granted', {
+        tileId,
+        reservationToken: reservation.token,
+        estimatedBytes,
+        priority: context.priority ?? null,
+        attempt: context.attempt ?? null,
+      });
+      return admission;
+    },
+
+    cancelLoadAdmission(admission, reason) {
+      return cancelPreAdmission(admission, reason);
+    },
+
     async loadTile(tile, context = {}) {
       const tileId = tile?.id;
       if (typeof tileId !== 'string' || tileId.length === 0) throw new TypeError('tile.id must be a non-empty string');
-      const estimatedBytes = nonNegativeFinite(await estimateTileBytes(tile, context), `${tileId}.estimatedBytes`);
-      const reservation = await reserveWhenAvailable(tileId, estimatedBytes, context.signal);
+      let reservation;
+      if (context.admission != null) {
+        reservation = takePreAdmission(tileId, context.admission);
+        if (context.signal?.aborted) {
+          gate.cancel(reservation, 'load-aborted-before-materialization');
+          drainWaiters();
+          throw abortError(context.signal);
+        }
+      } else {
+        const estimatedBytes = nonNegativeFinite(await estimateTileBytes(tile, context), `${tileId}.estimatedBytes`);
+        reservation = await reserveWhenAvailable(tileId, estimatedBytes, context.signal);
+      }
+
       let reservationOpen = true;
       try {
         const result = await loadTile(tile, context);
         if (!result || typeof result !== 'object') throw new TypeError(`loadTile(${tileId}) must return an object`);
+        if (context.signal?.aborted) {
+          await cleanupRejectedPayload(tile, result, 'retained-budget-load-aborted-after-materialization');
+          throw abortError(context.signal);
+        }
         const actualBytes = nonNegativeFinite(result.byteSize, `${tileId}.byteSize`);
         try {
           gate.commit(reservation, actualBytes);
@@ -188,9 +284,10 @@ export function createRetainedBudgetLifecycleAdapter({
 
     snapshot() {
       return {
-        schema: 'nwe.retained-budget-lifecycle-adapter/0.1',
+        schema: 'nwe.retained-budget-lifecycle-adapter/0.2',
         budget: gate.snapshot(),
         waitingLoads: waiters.length,
+        preAdmittedLoads: preAdmissions.size,
         committedTiles: committedByTile.size,
         committedTileBytes: Object.fromEntries([...committedByTile.entries()].sort(([a], [b]) => a.localeCompare(b))),
         metrics: { ...metrics },
