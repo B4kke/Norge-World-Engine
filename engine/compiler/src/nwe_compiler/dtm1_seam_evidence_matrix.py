@@ -103,7 +103,11 @@ def current_nannestad_seam_matrix() -> dict:
                     "225000000 m2 and the DTM service caps output at 15000 x 15000, while the measured "
                     "Atom source raster is 15010 x 15010 at 1 m. The centered 5 px core is therefore "
                     "geometrically overdetermined, but no provider contract yet states that the 10 m "
-                    "excess is disposable buffer/overscan outside the authoritative DTM1 core"
+                    "excess is disposable buffer/overscan outside the authoritative DTM1 core. Real-source "
+                    "diagnostics also do not independently select 5/5: local slope-adjusted continuity ranks "
+                    "it 11/11 (3/7 is best), while the independent provider WCS QA comparison ranks 5/5 "
+                    "6/11 and marginally prefers 10/0. These diagnostic rules are QA sensors only and cannot "
+                    "replace missing provider-owned DTM1 border semantics"
                 ),
             ),
             SeamCandidateEvidence(
