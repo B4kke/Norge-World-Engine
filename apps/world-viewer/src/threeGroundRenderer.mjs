@@ -184,7 +184,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
 
   const vegetationStartedAt = monotonicNow();
   const vegetationPlacement = buildSyntheticVegetationPlacement({ terrainPayload, roadsArtifact, buildingsArtifact, origin: sceneGeometry.origin });
-  const vegetationLayer = createThreeVegetationLayer({ scene, placement: vegetationPlacement });
+  const vegetationLayer = await createThreeVegetationLayer({ scene, placement: vegetationPlacement });
   const vegetationSnapshot = vegetationLayer.snapshot();
   const vegetationBuildCpuMs = monotonicNow() - vegetationStartedAt;
 
