@@ -82,12 +82,27 @@ def fetch_ar50_raw(feature_type: str, version: str, destination: Path) -> dict[s
         }
 
 
+def validate_sr16_selection(selection: dict[str, Any]) -> None:
+    if str(selection.get("metadataUuid")) != SR16_VECTOR_METADATA_UUID:
+        raise RuntimeError(f"unexpected SR16 metadata UUID in provider selection: {selection!r}")
+    areas = selection.get("areas") or []
+    projections = selection.get("projections") or []
+    formats = selection.get("formats") or []
+    if len(areas) != 1 or str(areas[0].get("code")) != "3238":
+        raise RuntimeError(f"SR16 selection is not exactly Nannestad/3238: {selection!r}")
+    if len(projections) != 1 or str(projections[0].get("code")) != "25832":
+        raise RuntimeError(f"SR16 selection is not exactly EPSG:25832: {selection!r}")
+    if len(formats) != 1 or str(formats[0].get("name", "")).lower() != "gml":
+        raise RuntimeError(f"SR16 selection is not exactly GML: {selection!r}")
+
+
 def materialize_sr16v(root: Path) -> dict[str, Any]:
     config = dict(TARGETS["sr16_vector"])
     # Prefer GML for the normalization gate so generic GDAL/OGR can parse it without
     # relying on an optional SOSI/FYBA driver in the hosted runner image.
     config["format"] = "GML"
     order = order_target("sr16_vector", config)
+    validate_sr16_selection(order["selection"])
     provider_file = first_file(order["receipt"])
 
     sr16_root = root / "sr16v"
