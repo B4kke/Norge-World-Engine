@@ -41,12 +41,15 @@ jobs:
           node --check engine/world/test_static_collision_streaming_guard.mjs
           node --check engine/world/static_collision_occupancy_contract.mjs
           node --check engine/world/test_static_collision_occupancy_contract.mjs
+          node --check engine/world/static_collision_epoch_rebind_contract.mjs
+          node --check engine/world/test_static_collision_epoch_rebind_contract.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_constrained_migration_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_static_world_migration_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_tile_crossing_occupancy_probe.mjs
+          node --check prototypes/atlas-rapier-physics/rapier_epoch_artifact_rebind_probe.mjs
           python -m json.tool engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-maintenance-batch-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-membership-event-v0.1.schema.json > /dev/null
@@ -54,6 +57,7 @@ jobs:
           python -m json.tool engine/world/schemas/static-world-collision-binding-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/static-collision-lifecycle-event-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/static-collision-occupancy-snapshot-v0.1.schema.json > /dev/null
+          python -m json.tool engine/world/schemas/static-collision-epoch-rebind-v0.1.schema.json > /dev/null
 
       - name: Run physics frame maintenance event regressions
         run: node engine/world/test_physics_frame_event_contract.mjs
@@ -78,6 +82,9 @@ jobs:
 
       - name: Run solver-derived static collision occupancy regressions
         run: node engine/world/test_static_collision_occupancy_contract.mjs
+
+      - name: Run atomic epoch artifact rebind regressions
+        run: node engine/world/test_static_collision_epoch_rebind_contract.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
@@ -109,6 +116,11 @@ jobs:
           node prototypes/atlas-rapier-physics/rapier_tile_crossing_occupancy_probe.mjs | tee /tmp/atlas-rapier-tile-crossing-occupancy.json
           python -m json.tool /tmp/atlas-rapier-tile-crossing-occupancy.json > /dev/null
 
+      - name: Run same-tick epoch artifact rebind probe
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_epoch_artifact_rebind_probe.mjs | tee /tmp/atlas-rapier-epoch-artifact-rebind.json
+          python -m json.tool /tmp/atlas-rapier-epoch-artifact-rebind.json > /dev/null
+
       - name: Upload ATLAS physics evidence
         uses: actions/upload-artifact@v4
         with:
@@ -119,4 +131,5 @@ jobs:
             /tmp/atlas-rapier-constrained-migration.json
             /tmp/atlas-rapier-static-world-migration.json
             /tmp/atlas-rapier-tile-crossing-occupancy.json
+            /tmp/atlas-rapier-epoch-artifact-rebind.json
           retention-days: 7
