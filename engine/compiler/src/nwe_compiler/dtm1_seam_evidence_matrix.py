@@ -94,12 +94,16 @@ def current_nannestad_seam_matrix() -> dict:
                     "raster_height_px",
                     "pixel_size_m",
                     "provider_generation_distribution_contract_sha256",
+                    "provider_edge_domain_contract_sha256",
+                    "provider_export_maptile_area_m2",
                 ),
                 blocker=(
-                    "provider evidence now binds NHM project/grid generation to the downloadable DTM1 "
-                    "15 km source family, and 15010 px geometry yields a unique symmetric 5 px core; "
-                    "the unresolved fact is whether the observed 10 m excess is disposable per-side "
-                    "buffer/overscan or otherwise participates in authoritative samples"
+                    "provider evidence binds NHM generation to the downloadable DTM1 15 km family; "
+                    "public Høydedata export config independently encodes a 15000 m map-tile area of "
+                    "225000000 m2 and the DTM service caps output at 15000 x 15000, while the measured "
+                    "Atom source raster is 15010 x 15010 at 1 m. The centered 5 px core is therefore "
+                    "geometrically overdetermined, but no provider contract yet states that the 10 m "
+                    "excess is disposable buffer/overscan outside the authoritative DTM1 core"
                 ),
             ),
             SeamCandidateEvidence(
@@ -135,8 +139,8 @@ def current_nannestad_seam_matrix() -> dict:
                 discriminating_for_nannestad=True,
                 provenance_fields=("mosaic_method", "sort_field", "mosaic_operator"),
                 blocker=(
-                    "ImageServer publishes a presentation mosaic rule, but no provider contract makes "
-                    "that rule authoritative for the SHA-addressed downloadable DTM1 GeoTIFFs"
+                    "ImageServer publishes presentation and output constraints, but no provider contract "
+                    "makes its mosaic rule authoritative for the SHA-addressed downloadable DTM1 GeoTIFFs"
                 ),
             ),
             SeamCandidateEvidence(
