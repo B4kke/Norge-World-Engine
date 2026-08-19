@@ -31,6 +31,7 @@ DESCRIBE = b"""<?xml version='1.0' encoding='UTF-8'?>
 
 
 def _coverage_bytes(tmp_path: Path, tile) -> bytes:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / "fixture.tif"
     size = int(tile.size_m)
     left, bottom, _, top = tile.bounds
