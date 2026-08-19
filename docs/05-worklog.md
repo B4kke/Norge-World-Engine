@@ -100,3 +100,56 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-02`: upgrade the proven Three terrain mesh from a basic lit material to walking-distance terrain materials/detail coordinates without changing accepted DTM geometry.
+
+## 2026-08-19 20:55 CEST — LUMEN — P0-GROUND-02
+
+**What**
+- Upgraded the accepted Nannestad terrain from a flat ground color to a walking-distance PBR material while preserving the accepted DTM positions.
+- Passed worker-provided normals and UVs into Three `BufferGeometry`, added deterministic renderer-only macro vertex-color variation, and generated two tiny source-safe `DataTexture` detail maps with an explicit 5 m repeat period for color, roughness and bump response.
+- Kept terrain geometry displacement disabled and preserved the existing terrain resource lifecycle and single terrain draw.
+
+**Why**
+- This was the first open renderer P0 after the Three adapter. The active milestone needed the verified DTM to read as ground at approximately human eye height without introducing imagery/source dependencies or changing world truth.
+
+**Result / evidence**
+- FACT: PR #70 was merged as `b08d57461fecc93cc8d349d8dc79c5998321ba9a`; implementation head `980cac3f3f531733aca699a425dd0b8efe1bb588` passed `baseline`, `world-viewer-vite`, `viewer-benchmark`, `preview1-realdata-publish` and `preview3-realdata-publish`.
+- FACT: terrain styling is explicitly renderer-only, `geometry_displacement=false`, and the scene retained one terrain mesh / four total draw calls.
+- LIMITATION: the Vercel status failed on build-rate-limit/plan rather than viewer code; it is not counted as renderer failure or exact Preview evidence.
+
+**Changed**
+- Merged PR #70 / branch `agent/lumen-ground-02`.
+- `apps/world-viewer/src/threeGroundRenderer.mjs`.
+- Terrain-material structural regressions and buffer-count-agnostic renderer lifecycle checks.
+- Google Drive active agent log was recovered in the following LUMEN session because the previous chat completed the code but failed before persisting the handoff.
+
+**Next**
+- `P0-GROUND-03`: build connected road-surface meshes from the accepted compiled NVDB paths with an explicit renderer-only width fallback.
+
+## 2026-08-19 21:49 CEST — LUMEN — P0-GROUND-03
+
+**What**
+- Replaced independent per-segment road quads with one connected surface strip per accepted compiled NVDB road path.
+- Added shared left/right vertex pairs at centerline points, duplicate-point removal, capped miter joins, meter-based UVs and explicit road-surface observability.
+- Reduced the renderer-only anti-z-fighting lift from 0.35 m to 0.06 m and kept the existing 3.2 m visual width explicitly labeled `renderer-only-fallback` rather than authoritative physical road width.
+- Added focused geometry and scene-contract regressions and wired them into the normal World Viewer build.
+
+**Why**
+- `P0-GROUND-03` was the next visible P0 after terrain material. Ground-level roads must read as continuous surfaces without reopening NVDB acquisition or fabricating width semantics.
+
+**Result / evidence**
+- FACT: draft PR #73 implementation head `f91000d78a11113267dfcd83d5974a9658c87d28` passes all five hosted workflows: `baseline` #1891, `world-viewer-vite` #313, `viewer-benchmark` #261, `preview1-realdata-publish` #397 and `preview3-realdata-publish` #23.
+- FACT: the browser path still consumes the accepted real road artifact (`34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`) with 246 compiled road paths and zero raw-source runtime calls.
+- FACT: road width and the 0.06 m surface lift remain presentation-only; no compiler, provenance or authoritative world-data contract changed.
+
+**Changed**
+- Branch `agent/lumen-ground-03`, draft PR #73.
+- `apps/world-viewer/src/roadSurfaceGeometry.mjs`.
+- `apps/world-viewer/src/preview1SceneGeometry.mjs`.
+- `apps/world-viewer/src/preview1Renderer.d.ts`.
+- `apps/world-viewer/test_road_surface_geometry.mjs`.
+- `apps/world-viewer/test_road_surface_scene_contract.mjs`.
+- `apps/world-viewer/package.json`.
+- `docs/05-worklog.md`, `docs/06-task-queue.md` and Drive active agent log.
+
+**Next**
+- `P0-GROUND-04`: replace the current naive building roof fan with polygon-safe roofs and explicit wall/roof material classes while preserving source-backed versus fallback height semantics.
