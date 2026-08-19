@@ -22,7 +22,7 @@ If a new change does not alter one of those claims, do not create another test l
 
 ## Agent capability maintenance — does not change P0 order
 
-- `AGENT-SKILLS-GPU-01` — **IMPLEMENTED / STATIC CI PENDING in draft PR #76**: adapted the ten MIT-licensed `CloudAI-X/threejs-skills` concept areas into renderer-neutral NWE GPU skills. WebGPU is first-class, WebGL2 remains fallback/baseline, WGSL/GLSL remain distinct native shader languages, and Three.js/TSL is explicitly an adapter rather than engine/world truth.
+- `AGENT-SKILLS-GPU-01` — **COMPLETED in draft PR #76 / SKILL VALIDATOR PASS**: adapted the ten MIT-licensed `CloudAI-X/threejs-skills` concept areas into renderer-neutral NWE GPU skills. WebGPU is first-class, WebGL2 remains fallback/baseline, WGSL/GLSL remain distinct native shader languages, and Three.js/TSL is explicitly an adapter rather than engine/world truth. GitHub Actions baseline run `32298564154` completed `Validate repo-local Agent Skills` successfully on the skill-bearing head.
 - This capability work does not reorder `P0-GROUND-*`; agents must still follow the playable queue below.
 
 ---
