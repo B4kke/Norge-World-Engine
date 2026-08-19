@@ -1,0 +1,153 @@
+name: dtm1-embedded-metadata-audit
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_embedded_metadata.py'
+      - 'engine/compiler/tests/test_dtm1_embedded_metadata.py'
+      - '.github/workflows/dtm1-embedded-metadata-audit.yml'
+  workflow_dispatch:
+
+jobs:
+  audit-nannestad-seam-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run focused regressions
+        run: pytest -q engine/compiler/tests/test_dtm1_embedded_metadata.py
+
+      - name: Inspect exact seam GeoTIFF embedded metadata without downloading raw files
+        env:
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.tiff
+          GDAL_HTTP_USERAGENT: NorgeWorldEngine-Compiler
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import PurePosixPath
+          from urllib.parse import urlparse
+          from urllib.request import Request, urlopen
+
+          import rasterio
+
+          from nwe_compiler.dtm1_embedded_metadata import audit_embedded_metadata
+          from nwe_compiler.sources.dtm1_atom import geotiff_href, parse_feed, select_service_dataset
+          from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
+
+          EXPECTED = {'33-125-116', '33-125-117'}
+
+          def get_bytes(url):
+              request = Request(url, headers={
+                  'User-Agent': USER_AGENT,
+                  'Accept': 'application/atom+xml, application/xml;q=0.9',
+              })
+              with urlopen(request, timeout=60) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.read()
+
+          service = get_bytes(SERVICE_URL)
+          _, dataset_url = select_service_dataset(parse_feed(service), 'DTM1')
+          dataset = get_bytes(dataset_url)
+          entries = parse_feed(dataset)
+
+          selected = {}
+          for entry in entries:
+              href = geotiff_href(entry)
+              name = PurePosixPath(urlparse(href).path).stem
+              if name in EXPECTED:
+                  selected[name] = href
+          if set(selected) != EXPECTED:
+              raise SystemExit(f'expected seam sources {sorted(EXPECTED)}, got {sorted(selected)}')
+
+          observations = []
+          for name in sorted(selected):
+              href = selected[name]
+              with rasterio.Env(
+                  GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR',
+                  CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tif,.tiff',
+              ):
+                  with rasterio.open(href) as src:
+                      namespaces = list(src.tag_namespaces())
+                      tags = {'default': {str(k): str(v) for k, v in src.tags().items()}}
+                      for namespace in namespaces:
+                          tags[str(namespace)] = {
+                              str(k): str(v) for k, v in src.tags(ns=namespace).items()
+                          }
+                      audit = audit_embedded_metadata(tags)
+                      observations.append({
+                          'logical_name': name,
+                          'href': href,
+                          'raster': {
+                              'crs': src.crs.to_string() if src.crs else None,
+                              'bounds': list(src.bounds),
+                              'width': src.width,
+                              'height': src.height,
+                              'count': src.count,
+                              'dtypes': list(src.dtypes),
+                              'nodata': src.nodata,
+                              'res': list(src.res),
+                              'block_shapes': [list(shape) for shape in src.block_shapes],
+                              'tag_namespaces': namespaces,
+                              'tags': tags,
+                          },
+                          'audit': audit,
+                          'source_content_sha256': None,
+                          'source_content_sha256_status': 'UNPROVEN_METADATA_ONLY_REMOTE_OPEN',
+                      })
+
+          evidence = {
+              'schema': 'nwe.dtm1-live-embedded-metadata-proof/0.1',
+              'status': 'EMBEDDED_METADATA_AUDITED_NOT_AUTHORITY',
+              'service_feed_sha256': hashlib.sha256(service).hexdigest(),
+              'dataset_feed_url': dataset_url,
+              'dataset_feed_sha256': hashlib.sha256(dataset).hexdigest(),
+              'observations': observations,
+              'claim_calibration': {
+                  'fact': 'embedded GeoTIFF/GDAL tag namespaces for the exact two Nannestad seam sources were inspected through remote metadata-only Rasterio opens',
+                  'not_proven': 'full source byte SHA, disposable border, source priority, overlap winner, or production seam transform',
+                  'production_seam_authority': False,
+                  'authority_status': 'UNPROVEN',
+              },
+          }
+          with open('/tmp/dtm1-embedded-metadata-audit.json', 'w', encoding='utf-8') as fh:
+              json.dump(evidence, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          print(json.dumps({
+              'status': evidence['status'],
+              'observations': [
+                  {
+                      'logical_name': item['logical_name'],
+                      'tag_namespaces': item['raster']['tag_namespaces'],
+                      'tags': item['raster']['tags'],
+                      'audit': item['audit']['audit'],
+                  }
+                  for item in observations
+              ],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Assert evidence contains no raw geodata
+        run: |
+          if find /tmp -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'raw geodata unexpectedly present in evidence workspace' >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-embedded-metadata-audit-${{ github.sha }}
+          path: /tmp/dtm1-embedded-metadata-audit.json
+          if-no-files-found: error
+          retention-days: 7
