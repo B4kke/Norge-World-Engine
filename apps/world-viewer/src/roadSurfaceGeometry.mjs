@@ -1,6 +1,7 @@
 const DEFAULT_VISUAL_WIDTH_M = 3.2;
 const DEFAULT_MITER_LIMIT = 2.0;
 const DEFAULT_UV_PERIOD_M = 4.0;
+const DEFAULT_MINIMUM_POINT_SPACING_M = 1.25;
 
 function finitePoint(point) {
   return Array.isArray(point)
@@ -64,7 +65,7 @@ function joinOffset(points, index, halfWidth, miterLimit) {
   return [miterX * cappedLength, miterZ * cappedLength];
 }
 
-function projectPath(points, projectPoint) {
+function projectPath(points, projectPoint, minimumPointSpacingMeters) {
   const projected = [];
   for (const point of points ?? []) {
     const local = projectPoint(point);
@@ -72,7 +73,27 @@ function projectPath(points, projectPoint) {
     if (projected.length > 0 && planarDistance(projected.at(-1), local) <= 1e-4) continue;
     projected.push([Number(local[0]), Number(local[1]), Number(local[2])]);
   }
-  return projected;
+
+  if (!(minimumPointSpacingMeters > 0) || projected.length <= 2) return projected;
+
+  // Renderer-only sampling: dense source vertices can be much closer together than the
+  // non-authoritative visual road width. Keeping sub-meter joins in a 3.2 m ribbon can
+  // make the two ribbon edges cross. Preserve path endpoints, but skip intermediate
+  // samples below the measured visual threshold. The compiled centerline is untouched.
+  const sampled = [projected[0]];
+  for (let index = 1; index < projected.length - 1; index += 1) {
+    if (planarDistance(sampled.at(-1), projected[index]) >= minimumPointSpacingMeters) sampled.push(projected[index]);
+  }
+
+  const last = projected.at(-1);
+  if (planarDistance(sampled.at(-1), last) >= minimumPointSpacingMeters) {
+    sampled.push(last);
+  } else if (sampled.length > 1 && planarDistance(last, projected[0]) > 1e-4) {
+    sampled[sampled.length - 1] = last;
+  } else if (planarDistance(sampled.at(-1), last) > 1e-4) {
+    sampled.push(last);
+  }
+  return sampled;
 }
 
 export function buildRoadSurfaceGeometry(roadsArtifact, {
@@ -80,11 +101,13 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
   widthMeters = DEFAULT_VISUAL_WIDTH_M,
   miterLimit = DEFAULT_MITER_LIMIT,
   uvPeriodMeters = DEFAULT_UV_PERIOD_M,
+  minimumPointSpacingMeters = DEFAULT_MINIMUM_POINT_SPACING_M,
 } = {}) {
   if (typeof projectPoint !== 'function') throw new TypeError('projectPoint is required');
   if (!(Number.isFinite(widthMeters) && widthMeters > 0)) throw new RangeError('widthMeters must be > 0');
   if (!(Number.isFinite(miterLimit) && miterLimit >= 1)) throw new RangeError('miterLimit must be >= 1');
   if (!(Number.isFinite(uvPeriodMeters) && uvPeriodMeters > 0)) throw new RangeError('uvPeriodMeters must be > 0');
+  if (!(Number.isFinite(minimumPointSpacingMeters) && minimumPointSpacingMeters >= 0)) throw new RangeError('minimumPointSpacingMeters must be >= 0');
 
   const positions = [];
   const uvs = [];
@@ -93,9 +116,13 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
   let pathCount = 0;
   let segmentCount = 0;
   let centerlineLengthM = 0;
+  let sourcePointCount = 0;
+  let sampledPointCount = 0;
 
   for (const path of roadsArtifact?.paths ?? []) {
-    const points = projectPath(path?.points, projectPoint);
+    sourcePointCount += path?.points?.length ?? 0;
+    const points = projectPath(path?.points, projectPoint, minimumPointSpacingMeters);
+    sampledPointCount += points.length;
     if (points.length < 2) continue;
 
     const baseVertex = positions.length / 3;
@@ -140,6 +167,11 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
       width_semantics: 'renderer-only-fallback',
       miter_limit: miterLimit,
       uv_period_m: uvPeriodMeters,
+      minimum_point_spacing_m: minimumPointSpacingMeters,
+      point_spacing_semantics: 'renderer-only-sampling',
+      source_point_count: sourcePointCount,
+      sampled_point_count: sampledPointCount,
+      removed_sample_count: Math.max(0, sourcePointCount - sampledPointCount),
       winding: 'counter-clockwise-upward',
       path_count: pathCount,
       segment_count: segmentCount,
