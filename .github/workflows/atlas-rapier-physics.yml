@@ -46,6 +46,7 @@ jobs:
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_constrained_migration_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_static_world_migration_probe.mjs
+          node --check prototypes/atlas-rapier-physics/rapier_tile_crossing_occupancy_probe.mjs
           python -m json.tool engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-maintenance-batch-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-membership-event-v0.1.schema.json > /dev/null
@@ -103,6 +104,11 @@ jobs:
           node prototypes/atlas-rapier-physics/rapier_static_world_migration_probe.mjs | tee /tmp/atlas-rapier-static-world-migration.json
           python -m json.tool /tmp/atlas-rapier-static-world-migration.json > /dev/null
 
+      - name: Run Rapier tile crossing occupancy probe
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_tile_crossing_occupancy_probe.mjs | tee /tmp/atlas-rapier-tile-crossing-occupancy.json
+          python -m json.tool /tmp/atlas-rapier-tile-crossing-occupancy.json > /dev/null
+
       - name: Upload ATLAS physics evidence
         uses: actions/upload-artifact@v4
         with:
@@ -112,4 +118,5 @@ jobs:
             /tmp/atlas-rapier-contact-replay.json
             /tmp/atlas-rapier-constrained-migration.json
             /tmp/atlas-rapier-static-world-migration.json
+            /tmp/atlas-rapier-tile-crossing-occupancy.json
           retention-days: 7
