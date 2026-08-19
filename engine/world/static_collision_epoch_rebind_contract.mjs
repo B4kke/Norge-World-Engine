@@ -9,6 +9,7 @@ export class StaticCollisionEpochRebindError extends Error {
 const fail = (code, message) => { throw new StaticCollisionEpochRebindError(code, message); };
 const id = (value, label) => { if (typeof value !== 'string' || !value.trim()) fail('INVALID_IDENTITY', `${label} must be non-empty`); return value; };
 const sha = (value, label) => { if (typeof value !== 'string' || !/^[0-9a-f]{64}$/u.test(value)) fail('INVALID_ARTIFACT_SHA256', `${label} must be lowercase SHA-256`); return value; };
+const canonicalNegation = (value) => { const result = -value; return Object.is(result, -0) ? 0 : result; };
 function exact(value, keys, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_OBJECT', `${label} must be an object`);
   const extras = Object.keys(value).filter((key) => !keys.includes(key));
@@ -60,6 +61,10 @@ export function planStaticCollisionEpochRebind({ worldFrame, currentPhysicsFrame
     nextLifecycleState,
     maintenanceEvent: event,
     replacement: Object.freeze({ collisionId, tileId, previousArtifactSha256, artifactSha256, dependentEntityIds: Object.freeze(dependentEntityIds), continuity: 'atomic-rebind' }),
-    solverLocalTranslation: Object.freeze({ x: -event.deltaWorld.east, y: -event.deltaWorld.up, z: -event.deltaWorld.north }),
+    solverLocalTranslation: Object.freeze({
+      x: canonicalNegation(event.deltaWorld.east),
+      y: canonicalNegation(event.deltaWorld.up),
+      z: canonicalNegation(event.deltaWorld.north),
+    }),
   });
 }
