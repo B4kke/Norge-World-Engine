@@ -22,7 +22,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install compiler test dependencies
-        run: python -m pip install -e 'engine/compiler[test]'
+        run: |
+          python -m pip install -e engine/compiler
+          python -m pip install pytest
       - name: Scope regressions
         run: |
           pytest -q \
