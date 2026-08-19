@@ -24,15 +24,18 @@ jobs:
           python -m py_compile tools/visual-data/probe_visual_sources.py
           python -m py_compile tools/visual-data/probe_visual_order_selections.py
           python -m py_compile tools/visual-data/probe_sr16_metadata_links.py
+          python -m py_compile tools/visual-data/probe_vegetation_real_sample.py
 
-      - name: Probe current official download contracts
+      - name: Probe current official source contracts
         run: |
           python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json
           python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json
           python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json
+          python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json
           cat /tmp/nwe-visual-source-probe.json
           cat /tmp/nwe-visual-order-selection.json
           cat /tmp/nwe-sr16-metadata-links.json
+          cat /tmp/nwe-vegetation-real-source-probe.json
 
       - uses: actions/upload-artifact@v4
         with:
@@ -41,5 +44,6 @@ jobs:
             /tmp/nwe-visual-source-probe.json
             /tmp/nwe-visual-order-selection.json
             /tmp/nwe-sr16-metadata-links.json
+            /tmp/nwe-vegetation-real-source-probe.json
           if-no-files-found: error
           retention-days: 14
