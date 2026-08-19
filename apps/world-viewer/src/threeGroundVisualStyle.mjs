@@ -15,6 +15,7 @@ export const GROUND_VISUAL_STYLE = Object.freeze({
   shadowBias: -0.00015,
   shadowNormalBias: 0.035,
   shadowIntensity: 0.82,
+  shadowAnchorUpdateDistanceM: 8,
   sunOffset: Object.freeze([-65, 120, 50]),
   sunTargetHeightM: 1,
 });
@@ -80,17 +81,36 @@ export function createGroundLighting(scene) {
   sun.shadow.bias = style.shadowBias;
   sun.shadow.normalBias = style.shadowNormalBias;
   sun.shadow.intensity = style.shadowIntensity;
+  sun.shadow.autoUpdate = false;
   sun.shadow.camera.updateProjectionMatrix();
   scene.add(hemisphere, sunTarget, sun);
 
-  let anchor = Object.freeze([0, 0, 0]);
-  function updateAnchor(position) {
-    const [x, y, z] = finitePosition(position);
-    anchor = Object.freeze([x, y, z]);
+  let requestedAnchor = Object.freeze([0, 0, 0]);
+  let shadowAnchor = null;
+  let shadowUpdates = 0;
+
+  function applyShadowAnchor(anchor) {
+    const [x, y, z] = anchor;
+    shadowAnchor = Object.freeze([x, y, z]);
     sunTarget.position.set(x, y + style.sunTargetHeightM, z);
     sun.position.set(x + style.sunOffset[0], y + style.sunOffset[1], z + style.sunOffset[2]);
     sunTarget.updateMatrixWorld();
     sun.updateMatrixWorld();
+    sun.shadow.needsUpdate = true;
+    shadowUpdates += 1;
+  }
+
+  function updateAnchor(position) {
+    requestedAnchor = Object.freeze(finitePosition(position));
+    if (!shadowAnchor) {
+      applyShadowAnchor(requestedAnchor);
+      return snapshot();
+    }
+    const dx = requestedAnchor[0] - shadowAnchor[0];
+    const dz = requestedAnchor[2] - shadowAnchor[2];
+    if (Math.hypot(dx, dz) >= style.shadowAnchorUpdateDistanceM) {
+      applyShadowAnchor(requestedAnchor);
+    }
     return snapshot();
   }
 
@@ -102,7 +122,8 @@ export function createGroundLighting(scene) {
         type: 'directional',
         intensity: sun.intensity,
         cast_shadow: sun.castShadow === true,
-        anchor,
+        requested_anchor: requestedAnchor,
+        anchor: shadowAnchor ?? requestedAnchor,
         offset: style.sunOffset,
       }),
       shadow: Object.freeze({
@@ -115,6 +136,8 @@ export function createGroundLighting(scene) {
         normal_bias: style.shadowNormalBias,
         intensity: style.shadowIntensity,
         auto_update: sun.shadow.autoUpdate !== false,
+        update_distance_m: style.shadowAnchorUpdateDistanceM,
+        update_count: shadowUpdates,
       }),
     });
   }
