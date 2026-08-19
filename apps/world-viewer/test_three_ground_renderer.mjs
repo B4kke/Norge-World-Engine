@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const renderer = readFileSync(new URL('./src/threeGroundRenderer.mjs', import.meta.url), 'utf8');
+const visualStyle = readFileSync(new URL('./src/threeGroundVisualStyle.mjs', import.meta.url), 'utf8');
 const adapter = readFileSync(new URL('./src/preview1Renderer.mjs', import.meta.url), 'utf8');
 const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -27,11 +28,21 @@ assert.match(renderer, /resolvedRoofMaterial/, 'source-backed building roofs mus
 assert.match(renderer, /fallbackWallMaterial/, 'fallback-height building walls must remain visually distinct');
 assert.match(renderer, /fallbackRoofMaterial/, 'fallback-height building roofs must remain visually distinct');
 assert.match(renderer, /building_materials:\s*\{/, 'runtime stats must expose building material semantics');
-assert.match(renderer, /draw_calls_per_frame:\s*2 \+ buildingDrawCalls/, 'draw-call stats must account for separate batched wall\/roof layers');
+assert.match(renderer, /draw_calls_per_frame:\s*colorDrawCalls/, 'draw-call stats must keep color-pass estimate explicit when shadows add work');
+assert.match(renderer, /shadow_draw_candidates:\s*shadowDrawCandidates/, 'shadow pass cost must be visible in runtime stats');
+assert.match(renderer, /draw_call_semantics:/, 'draw-call stats must explain shadow-pass semantics');
 assert.match(renderer, /camera\.position\.set\(0, centerGround \+ 1\.7, 14\)/, 'camera must start at human eye height over sampled ground');
 assert.match(renderer, /renderer_adapter:\s*'three-ground\/0\.1'/, 'runtime stats must identify the Three renderer adapter');
 assert.match(renderer, /terrain_material:\s*\{/, 'runtime stats must expose terrain material evidence');
+assert.match(renderer, /renderer_visual_style:/, 'runtime stats must expose visual style/shadow evidence');
+assert.match(renderer, /lighting\.updateAnchor\(\[\.\.\.pose\.position\]\)/, 'bounded sun/shadow anchor must follow the derived character pose');
+assert.match(renderer, /configureObjectShadowRole\(humanoid\.root/, 'humanoid must participate in the bounded shadow pass');
+assert.match(renderer, /getVisualStyle/, 'renderer must expose the active visual style for browser acceptance');
 assert.match(renderer, /getTerrainResourceLifecycle/, 'adapter must preserve terrain resource lifecycle integration');
+assert.match(visualStyle, /ACESFilmicToneMapping/, 'visual pass must use explicit ACES filmic tone mapping');
+assert.match(visualStyle, /SRGBColorSpace/, 'visual pass must use explicit sRGB output color space');
+assert.match(visualStyle, /shadowHalfExtentM:\s*70/, 'shadow frustum must stay bounded instead of covering the whole tile');
+assert.match(visualStyle, /shadowMapSize:\s*1024/, 'shadow map budget must be explicit');
 assert.match(adapter, /createThreeGroundRenderer/, 'Preview 1 renderer boundary must route through Three.js');
 assert.doesNotMatch(renderer, /kartverket|nvdb|overpass|openstreetmap/i, 'renderer must not gain raw-source knowledge');
 

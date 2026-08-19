@@ -1,0 +1,47 @@
+name: preview1-visual-proof
+
+on:
+  pull_request:
+    paths:
+      - 'apps/world-viewer/**'
+      - '.github/workflows/preview1-visual-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-preview-screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+
+      - name: Install World Viewer dependencies
+        run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
+
+      - name: Build exact World Viewer
+        run: npm run build --workspace @nwe/world-viewer
+
+      - name: Capture REAL WORLD READY screenshot
+        run: |
+          mkdir -p artifacts
+          node apps/world-viewer/capture_preview1_screenshot.mjs \
+            --dist-root apps/world-viewer/dist \
+            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json \
+            --output artifacts/preview1-ground-ready.png \
+            --timeout-ms 90000
+
+      - name: Upload exact visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview1-visual-proof-${{ github.sha }}
+          path: artifacts/preview1-ground-ready.png
+          if-no-files-found: error
+          retention-days: 14

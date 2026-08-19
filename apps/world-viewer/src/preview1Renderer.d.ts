@@ -37,6 +37,8 @@ export function createPreview1Renderer(options: any): Promise<{
     msaa_samples: number | null;
     power_preference?: string;
     draw_calls_per_frame: number;
+    draw_call_semantics?: string;
+    shadow_draw_candidates?: number;
     gpu_buffer_count: number;
     gpu_buffer_payload_bytes: number;
     gpu_attachment_estimated_bytes?: number;
@@ -46,6 +48,7 @@ export function createPreview1Renderer(options: any): Promise<{
     camera_mode?: string;
     character?: HumanoidRenderState;
     building_materials?: any;
+    renderer_visual_style?: GroundVisualStyleState;
     timing_ms: any;
   };
   invalidate(): void;
@@ -54,7 +57,40 @@ export function createPreview1Renderer(options: any): Promise<{
   setCharacterRenderPose(pose: { entityId?: string; worldFrameId?: string; originSeriesId?: string; originEpoch?: number; position: Float32Array; headingRadians: number }): HumanoidRenderState;
   getCharacterState(): HumanoidRenderState;
   getCameraState(): { yaw: number; pitch: number; distance: number; target: number[] };
+  getVisualStyle(): GroundVisualStyleState;
 }>;
+
+type GroundVisualStyleState = {
+  schema: 'nwe.ground-visual-style/0.1' | string;
+  tone_mapping: 'ACESFilmicToneMapping' | string;
+  tone_mapping_exposure: number;
+  output_color_space: 'SRGBColorSpace' | string;
+  shadows_enabled: boolean;
+  shadow_filter: 'BasicShadowMap' | string;
+  sky: { color: number; fog_near_m: number; fog_far_m: number };
+  sun: {
+    type: string;
+    intensity: number;
+    cast_shadow: boolean;
+    requested_anchor: readonly number[];
+    anchor: readonly number[];
+    offset: readonly number[];
+  };
+  shadow: {
+    strategy: 'single-player-following-directional-frustum' | string;
+    filter: 'BasicShadowMap' | string;
+    map_size: number;
+    half_extent_m: number;
+    near_m: number;
+    far_m: number;
+    bias: number;
+    normal_bias: number;
+    intensity: number;
+    auto_update: boolean;
+    update_distance_m: number;
+    update_count: number;
+  };
+};
 
 type HumanoidRenderState = {
   schema: 'nwe.humanoid-render-state/0.1' | string;
