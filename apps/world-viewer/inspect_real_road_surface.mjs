@@ -18,12 +18,33 @@ function triangleNormalY(positions, ia, ib, ic) {
   return abz * acx - abx * acz;
 }
 
-function samePlanarPoint(a, b, epsilon = 1e-4) {
-  return Array.isArray(a) && Array.isArray(b)
-    && Math.hypot(Number(a[0]) - Number(b[0]), Number(a[1]) - Number(b[1])) <= epsilon;
+function sourcePlanarDistance(a, b) {
+  return Math.hypot(Number(a?.[0]) - Number(b?.[0]), Number(a?.[1]) - Number(b?.[1]));
 }
 
-function inspect(miterLimit, { includeAnomalies = false } = {}) {
+function samePlanarPoint(a, b, epsilon = 1e-4) {
+  return Array.isArray(a) && Array.isArray(b) && sourcePlanarDistance(a, b) <= epsilon;
+}
+
+function rendererSampledPath(path, minimumSpacingMeters) {
+  const points = Array.isArray(path?.points) ? path.points : [];
+  if (!(minimumSpacingMeters > 0) || points.length <= 2) return path;
+  const output = [points[0]];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    if (sourcePlanarDistance(output.at(-1), points[index]) >= minimumSpacingMeters) output.push(points[index]);
+  }
+  const last = points.at(-1);
+  if (sourcePlanarDistance(output.at(-1), last) >= minimumSpacingMeters) {
+    output.push(last);
+  } else if (output.length > 1 && !samePlanarPoint(last, points[0])) {
+    output[output.length - 1] = last;
+  } else if (!samePlanarPoint(output.at(-1), last)) {
+    output.push(last);
+  }
+  return { ...path, points: output };
+}
+
+function inspect({ miterLimit = 2, minimumSpacingMeters = 0, includeAnomalies = false } = {}) {
   const EPSILON = 1e-6;
   const anomalies = [];
   let renderedPaths = 0;
@@ -34,9 +55,14 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
   let fullyInvertedSegments = 0;
   let closedPaths = 0;
   let minimumNormalY = Number.POSITIVE_INFINITY;
+  let inputPoints = 0;
+  let sampledPoints = 0;
 
   for (let pathIndex = 0; pathIndex < artifact.paths.length; pathIndex += 1) {
-    const path = artifact.paths[pathIndex];
+    const sourcePath = artifact.paths[pathIndex];
+    const path = rendererSampledPath(sourcePath, minimumSpacingMeters);
+    inputPoints += sourcePath?.points?.length ?? 0;
+    sampledPoints += path?.points?.length ?? 0;
     if (samePlanarPoint(path?.points?.[0], path?.points?.at?.(-1))) closedPaths += 1;
     const geometry = buildRoadSurfaceGeometry({ paths: [path] }, {
       projectPoint: (point) => [Number(point[0]), Number(point[2]), -Number(point[1])],
@@ -82,7 +108,8 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
         path_index: pathIndex,
         path_id: path?.path_id ?? null,
         road_type: path?.road_type ?? null,
-        point_count: path?.points?.length ?? 0,
+        source_point_count: sourcePath?.points?.length ?? 0,
+        sampled_point_count: path?.points?.length ?? 0,
         closed: samePlanarPoint(path?.points?.[0], path?.points?.at?.(-1)),
         issues: segmentIssues.slice(0, 12),
         issue_count: segmentIssues.length,
@@ -92,8 +119,12 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
 
   return {
     miter_limit: miterLimit,
+    minimum_input_spacing_m: minimumSpacingMeters,
     status: negativeTriangles === 0 && degenerateTriangles === 0 ? 'PASS' : 'FAIL',
     rendered_paths: renderedPaths,
+    input_points: inputPoints,
+    sampled_points: sampledPoints,
+    removed_points: inputPoints - sampledPoints,
     triangles,
     negative_triangles: negativeTriangles,
     degenerate_triangles: degenerateTriangles,
@@ -105,13 +136,15 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
   };
 }
 
-const candidates = [1, 1.25, 1.5, 2].map((miterLimit) => inspect(miterLimit));
-const active = inspect(2, { includeAnomalies: true });
+const joinCandidates = [1, 1.25, 1.5, 2].map((miterLimit) => inspect({ miterLimit }));
+const spacingCandidates = [0.5, 0.75, 1, 1.25, 1.5, 2].map((minimumSpacingMeters) => inspect({ minimumSpacingMeters }));
+const active = inspect({ includeAnomalies: true });
 const report = {
-  schema: 'nwe.real-road-surface-inspection/0.3',
+  schema: 'nwe.real-road-surface-inspection/0.4',
   status: active.status,
   artifact: { tile_id: artifact.tile_id, schema: artifact.schema, path_count: artifact.paths.length },
-  candidate_join_budgets: candidates,
+  candidate_join_budgets: joinCandidates,
+  candidate_renderer_sampling: spacingCandidates,
   active_geometry: active,
 };
 
