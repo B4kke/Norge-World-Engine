@@ -26,6 +26,7 @@ jobs:
           python -m py_compile tools/visual-data/probe_sr16_metadata_links.py
           python -m py_compile tools/visual-data/probe_vegetation_real_sample.py
           python -m py_compile tools/visual-data/probe_nibio_capabilities_catalog.py
+          python -m py_compile tools/visual-data/probe_ar50_determinism.py
 
       - name: Probe current official source contracts
         run: |
@@ -34,6 +35,7 @@ jobs:
           python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json >/dev/null
           python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json >/dev/null
           python tools/visual-data/probe_nibio_capabilities_catalog.py --output /tmp/nwe-nibio-capabilities-catalog.json >/dev/null
+          python tools/visual-data/probe_ar50_determinism.py --output /tmp/nwe-ar50-determinism.json >/dev/null
           python - <<'PY'
           import json
 
@@ -43,6 +45,8 @@ jobs:
               metadata = json.load(handle)
           with open('/tmp/nwe-nibio-capabilities-catalog.json', encoding='utf-8') as handle:
               catalog = json.load(handle)
+          with open('/tmp/nwe-ar50-determinism.json', encoding='utf-8') as handle:
+              ar50_determinism = json.load(handle)
 
           def atom_summary(atom):
               return {
@@ -76,23 +80,17 @@ jobs:
                   'split_raster_metadata': metadata_summary('sr16_raster_split'),
                   'open_raster_legacy_candidate_metadata': metadata_summary('sr16_raster_open_legacy_candidate'),
                   'vector_metadata': metadata_summary('sr16_vector'),
-                  'nibio_capabilities_catalog': {
-                      'status': catalog['status'],
-                      'probes': [
-                          {
-                              'requested_url': item.get('requested_url'),
-                              'status': item.get('status'),
-                              'http': item.get('http'),
-                              'body_kind': item.get('body_kind'),
-                              'top_level_type': item.get('top_level_type'),
-                              'top_level_keys': item.get('top_level_keys'),
-                              'top_level_count': item.get('top_level_count'),
-                              'matching_context': item.get('matching_context'),
-                              'error': item.get('error'),
-                          }
-                          for item in catalog['probes']
-                      ],
-                  },
+                  'nibio_capability_endpoints': [
+                      {
+                          'requested_url': item.get('requested_url'),
+                          'reachability': item.get('reachability'),
+                          'http_status': item.get('http_status'),
+                          'http': item.get('http'),
+                          'top_level_keys': item.get('top_level_keys'),
+                          'error': item.get('error'),
+                      }
+                      for item in catalog['probes']
+                  ],
               },
               'ar50': {
                   'capabilities_http': ar50_cap['http'],
@@ -106,6 +104,16 @@ jobs:
                   'feature_member_count_capped': ar50['feature_member_count_capped'],
                   'property_names': ar50['property_names'],
                   'value_preview': ar50['value_preview'],
+                  'determinism': {
+                      'status': ar50_determinism['status'],
+                      'raw_hash_changed': ar50_determinism['raw_hash_changed'],
+                      'canonical_hash_a': ar50_determinism['canonical_hash_a'],
+                      'canonical_hash_b': ar50_determinism['canonical_hash_b'],
+                      'feature_count_a': ar50_determinism['feature_count_a'],
+                      'feature_count_b': ar50_determinism['feature_count_b'],
+                      'local_ids_identical': ar50_determinism['local_ids_identical'],
+                      'volatile_fields_excluded': ar50_determinism['volatile_fields_excluded'],
+                  },
               },
           }
           print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
@@ -120,5 +128,6 @@ jobs:
             /tmp/nwe-sr16-metadata-links.json
             /tmp/nwe-vegetation-real-source-probe.json
             /tmp/nwe-nibio-capabilities-catalog.json
+            /tmp/nwe-ar50-determinism.json
           if-no-files-found: error
           retention-days: 14
