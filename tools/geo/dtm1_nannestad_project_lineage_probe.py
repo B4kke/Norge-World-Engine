@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sys
 import urllib.parse
 import urllib.request
@@ -18,10 +17,10 @@ from nwe_compiler.dtm1_nannestad_project_lineage import (  # noqa: E402
     normalize_project_query,
 )
 
-SERVICE = "https://hoydedata.no/arcgis/rest/services/prosjekter_vk/MapServer/1/query"
+SERVICE = "https://hoydedata.no/arcgis/rest/services/DTM/ImageServer/query"
 FIELDS = (
-    "LAS_PROJECT_ID,LAS_PROJECT_NAME,PRIORITET,AARSTALL,SISTEFLYDATO,PROSJEKTNR,"
-    "HOYDESYSTEM,KOORDINATSYSTEM,OPPLOSNING,DTM_INTERPOLATIONTYPE,BEST,BEST_OPEN"
+    "NAME,LAS_PROJECT_ID,LAS_PROJECT_NAME,PRIORITET,AARSTALL,SISTEFLYDATO,PROSJEKTNR,"
+    "HOYDESYSTEM,KOORDINATSYSTEM,OPPLOSNING,DTM_INTERPOLATIONTYPE,CATEGORY,LOWPS,HIGHPS"
 )
 SAMPLES = {
     "south": (282930.0, 6680996.0),
@@ -40,7 +39,7 @@ def fetch_json(url: str, timeout: float) -> tuple[dict, bytes]:
 def query_url(x: float, y: float) -> str:
     params = {
         "f": "json",
-        "where": "1=1",
+        "where": "CATEGORY=1",
         "geometry": f"{x:.1f},{y:.1f}",
         "geometryType": "esriGeometryPoint",
         "inSR": "25833",
@@ -70,12 +69,14 @@ def main() -> int:
             "request_url": url,
             "response_bytes": len(raw),
             "response_sha256": hashlib.sha256(raw).hexdigest(),
+            "feature_count": len(payload.get("features", [])),
         }
 
     assessment = assess_overlap_project_lineage(sample_records=sample_records)
     evidence = {
         "schema": "nwe.dtm1-nannestad-project-lineage-proof/0.1",
         "provider_service": SERVICE,
+        "provider_surface": "DTM ImageServer primary raster catalog",
         "source_tiles": ["33-125-116", "33-125-117"],
         "measured_overlap_bounds_epsg25833": {
             "xmin": 275425.0,
