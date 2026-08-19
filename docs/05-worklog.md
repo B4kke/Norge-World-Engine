@@ -127,3 +127,30 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-06`: LUMEN consumes the ATLAS transform boundary when character integration reaches movement/grounding; ATLAS should only adjust the contract if that integration exposes a concrete world-state mismatch.
+
+## 2026-08-19 22:15 CEST — ATLAS — P0-GROUND-06A-OPT
+
+**What**
+- Optimized the character-transform hot path without expanding ATLAS ownership.
+- Replaced validation-by-cloning with allocation-free validation for existing authoritative positions.
+- Added no-op identity fast paths for zero movement, equivalent heading updates and unchanged grounding height.
+- Reused the immutable authoritative `WorldPosition` for heading-only changes and kept physical movement/height changes as the only operations that create a new position.
+- Canonicalized heading to `[0, 2π)` including a single positive zero representation, and fail-closed forged non-canonical character transforms.
+
+**Why**
+- Character movement will execute at simulation/frame cadence. Avoiding redundant immutable-object churn now makes the LUMEN integration cheaper while preserving the existing world/render-origin invariants and renderer-neutral boundary.
+
+**Result / evidence**
+- FACT: regression coverage increased from 6 to 7 cases, including strict object-identity checks for no-op updates and immutable-position reuse for heading-only updates.
+- FACT: compared with the initial implementation, a changed heading update eliminates two redundant `WorldPosition` creations; a planar move/height update eliminates two redundant position creations; no-op updates return the existing transform.
+- FACT: optimized code head `cce1b2367d33ef9a51a909cab0a61c95413c4d45` passed GitHub `baseline` run `32297774095` and `atlas-rapier-physics` run `32297774068`.
+- No wall-clock speedup is claimed; this optimization is structurally proven allocation reduction plus unchanged correctness gates.
+
+**Changed**
+- Draft PR #72, branch `agent/atlas-ground-06a`.
+- `engine/world/character_transform_contract.mjs`.
+- `engine/world/test_character_transform_contract.mjs`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P0-GROUND-06`: LUMEN consumes the optimized ATLAS transform boundary; ATLAS changes it again only if integration exposes a concrete world-state mismatch.
