@@ -1,5 +1,9 @@
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { installPreviewCameraControls } from './previewCameraControls.mjs';
+import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
+
+const ROAD_VISUAL_WIDTH_M = 3.2;
+const ROAD_SURFACE_LIFT_M = 0.06;
 
 function identity() {
   return new Float32Array([
@@ -94,32 +98,6 @@ function pushQuad(positions, indices, a, b, c, d) {
   indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
-function buildRoadRibbonGeometry(roadsArtifact, origin, sampleHeight, widthMeters = 3.2) {
-  const positions = [];
-  const indices = [];
-  const half = widthMeters / 2;
-  for (const path of roadsArtifact?.paths ?? []) {
-    const points = Array.isArray(path.points) ? path.points : [];
-    for (let i = 0; i + 1 < points.length; i += 1) {
-      const a = worldPointToLocal(points[i], origin, sampleHeight, 0.35);
-      const b = worldPointToLocal(points[i + 1], origin, sampleHeight, 0.35);
-      const dx = b[0] - a[0];
-      const dz = b[2] - a[2];
-      const length = Math.hypot(dx, dz);
-      if (!(length > 0.001)) continue;
-      const px = -dz / length * half;
-      const pz = dx / length * half;
-      pushQuad(positions, indices,
-        [a[0] + px, a[1], a[2] + pz],
-        [a[0] - px, a[1], a[2] - pz],
-        [b[0] - px, b[1], b[2] - pz],
-        [b[0] + px, b[1], b[2] + pz]);
-    }
-  }
-  const IndexArray = positions.length / 3 <= 65535 ? Uint16Array : Uint32Array;
-  return { positions: new Float32Array(positions), indices: new IndexArray(indices) };
-}
-
 function polygonWithoutDuplicateClosure(polygon) {
   if (!Array.isArray(polygon)) return [];
   const points = polygon.filter((point) => Array.isArray(point) && point.length >= 2);
@@ -201,7 +179,10 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     h: terrainPayload.mesh.metadata.origin[2],
   };
   const sampleHeight = terrainHeightSampler(terrainPayload);
-  const roads = buildRoadRibbonGeometry(roadsArtifact, origin, sampleHeight);
+  const roads = buildRoadSurfaceGeometry(roadsArtifact, {
+    projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
+    widthMeters: ROAD_VISUAL_WIDTH_M,
+  });
   const buildingsResolved = buildBuildingGeometry(buildingsArtifact, origin, sampleHeight, { resolved: true });
   const buildingsFallback = buildBuildingGeometry(buildingsArtifact, origin, sampleHeight, { resolved: false, fallbackHeight: 5 });
   return {
@@ -215,10 +196,15 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       terrain_vertices: terrainPayload.mesh.metadata.vertexCount,
       terrain_triangles: terrainPayload.mesh.metadata.triangleCount,
       road_paths: roadsArtifact?.paths?.length ?? 0,
+      road_surface_paths: roads.metadata.path_count,
+      road_surface_segments: roads.metadata.segment_count,
+      road_surface_triangles: roads.metadata.triangle_count,
+      road_width_semantics: roads.metadata.width_semantics,
+      road_surface_lift_m: ROAD_SURFACE_LIFT_M,
       building_footprints: buildingsArtifact?.features?.length ?? 0,
       source_backed_building_heights: buildingsResolved.count,
       unresolved_building_heights: buildingsFallback.count,
-      debug_road_width_m: 3.2,
+      debug_road_width_m: ROAD_VISUAL_WIDTH_M,
       debug_unresolved_building_height_m: 5,
     },
   };

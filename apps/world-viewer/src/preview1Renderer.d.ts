@@ -13,6 +13,11 @@ export function createPreview1Renderer(options: any): Promise<{
     terrain_vertices: number;
     terrain_triangles: number;
     road_paths: number;
+    road_surface_paths: number;
+    road_surface_segments: number;
+    road_surface_triangles: number;
+    road_width_semantics: 'renderer-only-fallback' | string;
+    road_surface_lift_m: number;
     building_footprints: number;
     source_backed_building_heights: number;
     unresolved_building_heights: number;
