@@ -3,6 +3,7 @@ import {
   classifyProfileBuildIdentity,
   profileVerifiedJsonArtifact,
   normalizeProfileIterations,
+  PROFILE_MAX_ITERATIONS,
 } from './browserArtifactProfile.mjs';
 import { monotonicNow } from './rendererObservability.mjs';
 
@@ -39,7 +40,7 @@ function queryConfig() {
   const params = new URLSearchParams(location.search);
   return {
     manifestUrl: params.get('manifest') || DEFAULT_MANIFEST,
-    iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: 20 }),
+    iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: PROFILE_MAX_ITERATIONS }),
     reportUrl: normalizeReportUrl(params.get('report')),
   };
 }
