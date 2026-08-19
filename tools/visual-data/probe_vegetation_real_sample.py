@@ -1,29 +1,32 @@
 #!/usr/bin/env python3
 """Probe bounded real vegetation source bytes for the accepted Nannestad 1 km tile.
 
-The probe intentionally keeps raw provider bytes in /tmp only. The emitted JSON contains
-only source-contract/provenance evidence, hashes, schemas and compact sample metadata.
+The probe intentionally keeps raw provider bytes in /tmp or memory only. The emitted JSON
+contains only source-contract/provenance evidence, hashes, schemas and compact sample metadata.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 from typing import Any
 
-USER_AGENT = "NorgeWorldEngine-VegetationSampleProbe/0.1 (+https://github.com/B4kke/Norge-World-Engine)"
+USER_AGENT = "NorgeWorldEngine-VegetationSampleProbe/0.2 (+https://github.com/B4kke/Norge-World-Engine)"
 SR16_ATOM_URL = "https://kartkatalog.nibio.no/api/atom/5de45872-f534-4e97-840e-3cfd8db04398"
 AR50_WFS_URL = "https://wfs.nibio.no/cgi-bin/ar50_2"
 BOUNDS_25832 = (611000.0, 6677000.0, 612000.0, 6678000.0)
+SR16_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 
 
 def fetch(url: str, *, accept: str = "application/xml,text/xml,*/*;q=0.5", max_bytes: int = 8 * 1024 * 1024) -> tuple[bytes, dict[str, Any]]:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=90) as response:
         raw = response.read(max_bytes + 1)
         if len(raw) > max_bytes:
             raise RuntimeError(f"SOURCE_RESPONSE_TOO_LARGE: >{max_bytes} bytes from {response.geturl()}")
@@ -39,6 +42,19 @@ def fetch(url: str, *, accept: str = "application/xml,text/xml,*/*;q=0.5", max_b
         }
 
 
+def head(url: str) -> dict[str, Any]:
+    request = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return {
+            "url": response.geturl(),
+            "status": response.status,
+            "content_type": response.headers.get("Content-Type"),
+            "content_length_header": response.headers.get("Content-Length"),
+            "last_modified": response.headers.get("Last-Modified"),
+            "etag": response.headers.get("ETag"),
+        }
+
+
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag.split(":", 1)[-1]
 
@@ -50,6 +66,78 @@ def compact_text(value: str | None, limit: int = 220) -> str | None:
     if not value:
         return None
     return value if len(value) <= limit else value[: limit - 1] + "…"
+
+
+def inspect_zip_snapshot(raw: bytes, http: dict[str, Any]) -> dict[str, Any]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            members = archive.infolist()
+            return {
+                "status": "PASS",
+                "http": http,
+                "archive_member_count": len(members),
+                "archive_members": [
+                    {
+                        "name": member.filename,
+                        "compressed_bytes": member.compress_size,
+                        "uncompressed_bytes": member.file_size,
+                        "crc32": f"{member.CRC:08x}",
+                    }
+                    for member in members[:40]
+                ],
+                "raw_bytes_retained": False,
+            }
+    except zipfile.BadZipFile:
+        return {"status": "NOT_ZIP", "http": http, "raw_bytes_retained": False}
+
+
+def probe_sr16_nannestad_snapshot(links: list[dict[str, Any]]) -> dict[str, Any]:
+    epsg25832 = [
+        link for link in links
+        if "25832" in ((link.get("entry_title") or "") + " " + (link.get("href") or ""))
+    ]
+    candidates = epsg25832 or links
+    if not candidates:
+        return {"status": "NO_NANNESTAD_LINK"}
+
+    selected = candidates[0]
+    href = selected.get("href")
+    if not href:
+        return {"status": "NO_HREF", "selected": selected}
+
+    head_result: dict[str, Any]
+    try:
+        head_result = head(href)
+    except Exception as error:
+        return {"status": "HEAD_FAILED", "selected": selected, "error": repr(error)}
+
+    length_raw = head_result.get("content_length_header")
+    try:
+        content_length = int(length_raw) if length_raw is not None else None
+    except ValueError:
+        content_length = None
+
+    if content_length is not None and content_length > SR16_MAX_SNAPSHOT_BYTES:
+        return {
+            "status": "SKIPPED_TOO_LARGE",
+            "selected": selected,
+            "head": head_result,
+            "max_snapshot_bytes": SR16_MAX_SNAPSHOT_BYTES,
+        }
+
+    try:
+        raw, http = fetch(href, accept="application/zip,application/octet-stream,*/*;q=0.5", max_bytes=SR16_MAX_SNAPSHOT_BYTES)
+    except RuntimeError as error:
+        if "SOURCE_RESPONSE_TOO_LARGE" in str(error):
+            return {
+                "status": "SKIPPED_TOO_LARGE",
+                "selected": selected,
+                "head": head_result,
+                "max_snapshot_bytes": SR16_MAX_SNAPSHOT_BYTES,
+                "error": str(error),
+            }
+        raise
+    return {"selected": selected, "head": head_result, **inspect_zip_snapshot(raw, http)}
 
 
 def parse_sr16_atom() -> dict[str, Any]:
@@ -77,7 +165,11 @@ def parse_sr16_atom() -> dict[str, Any]:
     feed_text = raw.decode("utf-8", errors="replace").lower()
     nannestad_mentions = feed_text.count("nannestad") + feed_text.count("3238")
     direct_links = []
+    nannestad_entries = []
     for entry in entries:
+        entry_text = json.dumps(entry, ensure_ascii=False).lower()
+        if "nannestad" in entry_text or "3238" in entry_text:
+            nannestad_entries.append(entry)
         for link in entry["links"]:
             href = link.get("href")
             if not href:
@@ -85,15 +177,27 @@ def parse_sr16_atom() -> dict[str, Any]:
             if link.get("rel") in ("enclosure", "alternate") or any(token in href.lower() for token in ("download", ".zip", ".tif", ".tiff", ".sos", ".shp")):
                 direct_links.append({"entry_title": entry.get("title"), **link})
 
+    nannestad_links = []
+    for entry in nannestad_entries:
+        for link in entry["links"]:
+            href = link.get("href")
+            if href and (link.get("rel") in ("enclosure", "alternate") or "download" in href.lower() or href.lower().endswith(".zip")):
+                nannestad_links.append({"entry_title": entry.get("title"), "entry_updated": entry.get("updated"), **link})
+
+    snapshot = probe_sr16_nannestad_snapshot(nannestad_links)
     return {
         "status": "PASS",
         "http": http,
         "root": local_name(root.tag),
         "entry_count": len(entries),
         "nannestad_or_3238_mentions": nannestad_mentions,
-        "entries_preview": entries[:12],
+        "nannestad_entry_count": len(nannestad_entries),
+        "nannestad_entries": nannestad_entries,
+        "nannestad_data_link_count": len(nannestad_links),
+        "nannestad_data_links": nannestad_links,
         "candidate_data_links": direct_links[:30],
         "candidate_data_link_count": len(direct_links),
+        "nannestad_snapshot": snapshot,
     }
 
 
@@ -195,7 +299,7 @@ def main() -> int:
     ar50_sample = parse_ar50_sample(feature_type, version)
 
     report = {
-        "schema": "nwe.vegetation-real-source-probe/0.1",
+        "schema": "nwe.vegetation-real-source-probe/0.2",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "tile": {
             "id": "epsg25832_611000_6677000_1000m",
@@ -204,6 +308,7 @@ def main() -> int:
         },
         "policy": {
             "bounded_provider_read": True,
+            "sr16_snapshot_limit_bytes": SR16_MAX_SNAPSHOT_BYTES,
             "commits_raw_geodata": False,
             "uploads_raw_geodata": False,
         },
