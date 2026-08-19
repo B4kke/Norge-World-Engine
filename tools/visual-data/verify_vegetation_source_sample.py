@@ -13,12 +13,32 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SR16_VECTOR_METADATA_UUID = "27206b9e-4830-4f71-810d-d04c0dc32b59"
+
 
 def load_json(path: str) -> dict[str, Any]:
     value = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise RuntimeError(f"expected JSON object: {path}")
     return value
+
+
+def verify_sr16_selection(materialization: dict[str, Any]) -> bool:
+    source = materialization["sources"]["sr16v"]
+    selection = source["selection"]
+    areas = selection.get("areas") or []
+    projections = selection.get("projections") or []
+    formats = selection.get("formats") or []
+    checks = (
+        str(source.get("metadata_uuid")) == SR16_VECTOR_METADATA_UUID,
+        str(selection.get("metadataUuid")) == SR16_VECTOR_METADATA_UUID,
+        len(areas) == 1 and str(areas[0].get("code")) == "3238",
+        len(projections) == 1 and str(projections[0].get("code")) == "25832",
+        len(formats) == 1 and str(formats[0].get("name", "")).lower() == "gml",
+    )
+    if not all(checks):
+        raise RuntimeError(f"SR16V materialization selection drifted: {selection!r}")
+    return True
 
 
 def main() -> int:
@@ -39,6 +59,7 @@ def main() -> int:
     bytes_a1 = Path(args.normalized_a1).read_bytes()
     bytes_a2 = Path(args.normalized_a2).read_bytes()
 
+    selection_verified = verify_sr16_selection(materialization)
     offline_equal = bytes_a1 == bytes_a2
     evidence_equal = a1["normalized_sha256"] == a2["normalized_sha256"]
     semantic_equal = a1["semantic_sha256"] == b["semantic_sha256"]
@@ -58,6 +79,7 @@ def main() -> int:
         "independent_ar50_semantic_equal": semantic_equal,
         "ar50_raw_hashes_equal": materialization["sources"]["ar50"]["raw_hashes_equal"],
         "sr16v": {
+            "selection_verified": selection_verified,
             "metadata_uuid": materialization["sources"]["sr16v"]["metadata_uuid"],
             "source_gml_sha256": materialization["sources"]["sr16v"]["cache"]["gml_sha256"],
             "source_gml_bytes": materialization["sources"]["sr16v"]["cache"]["gml_bytes"],
