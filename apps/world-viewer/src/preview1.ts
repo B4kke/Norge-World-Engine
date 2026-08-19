@@ -4,6 +4,7 @@ import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifi
 import { TerrainMeshWorkerClient } from '../../../engine/streaming/terrain_mesh_worker_client.mjs';
 import { createTerrainTileLoadFunction } from '../../../engine/streaming/terrain_tile_loader.mjs';
 import { createObservedTerrainTileLoadFunction } from '../../../engine/streaming/terrain_load_observer.mjs';
+import { observeStreamingLifecycleAdapters } from '../../../engine/streaming/lifecycle_observer.mjs';
 import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
@@ -128,8 +129,7 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
     onObservation: traceRecorder.onLoadObservation,
   });
 
-  const scheduler = new TileStreamingScheduler({
-    loadTile: observedLoadTile,
+  const lifecycleAdapters = observeStreamingLifecycleAdapters({
     activateTile: async (_tile: any, nextPayload: any) => {
       payload = nextPayload;
       if (rendererLifecycle) rendererLifecycle.activateTerrainResource(nextPayload);
@@ -143,6 +143,12 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
       const state = rendererLifecycle.getTerrainResourceLifecycle();
       if (state?.active) rendererLifecycle.deactivateTerrainResource();
     },
+    onObservation: traceRecorder.onLifecycleObservation,
+  });
+
+  const scheduler = new TileStreamingScheduler({
+    loadTile: observedLoadTile,
+    ...lifecycleAdapters,
     activeRadiusMeters: STREAMING_ACTIVE_RADIUS_M,
     retainRadiusMeters: STREAMING_RETAIN_RADIUS_M,
     maxConcurrentLoads: 1,
