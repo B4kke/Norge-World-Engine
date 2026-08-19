@@ -29,6 +29,11 @@ TARGETS = {
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
         "match": ["nannestad", "3238"],
     },
+    "ar50_arealtype": {
+        "url": "https://kart8.nibio.no/api/v2/codelists/area/41f6b000-c394-41c5-8ebb-07a0a3ec914f",
+        "metadata_uuid": "41f6b000-c394-41c5-8ebb-07a0a3ec914f",
+        "match": ["nannestad", "3238"],
+    },
 }
 
 
