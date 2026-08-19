@@ -2,9 +2,15 @@ name: vegetation-source-sample
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/visual-data/materialize_vegetation_source_cache.py'
+      - 'tools/visual-data/normalize_vegetation_source_sample.py'
+      - '.github/workflows/vegetation-source-sample.yml'
 
 jobs:
   sample:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 79
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
