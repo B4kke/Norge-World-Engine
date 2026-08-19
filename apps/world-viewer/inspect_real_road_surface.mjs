@@ -9,6 +9,14 @@ if (artifact?.schema !== 'nwe.road-network-artifact/0.1' || !Array.isArray(artif
   throw new Error('ROAD_SURFACE_INSPECTOR_ARTIFACT_INVALID');
 }
 
+const allPoints = artifact.paths.flatMap((path) => path?.points ?? []);
+if (allPoints.length === 0) throw new Error('ROAD_SURFACE_INSPECTOR_EMPTY');
+const minE = Math.min(...allPoints.map((point) => Number(point[0])));
+const maxE = Math.max(...allPoints.map((point) => Number(point[0])));
+const minN = Math.min(...allPoints.map((point) => Number(point[1])));
+const maxN = Math.max(...allPoints.map((point) => Number(point[1])));
+const renderOrigin = Object.freeze({ e: (minE + maxE) / 2, n: (minN + maxN) / 2 });
+
 function triangleNormalY(positions, ia, ib, ic) {
   const ax = positions[ia * 3]; const az = positions[ia * 3 + 2];
   const bx = positions[ib * 3]; const bz = positions[ib * 3 + 2];
@@ -34,7 +42,11 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   for (let pathIndex = 0; pathIndex < artifact.paths.length; pathIndex += 1) {
     const path = artifact.paths[pathIndex];
     const geometry = buildRoadSurfaceGeometry({ paths: [path] }, {
-      projectPoint: (point) => [Number(point[0]), Number(point[2]), -Number(point[1])],
+      projectPoint: (point) => [
+        Number(point[0]) - renderOrigin.e,
+        Number(point[2]),
+        renderOrigin.n - Number(point[1]),
+      ],
       minimumPointSpacingMeters,
     });
     sourcePoints += geometry.metadata.source_point_count;
@@ -91,14 +103,16 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   };
 }
 
-const disabled = inspect(0);
-const active = inspect(1.25, { includeAnomalies: true });
+const unsampled = inspect(0, { includeAnomalies: true });
+const sampled = inspect(1.25, { includeAnomalies: true });
 const report = {
-  schema: 'nwe.real-road-surface-inspection/0.5',
-  status: active.status,
+  schema: 'nwe.real-road-surface-inspection/0.6',
+  status: sampled.status,
+  coordinate_semantics: 'render-local-float32-matching-preview-planar-origin',
+  render_origin: renderOrigin,
   artifact: { tile_id: artifact.tile_id, schema: artifact.schema, path_count: artifact.paths.length },
-  regression_reference_without_renderer_sampling: disabled,
-  active_geometry: active,
+  unsampled_geometry: unsampled,
+  sampled_geometry: sampled,
 };
 
 console.log(JSON.stringify(report, null, 2));
