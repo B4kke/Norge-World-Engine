@@ -1,0 +1,248 @@
+name: dtm1-raster-grid-crosscheck
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_raster_grid_crosscheck.py'
+      - 'engine/compiler/src/nwe_compiler/dtm1_raster_sample_plan.py'
+      - 'engine/compiler/tests/test_dtm1_raster_grid_crosscheck.py'
+      - 'engine/compiler/tests/test_dtm1_raster_sample_plan.py'
+      - '.github/workflows/dtm1-raster-grid-crosscheck.yml'
+  workflow_dispatch:
+
+jobs:
+  crosscheck-live-raster-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run focused raster-grid tests
+        run: |
+          pytest -q \
+            engine/compiler/tests/test_dtm1_raster_grid_crosscheck.py \
+            engine/compiler/tests/test_dtm1_raster_sample_plan.py
+
+      - name: Compare deterministic spatial/deviation sample with actual remote GeoTIFF grids
+        env:
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: .tif,.tiff
+          GDAL_HTTP_USERAGENT: NorgeWorldEngine-Compiler
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import PurePosixPath
+          from urllib.parse import urlencode, urlparse
+          from urllib.request import Request, urlopen
+
+          import rasterio
+          from pyproj import Transformer
+          from shapely.ops import transform as shapely_transform
+
+          from nwe_compiler.dtm1_extent_crosscheck import classify_declared_vs_catalog_extent
+          from nwe_compiler.dtm1_raster_grid_crosscheck import classify_raster_grid
+          from nwe_compiler.dtm1_raster_sample_plan import select_spatial_deviation_samples
+          from nwe_compiler.dtm1_source_grid_audit import SourceGridAuditError, infer_route_extent
+          from nwe_compiler.sources.dtm1_atom import DTM1_SOURCE_CRS, category_crs, geotiff_href, parse_feed, select_service_dataset
+          from nwe_compiler.terrain_acquisition import SERVICE_URL, USER_AGENT
+
+          IMAGE_SERVER = 'https://hoydedata.no/arcgis/rest/services/NHM_DTM_25833/ImageServer'
+          TOLERANCE_M = 0.25
+          PAGE_SIZE = 1000
+          TARGET_SAMPLE_COUNT = 24
+          to_source = Transformer.from_crs('EPSG:4326', DTM1_SOURCE_CRS, always_xy=True)
+
+          def get_bytes(url, accept='application/json, application/xml;q=0.9'):
+              req = Request(url, headers={'User-Agent': USER_AGENT, 'Accept': accept})
+              with urlopen(req, timeout=60) as response:
+                  if response.status != 200:
+                      raise SystemExit(f'HTTP {response.status}: {url}')
+                  return response.read()
+
+          def catalog_bounds(geometry):
+              coords = [point for ring in (geometry.get('rings') or []) for point in ring]
+              if not coords:
+                  raise SystemExit('ImageServer catalog item returned no polygon rings')
+              xs = [float(point[0]) for point in coords]
+              ys = [float(point[1]) for point in coords]
+              return (min(xs), min(ys), max(xs), max(ys))
+
+          service_bytes = get_bytes(SERVICE_URL, 'application/atom+xml, application/xml;q=0.9')
+          _, dataset_url = select_service_dataset(parse_feed(service_bytes), 'DTM1')
+          dataset_bytes = get_bytes(dataset_url, 'application/atom+xml, application/xml;q=0.9')
+          entries = parse_feed(dataset_bytes)
+
+          anomalies = []
+          for entry in entries:
+              if DTM1_SOURCE_CRS not in category_crs(entry) or entry.declared_extent is None:
+                  continue
+              declared = tuple(float(v) for v in shapely_transform(to_source.transform, entry.declared_extent.geometry).bounds)
+              try:
+                  infer_route_extent(declared, nominal_route_size_m=15000.0, tolerance_m=TOLERANCE_M)
+              except SourceGridAuditError:
+                  href = geotiff_href(entry)
+                  anomalies.append({'name': PurePosixPath(urlparse(href).path).stem, 'href': href, 'declared': declared})
+
+          catalog = {}
+          offset = 0
+          page_hashes = []
+          while True:
+              params = {
+                  'where': 'CATEGORY=1', 'outFields': 'OBJECTID,NAME,CATEGORY', 'returnGeometry': 'true',
+                  'outSR': '25833', 'resultOffset': str(offset), 'resultRecordCount': str(PAGE_SIZE),
+                  'orderByFields': 'OBJECTID ASC', 'f': 'json',
+              }
+              page = get_bytes(IMAGE_SERVER + '/query?' + urlencode(params))
+              page_hashes.append(hashlib.sha256(page).hexdigest())
+              payload = json.loads(page)
+              features = payload.get('features') or []
+              for feature in features:
+                  name = str((feature.get('attributes') or {}).get('NAME') or '')
+                  if name:
+                      catalog[name] = catalog_bounds(feature.get('geometry') or {})
+              if len(features) < PAGE_SIZE:
+                  break
+              offset += PAGE_SIZE
+
+          matched = []
+          for item in anomalies:
+              cb = catalog.get(item['name'])
+              if cb is None:
+                  continue
+              dc = classify_declared_vs_catalog_extent(item['declared'], cb, tolerance_m=TOLERANCE_M)
+              a = dc['audit']
+              magnitude = max(
+                  abs(a['declared_center_delta_x_m']),
+                  abs(a['declared_center_delta_y_m']),
+                  abs(a['declared_width_m'] - a['catalog_width_m']),
+                  abs(a['declared_height_m'] - a['catalog_height_m']),
+              )
+              matched.append({
+                  'magnitude': magnitude,
+                  'item': item,
+                  'catalog_bounds': cb,
+                  'center_x_m': (cb[0] + cb[2]) / 2.0,
+                  'center_y_m': (cb[1] + cb[3]) / 2.0,
+              })
+          if len(matched) < 3:
+              raise SystemExit(f'need at least 3 crosscheck candidates, got {len(matched)}')
+
+          target_count = min(TARGET_SAMPLE_COUNT, len(matched))
+          selected_names = select_spatial_deviation_samples(
+              (
+                  {
+                      'name': row['item']['name'],
+                      'center_x_m': row['center_x_m'],
+                      'center_y_m': row['center_y_m'],
+                      'deviation_m': row['magnitude'],
+                  }
+                  for row in matched
+              ),
+              sample_count=target_count,
+          )
+          matched_by_name = {row['item']['name']: row for row in matched}
+          sample = [matched_by_name[name] for name in selected_names]
+
+          observations = []
+          for row in sample:
+              magnitude = row['magnitude']
+              item = row['item']
+              cb = row['catalog_bounds']
+              with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tif,.tiff'):
+                  with rasterio.open(item['href']) as src:
+                      observed_crs = src.crs.to_string() if src.crs else None
+                      transform6 = tuple(float(v) for v in list(src.transform)[:6])
+                      result = classify_raster_grid(
+                          raster_bounds=tuple(float(v) for v in src.bounds),
+                          declared_bounds=item['declared'],
+                          catalog_bounds=cb,
+                          raster_width_px=src.width,
+                          raster_height_px=src.height,
+                          raster_transform=transform6,
+                          pixel_size_x_m=src.transform.a,
+                          pixel_size_y_m=src.transform.e,
+                          expected_crs='EPSG:25833',
+                          observed_crs=observed_crs,
+                          tolerance_m=TOLERANCE_M,
+                      )
+                      observations.append({
+                          'logical_name': item['name'],
+                          'geotiff_href': item['href'],
+                          'selection_deviation_m': magnitude,
+                          'selection_catalog_center_m': [row['center_x_m'], row['center_y_m']],
+                          'raster': {
+                              'bounds': list(src.bounds), 'transform': list(src.transform)[:6],
+                              'width': src.width, 'height': src.height, 'count': src.count,
+                              'dtypes': list(src.dtypes), 'nodata': src.nodata,
+                              'crs': observed_crs, 'res': list(src.res),
+                          },
+                          'crosscheck': result,
+                          'source_content_sha256': None,
+                          'source_content_sha256_status': 'UNPROVEN_METADATA_ONLY_REMOTE_OPEN',
+                      })
+
+          evidence = {
+              'schema': 'nwe.dtm1-live-raster-grid-crosscheck-proof/0.2',
+              'status': 'RASTER_METADATA_OBSERVED_NOT_AUTHORITY',
+              'service_feed_sha256': hashlib.sha256(service_bytes).hexdigest(),
+              'dataset_feed_url': dataset_url,
+              'dataset_feed_sha256': hashlib.sha256(dataset_bytes).hexdigest(),
+              'image_server_catalog_page_sha256': page_hashes,
+              'anomaly_count': len(anomalies),
+              'matched_anomaly_count': len(matched),
+              'sample_target_count': TARGET_SAMPLE_COUNT,
+              'sample_count': len(sample),
+              'sample_names': selected_names,
+              'sampling': 'deterministic spatial+metadata-deviation farthest-point plan with min/max deviation and x/y extremes forced first',
+              'catalog_comparison_semantics': 'BOUNDING_EXTENT_OF_PROVIDER_POLYGON_NOT_POLYGON_EQUALITY',
+              'observations': observations,
+              'claim_calibration': {
+                  'fact': 'actual remote GeoTIFF axis-aligned grid metadata was opened with Rasterio/GDAL and compared to Atom and ImageServer bounding extents',
+                  'not_proven': 'catalog polygon equality, universal behavior outside sampled rasters, full source byte SHA, seam winner, disposable halo or production transform',
+                  'production_seam_authority': False,
+                  'authority_status': 'UNPROVEN',
+              },
+          }
+          print(json.dumps({
+              'status': evidence['status'],
+              'anomaly_count': len(anomalies),
+              'matched_anomaly_count': len(matched),
+              'sample_count': len(sample),
+              'sample_names': selected_names,
+              'observations': [
+                  {
+                      'name': o['logical_name'],
+                      'classification': o['crosscheck']['audit']['classification'],
+                      'bounds': o['raster']['bounds'],
+                      'size': [o['raster']['width'], o['raster']['height']],
+                  }
+                  for o in observations
+              ],
+          }, indent=2))
+          with open('/tmp/dtm1-raster-grid-crosscheck.json', 'w', encoding='utf-8') as fh:
+              json.dump(evidence, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+          PY
+
+      - name: Assert evidence workspace contains no raw geodata
+        run: |
+          if find /tmp -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'raw geodata unexpectedly present in evidence workspace'
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-raster-grid-crosscheck-${{ github.sha }}
+          path: /tmp/dtm1-raster-grid-crosscheck.json
+          if-no-files-found: error
+          retention-days: 7
