@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   validateCompletedStreamingMovementCapture,
+  validateRendererLifecycleMovementCapture,
   validateStreamingMovementTrace,
 } from './streaming_trace_validator.mjs';
 
@@ -30,6 +31,23 @@ function makeTrace({
     lastSequence: actualEntries.at(-1)?.sequence ?? null,
     entries: actualEntries,
   };
+}
+
+function makeLifecycleTrace({ lifecycleReason = 'load-complete', schedulerReason = 'load-complete' } = {}) {
+  return makeTrace({ entries: [
+    { sequence: 1, recordedAt: 1, kind: 'scheduler-event', payload: { type: 'load-started', tileId: 'a', attempt: 1 } },
+    { sequence: 2, recordedAt: 2, kind: 'terrain-load-observation', payload: { tileId: 'a', attempt: 1, status: 'completed' } },
+    { sequence: 3, recordedAt: 3, kind: 'lifecycle-observation', payload: { phase: 'activate', status: 'completed', tileId: 'a', reason: lifecycleReason, durationMs: 4 } },
+    { sequence: 4, recordedAt: 4, kind: 'scheduler-event', payload: { type: 'tile-activated', tileId: 'a', reason: schedulerReason } },
+    { sequence: 5, recordedAt: 5, kind: 'lifecycle-observation', payload: { phase: 'deactivate', status: 'completed', tileId: 'a', reason: 'interest-lost', durationMs: 2 } },
+    { sequence: 6, recordedAt: 6, kind: 'scheduler-event', payload: { type: 'tile-deactivated', tileId: 'a', reason: 'interest-lost' } },
+    {
+      sequence: 7,
+      recordedAt: 7,
+      kind: 'scheduler-snapshot',
+      payload: { label: 'done', snapshot: { metrics: { activeLoads: 0, queueDepth: 0 } } },
+    },
+  ] });
 }
 
 function testCompleteCaptureAccepted() {
@@ -86,10 +104,43 @@ function testUnmatchedObservationRejected() {
   assert.equal(result.issues.some((candidate) => candidate.code === 'TRACE_LOAD_START_MISSING'), true);
 }
 
+function testRendererLifecycleCaptureAccepted() {
+  const result = validateRendererLifecycleMovementCapture(makeLifecycleTrace());
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'TRACE_ACCEPTED');
+  assert.equal(result.summary.schedulerLifecycleEvents, 2);
+  assert.equal(result.summary.lifecycleObservations, 2);
+}
+
+function testRendererLifecycleKindRequired() {
+  const result = validateRendererLifecycleMovementCapture(makeTrace());
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'TRACE_REQUIRED_KIND_MISSING');
+}
+
+function testRendererLifecycleReasonMismatchRejected() {
+  const result = validateRendererLifecycleMovementCapture(makeLifecycleTrace({ lifecycleReason: 'cache-hit' }));
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'TRACE_LIFECYCLE_CORRELATION_MISMATCH');
+  assert.equal(result.issues.some((candidate) => candidate.schedulerCount !== candidate.adapterCount), true);
+}
+
+function testInvalidLifecycleDurationRejected() {
+  const trace = makeLifecycleTrace();
+  trace.entries[2].payload.durationMs = -1;
+  const result = validateRendererLifecycleMovementCapture(trace);
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'TRACE_LIFECYCLE_OBSERVATION_INVALID');
+}
+
 testCompleteCaptureAccepted();
 testDroppedEvidenceRejected();
 testMissingObservationRejected();
 testFinalSnapshotMustBeIdle();
 testSequenceGapRejectedEvenWhenRetentionMetadataMatches();
 testUnmatchedObservationRejected();
-console.log('streaming trace validator regressions: PASS (6 cases)');
+testRendererLifecycleCaptureAccepted();
+testRendererLifecycleKindRequired();
+testRendererLifecycleReasonMismatchRejected();
+testInvalidLifecycleDurationRejected();
+console.log('streaming trace validator regressions: PASS (10 cases)');

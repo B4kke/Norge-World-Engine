@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nwe.simulation-spatial-snapshot/0.1-candidate",
+  "title": "NWE simulation spatial snapshot candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "worldFrame", "tick", "entities"],
+  "properties": {
+    "schema": { "const": "nwe.simulation-spatial-snapshot/0.1-candidate" },
+    "worldFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "coordinateModel", "horizontalCrs", "horizontalUnit", "verticalDatum", "verticalUnit", "axisOrder"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "coordinateModel": { "const": "projected-cartesian-height" },
+        "horizontalCrs": { "type": "string", "minLength": 1 },
+        "horizontalUnit": { "const": "metre" },
+        "verticalDatum": { "type": "string", "minLength": 1 },
+        "verticalUnit": { "const": "metre" },
+        "axisOrder": { "const": ["easting", "northing", "height"] }
+      }
+    },
+    "tick": { "type": "integer", "minimum": 0 },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "position", "velocity"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "position": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["easting", "northing", "height"],
+            "properties": {
+              "easting": { "type": "number" },
+              "northing": { "type": "number" },
+              "height": { "type": "number" }
+            }
+          },
+          "velocity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["east", "north", "up"],
+            "properties": {
+              "east": { "type": "number" },
+              "north": { "type": "number" },
+              "up": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

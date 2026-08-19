@@ -399,3 +399,29 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 **Neste**
 - Require exact-head CI/Vite PASS and an exact-commit Vercel Preview smoke check.
 - Then run forced WebGL2 and WebGPU, where supported, on one operator-controlled physical Android Chrome handset with the same `session` value. Interpret timing only when `compareDeviceEvidenceContext()` returns `comparable=true`; physical-device identity remains device-lab/operator evidence rather than a browser attestation claim.
+
+## 2026-08-19 — SENTINEL clean restack of PR #37/#41 runtime/viewer lifecycle
+
+**Gjort**
+- Started from current `main` `7b286ae3328e66104f3c30c533805dd0a508e96c` on isolated branch `agent/sentinel-restore-device-lifecycle` rather than reopening the diverged #37/#41 stacks.
+- Selectively restored the exact-real device-evidence entry/browser smoke and WebGL2/WebGPU terrain resource adapters from #37/#41 while preserving the newer `main` device comparator that rejects fallback and same-active-backend A/B captures.
+- Connected the Preview scheduler lifecycle adapters through merged STRØM `observeStreamingLifecycleAdapters`, records those observations in the streaming trace, and requires `validateRendererLifecycleMovementCapture` to accept exact scheduler-event ↔ lifecycle-observation correlation before movement device evidence can PASS.
+- Added focused negative lifecycle-evidence regressions and extended `world-viewer-vite` with exact-real movement/cache/resource smoke evidence.
+- Reconciled `docs/06-task-queue.md` and added `docs/proofs/2026-08-19-sentinel-device-lifecycle-restack.md`. `docs/04-decisions.md` remains unchanged because no renderer, budget, LOD, worker-pool or whole-Norway policy was selected.
+
+**Bevist**
+- PR #44 `world-viewer-vite` run `32202573843` PASS on the pull-request composition. Existing device comparator regressions, new lifecycle/correlation regressions, Vite build, accepted-artifact renderer run, exact-real device-evidence smoke and synthetic module DedicatedWorker gate all passed.
+- Exact-real hosted Chrome used the accepted Nannestad terrain/road/building SHA identities with full `RUNTIME_VERIFICATION_PASS` and 0 raw-source runtime calls.
+- Movement path center -> 1000 m east -> center produced `resolver_calls 1 -> 1`, `loads_started_delta=0`, `cache_hits_delta=1` and renderer terrain resource state active -> inactive -> active. Buffer count changed `3 -> 0 -> 3`; create/destroy counters changed `1/0 -> 1/1 -> 2/1`; trace retained 12 entries with 0 dropped.
+- The evidence explicitly keeps `physical_vram_release_observed=false`. Hosted WebGPU was unavailable in the runner, so no WebGPU/WebGL2 hosted performance comparison is claimed.
+- `baseline` run `32202573821` and `viewer-benchmark` run `32202573844` also passed for the same PR head before the documentation-only follow-up commits.
+
+**Endret**
+- Clean integration PR: #44.
+- Viewer runtime now composes provenance -> DedicatedWorker -> scheduler/cache -> lifecycle observer -> renderer terrain resource deactivate/reactivate -> strict trace validation -> device evidence.
+- Historical #37/#41 remain closed as provenance/reference; their diverged ancestry was not reintroduced.
+
+**Neste**
+- Complete final PR-head CI after documentation reconciliation, then integrate #44 if the current `main` composition remains mergeable and green.
+- Next runtime/device gate is physical Android Chrome with forced WebGL2 and genuine WebGPU captures under the same session/build/artifact/camera/surface/measurement-window/streaming contract; do not interpret timing if either backend falls back.
+- Keep multi-tile DTM1 seam/source-overlap authority independent and fail-closed.

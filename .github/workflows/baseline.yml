@@ -58,7 +58,18 @@ jobs:
           node --check engine/world/world_contract.mjs
           node --check engine/world/test_world_contract.mjs
           node engine/world/test_world_contract.mjs
+          node --check engine/world/network_state_contract.mjs
+          node --check engine/world/test_network_state_contract.mjs
+          node engine/world/test_network_state_contract.mjs
+          node --check engine/world/physics_state_contract.mjs
+          node --check engine/world/test_physics_state_contract.mjs
+          node engine/world/test_physics_state_contract.mjs
+          node --check prototypes/atlas-physics-local-collision/physics_local_collision_probe.mjs
+          node --check prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
+          node prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
           python -m json.tool engine/world/schemas/authoritative-world-snapshot-v0.1.schema.json > /dev/null
+          python -m json.tool engine/world/schemas/network-spatial-snapshot-v0.1.schema.json > /dev/null
+          python -m json.tool engine/world/schemas/simulation-spatial-snapshot-v0.1.schema.json > /dev/null
 
       - name: Runtime provenance reconstruction regression
         run: |
@@ -73,6 +84,8 @@ jobs:
           node --check engine/streaming/tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler_retry.mjs
+          node --check engine/streaming/lifecycle_observer.mjs
+          node --check engine/streaming/test_lifecycle_observer.mjs
           node --check engine/streaming/streaming_trace_recorder.mjs
           node --check engine/streaming/test_streaming_trace_recorder.mjs
           node --check engine/streaming/streaming_trace_validator.mjs
@@ -80,6 +93,7 @@ jobs:
           node --check engine/streaming/benchmark_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler_retry.mjs
+          node engine/streaming/test_lifecycle_observer.mjs
           node engine/streaming/test_streaming_trace_recorder.mjs
           node engine/streaming/test_streaming_trace_validator.mjs
           node engine/streaming/benchmark_tile_scheduler.mjs | tee /tmp/nwe-streaming-scheduler-benchmark.json
