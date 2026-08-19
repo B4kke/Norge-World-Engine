@@ -61,7 +61,19 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
       if (negative0 !== negative1) mixedSignSegments += 1;
       if (negative0 && negative1) fullyInvertedSegments += 1;
       if (includeAnomalies && (negative0 || negative1 || degenerate0 || degenerate1)) {
-        segmentIssues.push({ segment, triangle_normal_y: [n0, n1] });
+        const a = segment * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        segmentIssues.push({
+          segment,
+          triangle_normal_y: [n0, n1],
+          alternate_diagonal_normal_y: [
+            triangleNormalY(geometry.positions, a, d, b),
+            triangleNormalY(geometry.positions, a, c, d),
+          ],
+          vertices_xz: [a, b, c, d].map((vertex) => [geometry.positions[vertex * 3], geometry.positions[vertex * 3 + 2]]),
+        });
       }
     }
 
@@ -96,7 +108,7 @@ function inspect(miterLimit, { includeAnomalies = false } = {}) {
 const candidates = [1, 1.25, 1.5, 2].map((miterLimit) => inspect(miterLimit));
 const active = inspect(2, { includeAnomalies: true });
 const report = {
-  schema: 'nwe.real-road-surface-inspection/0.2',
+  schema: 'nwe.real-road-surface-inspection/0.3',
   status: active.status,
   artifact: { tile_id: artifact.tile_id, schema: artifact.schema, path_count: artifact.paths.length },
   candidate_join_budgets: candidates,
