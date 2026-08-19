@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NWE WebGPU Timestamp Probe</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #071014; color: #d7e6e8; }
+    body { margin: 0; padding: 24px; }
+    main { max-width: 980px; margin: 0 auto; }
+    button { font: inherit; padding: 10px 14px; margin-bottom: 16px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #0d1a20; border: 1px solid #24404a; border-radius: 8px; }
+    p { line-height: 1.5; color: #a9bec4; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>WebGPU timestamp-query control probe</h1>
+    <p>This page only checks adapter support, device feature enablement and one empty GPU timestamp interval. It is not Nannestad render-performance evidence.</p>
+    <button id="run" type="button">Run probe</button>
+    <pre id="output">Starting…</pre>
+  </main>
+  <script type="module" src="/src/webgpuTimestampProbeEntry.mjs"></script>
+</body>
+</html>
