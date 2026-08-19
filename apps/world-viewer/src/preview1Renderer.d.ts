@@ -8,6 +8,7 @@ export function createPreview1Renderer(options: any): Promise<{
     backend: 'webgpu' | 'webgl2';
     pixelRatio: number;
     camera: { yaw: number; pitch: number; distance: number };
+    character?: HumanoidRenderState;
   }>;
   stats: {
     terrain_vertices: number;
@@ -34,7 +35,6 @@ export function createPreview1Renderer(options: any): Promise<{
     max_dpr: number;
     pixel_ratio: number;
     msaa_samples: number | null;
-    power_preference?: string;
     draw_calls_per_frame: number;
     gpu_buffer_count: number;
     gpu_buffer_payload_bytes: number;
@@ -42,6 +42,7 @@ export function createPreview1Renderer(options: any): Promise<{
     gpu_texture_payload_bytes?: number;
     timestamp_query_supported: boolean;
     camera_eye_height_m?: number;
+    character?: HumanoidRenderState;
     building_materials?: {
       schema: string;
       source_backed: { wall: string; roof: string };
@@ -53,9 +54,27 @@ export function createPreview1Renderer(options: any): Promise<{
       adapter_device_cpu_ms?: number;
       scene_build_cpu_ms: number;
       gpu_resource_apply_cpu_ms: number;
+      humanoid_load_cpu_ms?: number;
       renderer_init_cpu_ms: number;
     };
   };
   invalidate(): void;
   dispose(): void;
+  setCharacterAnimationState(state: 'idle' | 'walk', options?: { fadeSeconds?: number }): HumanoidRenderState;
+  getCharacterState(): HumanoidRenderState;
 }>;
+
+type HumanoidRenderState = {
+  schema: 'nwe.humanoid-render-state/0.1' | string;
+  asset_id: string;
+  source_commit: string;
+  source_git_blob_sha1: string;
+  source_byte_size: number;
+  license: string;
+  state: 'idle' | 'walk';
+  idle_clip: string;
+  walk_clip: string;
+  render_mesh_count: number;
+  normalized_height_m: number;
+  renderer_only_spawn: true;
+};
