@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nwe.static-collision-epoch-rebind/0.1-candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tick", "worldFrameId", "maintenanceEvent", "replacement"],
+  "properties": {
+    "schema": { "const": "nwe.static-collision-epoch-rebind/0.1-candidate" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "worldFrameId": { "type": "string", "minLength": 1 },
+    "maintenanceEvent": { "$ref": "physics-frame-maintenance-event-v0.1.schema.json" },
+    "replacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collisionId", "tileId", "previousArtifactSha256", "artifactSha256", "dependentEntityIds", "continuity"],
+      "properties": {
+        "collisionId": { "type": "string", "minLength": 1 },
+        "tileId": { "type": "string", "minLength": 1 },
+        "previousArtifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "artifactSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "dependentEntityIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "continuity": { "const": "atomic-rebind" }
+      }
+    }
+  }
+}
