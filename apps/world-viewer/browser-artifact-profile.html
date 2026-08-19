@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NWE Browser Artifact Profile</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #071014; color: #d7e6e8; }
+    body { margin: 0; padding: 24px; }
+    main { max-width: 1100px; margin: 0 auto; }
+    button { font: inherit; padding: 10px 14px; margin-bottom: 16px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #0d1a20; border: 1px solid #24404a; border-radius: 8px; }
+    p { line-height: 1.5; color: #a9bec4; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Browser provenance + decode profiler</h1>
+    <p>Profiles the accepted Nannestad road/building compiled artifacts. Production loading still performs full RuntimeVerificationBundle verification. The isolated replay separates verification, strict UTF-8 byte-to-text decoding and JSON.parse on already-fetched bytes; network time is excluded.</p>
+    <button id="run" type="button">Run profile</button>
+    <pre id="output">Starting…</pre>
+  </main>
+  <script type="module" src="/src/browserArtifactProfileEntry.mjs"></script>
+</body>
+</html>
