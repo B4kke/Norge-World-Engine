@@ -2,6 +2,8 @@ import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createLicensedHumanoid } from './humanoidAsset.mjs';
 import { createPreviewSceneGeometry } from './preview1SceneGeometry.mjs';
+import { buildSyntheticVegetationPlacement } from './vegetationPlacement.mjs';
+import { createThreeVegetationLayer } from './threeVegetationLayer.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
 import {
@@ -180,6 +182,12 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
+  const vegetationStartedAt = monotonicNow();
+  const vegetationPlacement = buildSyntheticVegetationPlacement({ terrainPayload, roadsArtifact, buildingsArtifact, origin: sceneGeometry.origin });
+  const vegetationLayer = createThreeVegetationLayer({ scene, placement: vegetationPlacement });
+  const vegetationSnapshot = vegetationLayer.snapshot();
+  const vegetationBuildCpuMs = monotonicNow() - vegetationStartedAt;
+
   const terrainLifecycle = { creates: 0, destroys: 0, createTimingMs: [], destroyTimingMs: [] };
   let terrainMesh = null;
   const terrainColorBytes = (terrainPayload.mesh.positions.length / 3) * 3 * Float32Array.BYTES_PER_ELEMENT;
@@ -238,7 +246,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
       await renderer.renderAsync(scene, camera);
       const cameraState = cameraControls.snapshot();
       const rendererCalls = Number(renderer.info?.render?.calls);
-      const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length + humanoid.snapshot().render_mesh_count;
+      const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length + vegetationSnapshot.draw_calls + humanoid.snapshot().render_mesh_count;
       const frame = { at: now, drawGapMs: lastDrawAt ? now - lastDrawAt : null, drawCpuMs: monotonicNow() - startedAt, drawCalls: Number.isFinite(rendererCalls) && rendererCalls > 0 ? rendererCalls : fallbackCalls, backend: activeBackend, pixelRatio: renderer.getPixelRatio(), camera: { yaw: cameraState.yaw, pitch: cameraState.pitch, distance: cameraState.distance, target: cameraState.target, eye_height_m: camera.position.y - centerGround }, character: humanoid.snapshot() };
       onFrame(frame); lastDrawAt = now;
       if (!firstFrameSettled) { firstFrameSettled = true; firstFrameResolve(frame); }
@@ -257,16 +265,16 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
 
   const invalidate = () => { if (!stopped) dirty = true; };
   const dispose = () => {
-    if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose();
+    if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose(); vegetationLayer.dispose();
     if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; }
     for (const mesh of staticMeshes) disposeMesh(mesh);
     terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); renderer.dispose();
   };
 
   const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
-  const colorDrawCalls = 2 + buildingDrawCalls + humanoid.snapshot().render_mesh_count;
+  const colorDrawCalls = 2 + buildingDrawCalls + vegetationSnapshot.draw_calls + humanoid.snapshot().render_mesh_count;
   const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
-  const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + humanoidShadowMeshCount;
+  const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + vegetationSnapshot.draw_calls + humanoidShadowMeshCount;
   const characterSnapshot = humanoid.snapshot();
   const stats = {
     ...sceneGeometry.stats,
@@ -274,12 +282,13 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     draw_calls_per_frame: colorDrawCalls,
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
-    gpu_buffer_count: 15, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: terrainTexturePayloadBytes, timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
+    gpu_buffer_count: 15 + vegetationSnapshot.gpu_buffer_count, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationSnapshot.gpu_buffer_payload_bytes, gpu_texture_payload_bytes: terrainTexturePayloadBytes, timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
     terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: TERRAIN_DETAIL_PERIOD_M, detail_repeat: [detailRepeatX, detailRepeatY], procedural_detail: 'renderer-only-source-safe', vertex_color_variation: true, bump_scale: terrainMaterial.bumpScale, geometry_displacement: false },
     building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'pbr-wall', roof: 'pbr-roof' }, unresolved: { wall: 'pbr-wall-fallback-height', roof: 'pbr-roof-fallback-height' }, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
+    vegetation: vegetationSnapshot,
     character: characterSnapshot,
-    timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
+    timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, vegetation_build_cpu_ms: vegetationBuildCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
   };
 
   return { header: sceneGeometry.header, firstFrame, stats, invalidate, dispose, activateTerrainResource, deactivateTerrainResource, getTerrainResourceLifecycle: terrainResourceSnapshot,
