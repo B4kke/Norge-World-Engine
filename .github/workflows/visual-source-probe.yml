@@ -39,8 +39,6 @@ jobs:
               report = json.load(handle)
           with open('/tmp/nwe-sr16-metadata-links.json', encoding='utf-8') as handle:
               metadata = json.load(handle)
-          with open('/tmp/nwe-visual-source-probe.json', encoding='utf-8') as handle:
-              capabilities = json.load(handle)
 
           def atom_summary(atom):
               return {
@@ -73,7 +71,6 @@ jobs:
                   'vector_atom': atom_summary(report['sr16_atoms']['vector']),
                   'split_raster_metadata': metadata_summary('sr16_raster_split'),
                   'open_raster_legacy_candidate_metadata': metadata_summary('sr16_raster_open_legacy_candidate'),
-                  'open_raster_legacy_candidate_capabilities': capabilities['datasets']['sr16_raster_open_legacy_candidate'],
                   'vector_metadata': metadata_summary('sr16_vector'),
               },
               'ar50': {
