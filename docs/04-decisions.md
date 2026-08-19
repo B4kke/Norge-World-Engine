@@ -27,7 +27,7 @@ Only decisions with evidence belong here. Open questions remain explicitly open.
 **Decision:** provenance objects use versioned schemas, RFC 8785/JCS canonicalization and SHA-256; runtime reconstructs the hash chain rather than trusting supplied lineage strings or PASS flags.  
 **Implementation:** Python uses pinned `rfc8785`; JS uses pinned `canonicalize`. `engine/streaming/runtime_verifier.mjs` reconstructs SourceSnapshot, TransformContract, NormalizedSnapshot, CompilerConfig, CompileLineage, immutable ArtifactRef and PromotionRecord identities, verifies reference edges/promotion gates and finally validates artifact byte size/SHA-256 before `READY_FOR_RUNTIME`. Transport relocation is excluded from immutable ArtifactRef identity.  
 **Validation state:** hosted baseline executes the cross-language RFC8785/JCS and adversarial verifier regressions. Exact real Nannestad road, building and DTM1 terrain artifacts have also been verified as `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.  
-**Source authority:** Drive `02.7 – RuntimeVerificationBundle + SpatialIndex Contract v0.1` remains semantic authority for portions not yet represented by complete versioned repo schemas.
+**Source authority:** Drive `02.7` remains semantic authority for portions not yet represented by complete versioned repo schemas.
 
 ## D-005 — GeoRSS polygon selection
 
