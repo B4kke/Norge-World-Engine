@@ -2,8 +2,8 @@
 """Normalize cached SR16V + AR50 Nannestad source bytes into a deterministic candidate sample.
 
 This tool is deliberately source-network-free: it accepts only local cache paths from the
-materialization manifest. GDAL/OGR performs generic GML decoding/reprojection and Shapely
-performs exact tile clipping/geometry normalization. RFC 8785/JCS defines output bytes.
+materialization manifest. GDAL/OGR performs mature provider-format decoding/reprojection and
+Shapely performs exact tile clipping/geometry normalization. RFC 8785/JCS defines output bytes.
 
 The output is source-admission evidence, not a selected vegetation runtime artifact and not
 individual-tree truth.
@@ -37,6 +37,7 @@ SOURCE_CONFIG = {
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
         "license": "NLOD-1.0",
         "attribution": "Kilde: NIBIO",
+        "source_format": "SOSI",
         "preferred_layer_tokens": ("skogressurs", "sr16"),
         "source_id_fields": ("prod_lokalid", "lokalid", "gid", "rid", "objectid"),
         "volatile_fields": frozenset(),
@@ -47,6 +48,7 @@ SOURCE_CONFIG = {
         "metadata_uuid": "a7949917-033c-4e78-8c0f-e30323ce353a",
         "license": "NLOD-1.0",
         "attribution": "Kilde: NIBIO",
+        "source_format": "GML",
         "preferred_layer_tokens": ("ar50", "arealressurs"),
         "source_id_fields": ("lokalid", "identifikasjon"),
         # The two-read source probe proved that request-time kopidato is volatile.
@@ -145,6 +147,7 @@ def convert_to_geojson(source: Path, destination: Path, config: dict[str, Any]) 
     if not destination.exists():
         raise NormalizationError(f"OGR did not create {destination}")
     return {
+        "source_format": config["source_format"],
         "layer": layer,
         "geojson_bytes": destination.stat().st_size,
         "geojson_sha256": sha256_path(destination),
@@ -285,6 +288,7 @@ def layer_payload(role: str, source_path: Path, geojson_path: Path) -> tuple[dic
     full = {
         **semantic,
         "source_raw": {
+            "format": config["source_format"],
             "sha256": sha256_path(source_path),
             "byte_size": source_path.stat().st_size,
         },
@@ -293,7 +297,10 @@ def layer_payload(role: str, source_path: Path, geojson_path: Path) -> tuple[dic
 
 
 def resolve_inputs(cache_root: Path, manifest: dict[str, Any], ar50_index: int) -> tuple[Path, Path]:
-    sr16_rel = manifest["sources"]["sr16v"]["cache"]["gml_relative_path"]
+    sr16_cache = manifest["sources"]["sr16v"]["cache"]
+    sr16_rel = sr16_cache["source_relative_path"]
+    if str(sr16_cache.get("source_format", "")).upper() != "SOSI":
+        raise NormalizationError(f"unexpected SR16V cache source format: {sr16_cache!r}")
     acquisitions = manifest["sources"]["ar50"]["acquisitions"]
     if ar50_index < 0 or ar50_index >= len(acquisitions):
         raise NormalizationError(f"AR50 acquisition index out of range: {ar50_index}")
