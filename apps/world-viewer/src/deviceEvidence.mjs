@@ -86,7 +86,13 @@ function streamingComparisonContract(streaming) {
   });
 }
 
-function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererResult) {
+function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererResult, expectedTileId, expectedArtifactSha) {
+  if (!expectedTileId || movementProbe.tile_id !== expectedTileId) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_MOVEMENT_TILE_MISMATCH');
+  }
+  if (!expectedArtifactSha) {
+    throw new Error('DEVICE_EVIDENCE_STREAMING_TERRAIN_ARTIFACT_MISSING');
+  }
   if (movementProbe.renderer_resource_lifecycle_observed !== true) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_LIFECYCLE_MISSING');
   }
@@ -113,11 +119,10 @@ function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererR
   if (!returned || returned.active !== true || returned.current_buffer_count !== 3 || !(returned.current_payload_bytes > 0)) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_RETURN_INVALID');
   }
-  if (initial.tile_id !== movementProbe.tile_id || cached.tile_id !== movementProbe.tile_id || returned.tile_id !== movementProbe.tile_id) {
+  if ([initial, cached, returned].some((checkpoint) => checkpoint.tile_id !== expectedTileId)) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_TILE_MISMATCH');
   }
-  const expectedArtifact = rendererResult?.terrain_resource_lifecycle?.artifact_sha256 ?? null;
-  if (!expectedArtifact || [initial, cached, returned].some((checkpoint) => checkpoint.artifact_sha256 !== expectedArtifact)) {
+  if ([initial, cached, returned].some((checkpoint) => checkpoint.artifact_sha256 !== expectedArtifactSha)) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_ARTIFACT_MISMATCH');
   }
   const backend = rendererResult?.backend ?? null;
@@ -131,7 +136,7 @@ function validateRendererLifecycleProbe(movementProbe, streamingTrace, rendererR
   if (!finalLifecycle || finalLifecycle.schema !== TERRAIN_RESOURCE_SCHEMA || finalLifecycle.active !== true) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_FINAL_STATE_INVALID');
   }
-  if (finalLifecycle.tile_id !== movementProbe.tile_id || finalLifecycle.artifact_sha256 !== expectedArtifact || finalLifecycle.backend !== backend) {
+  if (finalLifecycle.tile_id !== expectedTileId || finalLifecycle.artifact_sha256 !== expectedArtifactSha || finalLifecycle.backend !== backend) {
     throw new Error('DEVICE_EVIDENCE_STREAMING_RENDERER_FINAL_IDENTITY_INVALID');
   }
   if (finalLifecycle.physical_vram_release_observed !== false) {
@@ -267,7 +272,13 @@ export function buildDeviceEvidence({
     if (streamingTrace?.schema !== 'nwe.streaming-movement-trace/0.1') {
       throw new Error('DEVICE_EVIDENCE_STREAMING_TRACE_MISSING');
     }
-    validateRendererLifecycleProbe(movementProbe, streamingTrace, result.renderer);
+    validateRendererLifecycleProbe(
+      movementProbe,
+      streamingTrace,
+      result.renderer,
+      result.tile_id ?? null,
+      result.terrain?.artifact_sha256 ?? null,
+    );
   }
   if (streamingTrace != null) {
     if (streamingTrace.schema !== 'nwe.streaming-movement-trace/0.1') {
