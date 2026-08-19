@@ -1,0 +1,30 @@
+name: strom-resource-pressure
+
+on:
+  pull_request:
+    paths:
+      - 'engine/streaming/streaming_resource_pressure_harness.mjs'
+      - 'engine/streaming/test_streaming_resource_pressure_harness.mjs'
+      - 'engine/streaming/benchmark_streaming_resource_pressure.mjs'
+      - '.github/workflows/strom-resource-pressure.yml'
+  workflow_dispatch:
+
+jobs:
+  resource-pressure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check engine/streaming/streaming_resource_pressure_harness.mjs
+          node --check engine/streaming/test_streaming_resource_pressure_harness.mjs
+          node --check engine/streaming/benchmark_streaming_resource_pressure.mjs
+      - name: Regression
+        run: node engine/streaming/test_streaming_resource_pressure_harness.mjs
+      - name: Benchmark
+        run: |
+          node engine/streaming/benchmark_streaming_resource_pressure.mjs | tee /tmp/nwe-streaming-resource-pressure.json
+          python -m json.tool /tmp/nwe-streaming-resource-pressure.json > /dev/null
