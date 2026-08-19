@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createLicensedHumanoid } from './humanoidAsset.mjs';
+import { loadPolyHavenSurfaceTextures, POLY_HAVEN_SURFACE_ASSETS } from './polyHavenSurfaceMaterials.mjs';
 import { createPreviewSceneGeometry } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
@@ -13,10 +14,12 @@ import {
 
 const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
 const TERRAIN_MATERIAL_SCHEMA = 'nwe.terrain-render-style/0.1';
+const ROAD_MATERIAL_SCHEMA = 'nwe.road-render-style/0.1';
 const BUILDING_MATERIAL_SCHEMA = 'nwe.building-render-style/0.1';
 const TERRAIN_DETAIL_PERIOD_M = 5;
 const TERRAIN_DETAIL_TEXTURE_SIZE = 64;
 const HUMANOID_GROUND_LIFT_M = 0.02;
+const POLY_HAVEN_TEXTURE_EDGE_PX = 1024;
 
 function clamp01(value) { return Math.max(0, Math.min(1, value)); }
 
@@ -115,6 +118,17 @@ function backendName(renderer, forceWebGL) {
   return globalThis.navigator?.gpu ? 'webgpu' : 'webgl2';
 }
 
+function applyTextureMaps(materials, maps, normalStrength) {
+  for (const material of materials) {
+    if (maps?.diffuse) material.map = maps.diffuse;
+    if (maps?.normal) {
+      material.normalMap = maps.normal;
+      material.normalScale.set(normalStrength, normalStrength);
+    }
+    material.needsUpdate = true;
+  }
+}
+
 async function initializeThreeRenderer(canvas, profile, forceWebGL) {
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: profile.webglAntialias !== false, alpha: false, forceWebGL });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, profile.maxDpr ?? 1.5));
@@ -165,18 +179,31 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   terrainColorTexture.repeat.set(detailRepeatX, detailRepeatY); terrainSurfaceTexture.repeat.set(detailRepeatX, detailRepeatY);
 
   const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, map: terrainColorTexture, roughnessMap: terrainSurfaceTexture, bumpMap: terrainSurfaceTexture, bumpScale: 0.14, vertexColors: true });
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
-  const resolvedWallMaterial = new THREE.MeshStandardMaterial({ color: 0xb8c1c4, roughness: 0.76, metalness: 0.02, side: THREE.DoubleSide });
-  const resolvedRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x6f7779, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
-  const fallbackWallMaterial = new THREE.MeshStandardMaterial({ color: 0x7c878a, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
-  const fallbackRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x596265, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
+  const resolvedWallMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.76, metalness: 0.02, side: THREE.DoubleSide });
+  const resolvedRoofMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
+  const fallbackWallMaterial = new THREE.MeshStandardMaterial({ color: 0xaab1b2, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+  const fallbackRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x858b8c, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
+
+  const roadWidthMeters = Number(sceneGeometry.roads.metadata?.width_m ?? 3.2);
+  const roadUvPeriodMeters = Number(sceneGeometry.roads.metadata?.uv_period_m ?? 4);
+  const surfaceTextureStartedAt = monotonicNow();
+  const surfaceTexturePromise = loadPolyHavenSurfaceTextures({
+    maxAnisotropy: Number(renderer.capabilities?.getMaxAnisotropy?.() ?? 4),
+    repeats: {
+      terrain: [terrainExtentE / POLY_HAVEN_SURFACE_ASSETS.terrain.physical_width_m, terrainExtentN / POLY_HAVEN_SURFACE_ASSETS.terrain.physical_width_m],
+      road: [roadWidthMeters / POLY_HAVEN_SURFACE_ASSETS.road.physical_width_m, roadUvPeriodMeters / POLY_HAVEN_SURFACE_ASSETS.road.physical_width_m],
+      wall: [1, 1],
+      roof: [1, 1],
+    },
+  });
 
   const vectorStartedAt = monotonicNow();
-  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices), roadMaterial), { cast: false, receive: true });
-  const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices), resolvedWallMaterial), { cast: true, receive: true });
-  const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices), resolvedRoofMaterial), { cast: true, receive: true });
-  const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices), fallbackWallMaterial), { cast: true, receive: true });
-  const fallbackRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices), fallbackRoofMaterial), { cast: true, receive: true });
+  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: true });
+  const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, null, sceneGeometry.buildingsResolved.walls.uvs), resolvedWallMaterial), { cast: true, receive: true });
+  const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, null, sceneGeometry.buildingsResolved.roofs.uvs), resolvedRoofMaterial), { cast: true, receive: true });
+  const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, null, sceneGeometry.buildingsFallback.walls.uvs), fallbackWallMaterial), { cast: true, receive: true });
+  const fallbackRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices, null, sceneGeometry.buildingsFallback.roofs.uvs), fallbackRoofMaterial), { cast: true, receive: true });
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
@@ -184,7 +211,13 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   let terrainMesh = null;
   const terrainColorBytes = (terrainPayload.mesh.positions.length / 3) * 3 * Float32Array.BYTES_PER_ELEMENT;
   const terrainPayloadBytes = byteLengthOf(terrainPayload.mesh.positions, terrainPayload.mesh.normals, terrainPayload.mesh.uvs, terrainPayload.mesh.indices) + terrainColorBytes;
-  const vectorPayloadBytes = byteLengthOf(sceneGeometry.roads.positions, sceneGeometry.roads.indices, sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices);
+  const vectorPayloadBytes = byteLengthOf(
+    sceneGeometry.roads.positions, sceneGeometry.roads.uvs, sceneGeometry.roads.indices,
+    sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.uvs, sceneGeometry.buildingsResolved.walls.indices,
+    sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.uvs, sceneGeometry.buildingsResolved.roofs.indices,
+    sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.uvs, sceneGeometry.buildingsFallback.walls.indices,
+    sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.uvs, sceneGeometry.buildingsFallback.roofs.indices,
+  );
   const terrainTexturePayloadBytes = TERRAIN_DETAIL_TEXTURE_SIZE * TERRAIN_DETAIL_TEXTURE_SIZE * 4 * 2;
 
   function makeTerrainMesh(payload) {
@@ -199,9 +232,18 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const centerGround = groundHeightAtCenter(terrainPayload);
   lighting.updateAnchor([0, centerGround, 0]);
   const humanoidStartedAt = monotonicNow();
-  const humanoid = await createLicensedHumanoid({ scene, position: [0, centerGround + HUMANOID_GROUND_LIFT_M, 0], targetHeightM: 1.75 });
-  const humanoidShadowMeshCount = configureObjectShadowRole(humanoid.root, { cast: true, receive: true });
+  const humanoidPromise = createLicensedHumanoid({ scene, position: [0, centerGround + HUMANOID_GROUND_LIFT_M, 0], targetHeightM: 1.75 });
+  const [humanoid, surfaceTextures] = await Promise.all([humanoidPromise, surfaceTexturePromise]);
   const humanoidLoadCpuMs = monotonicNow() - humanoidStartedAt;
+  const surfaceTextureLoadCpuMs = monotonicNow() - surfaceTextureStartedAt;
+
+  applyTextureMaps([terrainMaterial], surfaceTextures.textures.terrain, 0.42);
+  if (surfaceTextures.textures.terrain.normal) { terrainMaterial.bumpMap = null; terrainMaterial.bumpScale = 0; }
+  applyTextureMaps([roadMaterial], surfaceTextures.textures.road, 0.34);
+  applyTextureMaps([resolvedWallMaterial, fallbackWallMaterial], surfaceTextures.textures.wall, 0.48);
+  applyTextureMaps([resolvedRoofMaterial, fallbackRoofMaterial], surfaceTextures.textures.roof, 0.56);
+
+  const humanoidShadowMeshCount = configureObjectShadowRole(humanoid.root, { cast: true, receive: true });
 
   const camera = new THREE.PerspectiveCamera(58, 1, 0.15, 2200);
   const cameraTarget = [0, centerGround + 1.55, -28];
@@ -260,7 +302,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose();
     if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; }
     for (const mesh of staticMeshes) disposeMesh(mesh);
-    terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); renderer.dispose();
+    surfaceTextures.dispose(); terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); renderer.dispose();
   };
 
   const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
@@ -268,18 +310,22 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
   const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + humanoidShadowMeshCount;
   const characterSnapshot = humanoid.snapshot();
+  const externalTextureGpuBytesEstimate = Math.round(surfaceTextures.snapshot.loaded_texture_count * POLY_HAVEN_TEXTURE_EDGE_PX * POLY_HAVEN_TEXTURE_EDGE_PX * 4 * (4 / 3));
+  const terrainDiffuseSource = surfaceTextures.snapshot.assets.terrain.maps.diffuse === 'loaded' ? 'polyhaven-leafy-grass-1k' : 'procedural-fallback';
   const stats = {
     ...sceneGeometry.stats,
     renderer_adapter: 'three-ground/0.1', three_revision: THREE.REVISION, backend: activeBackend, graphics_profile: profile.id, max_dpr: profile.maxDpr, pixel_ratio: renderer.getPixelRatio(), msaa_samples: profile.webglAntialias === false ? 1 : 4,
     draw_calls_per_frame: colorDrawCalls,
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
-    gpu_buffer_count: 15, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: terrainTexturePayloadBytes, timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
+    gpu_buffer_count: 20, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: terrainTexturePayloadBytes + externalTextureGpuBytesEstimate, gpu_texture_payload_bytes_semantics: 'procedural bytes exact + loaded 1k external textures estimated RGBA8 with mip chain', timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
-    terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: TERRAIN_DETAIL_PERIOD_M, detail_repeat: [detailRepeatX, detailRepeatY], procedural_detail: 'renderer-only-source-safe', vertex_color_variation: true, bump_scale: terrainMaterial.bumpScale, geometry_displacement: false },
-    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'pbr-wall', roof: 'pbr-roof' }, unresolved: { wall: 'pbr-wall-fallback-height', roof: 'pbr-roof-fallback-height' }, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
+    surface_material_assets: surfaceTextures.snapshot,
+    terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: TERRAIN_DETAIL_PERIOD_M, detail_repeat: [detailRepeatX, detailRepeatY], diffuse_detail: terrainDiffuseSource, normal_detail: surfaceTextures.snapshot.assets.terrain.maps.normal === 'loaded' ? 'polyhaven-leafy-grass-1k' : 'procedural-bump-fallback', vertex_color_variation: true, geometry_displacement: false },
+    road_material: { schema: ROAD_MATERIAL_SCHEMA, pbr: true, source: surfaceTextures.snapshot.assets.road.maps.diffuse === 'loaded' ? 'polyhaven-asphalt-02-1k' : 'flat-color-fallback', uv_source: 'renderer-road-meter-distance', width_semantics: sceneGeometry.roads.metadata?.width_semantics },
+    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'polyhaven-painted-plaster-or-pbr-fallback', roof: 'polyhaven-grey-roof-tiles-or-pbr-fallback' }, unresolved: { wall: 'same-render-asset-with-fallback-height-tint', roof: 'same-render-asset-with-fallback-height-tint' }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
     character: characterSnapshot,
-    timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
+    timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, surface_texture_load_cpu_ms: surfaceTextureLoadCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
   };
 
   return { header: sceneGeometry.header, firstFrame, stats, invalidate, dispose, activateTerrainResource, deactivateTerrainResource, getTerrainResourceLifecycle: terrainResourceSnapshot,
