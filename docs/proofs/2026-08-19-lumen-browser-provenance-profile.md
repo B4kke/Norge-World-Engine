@@ -13,14 +13,17 @@ The accepted Nannestad road/building browser path previously showed verification
 - Every production layer load still uses `loadCompiledJsonArtifact`, including pre-fetch raw-source transport guards and the full shared RuntimeVerificationBundle reconstruction before JSON use.
 - After that PASS, `profileVerifiedJsonArtifact` re-runs the same shared browser verifier on the in-memory artifact bytes and separately measures strict UTF-8 JSON decode.
 - The report records exact artifact SHA-256 identities, artifact byte sizes, build/deployment identity, request URLs, production-load wall time and p50/p95/p99/max for isolated verification, decode and their sum.
-- Iteration count is bounded to 1..20 and defaults to 5.
-- Focused Node regressions cover deterministic timing separation, invalid iteration counts, verification rejection and invalid JSON.
+- The first replay is reported separately from later steady-state samples. This prevents one-time JIT/WebCrypto/canonicalization warm-up from being silently folded into repeat-cost evidence used to motivate cache/worker experiments.
+- Iteration count is bounded to 1..20 and defaults to 5. With one iteration, `steady_state` is explicitly `null` instead of manufacturing a repeat-cost claim.
+- Focused Node regressions cover deterministic timing separation, first-vs-steady-state classification, single-iteration semantics, invalid iteration counts, verification rejection and invalid JSON.
 
 ## Evidence boundary
 
 This profiler is measurement instrumentation, not a verification cache and not a runtime fast path. It deliberately repeats verification after the production load; it never skips or substitutes the mandatory verification performed before artifact use.
 
 The isolated replay excludes network fetch time and does not measure terrain worker cost, GPU upload, renderer frame time, Android behavior or WebGPU performance. Hosted results are browser/runtime evidence only and must not be promoted into device-specific claims.
+
+First-replay and steady-state numbers answer different questions. The first replay can include one-time browser/JIT/crypto setup; later samples describe repeated in-page work only. Neither is, by itself, evidence that verification should be cached or moved to a worker. Any such policy remains STRØM/SENTINEL territory and needs a separate measured experiment that preserves the mandatory verification boundary.
 
 No raw Kartverket, Geonorge, NVDB, OSM or Overpass endpoint is permitted through the profiler fetch wrapper. `raw_source_calls` can only be reported as 0 after the guarded production loads complete.
 
@@ -35,4 +38,4 @@ No raw Kartverket, Geonorge, NVDB, OSM or Overpass endpoint is permitted through
 
 ## Validation state
 
-Exact-head CI and Vercel Preview evidence must be recorded on the PR before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers.
+The persistent LUMEN branch was synchronized without force to `main` `40d38f7ee22fa7051dd156204a3e6b37265a95dc` before this hardening. Exact-head CI and Vercel Preview evidence must be recorded on the PR before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers.
