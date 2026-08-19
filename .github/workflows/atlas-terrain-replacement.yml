@@ -1,0 +1,27 @@
+name: atlas-terrain-replacement
+
+on:
+  pull_request:
+    paths:
+      - 'engine/world/terrain_replacement_coordinator.mjs'
+      - 'engine/world/test_terrain_replacement_coordinator.mjs'
+      - 'engine/world/static_collision_epoch_rebind_contract.mjs'
+      - 'engine/world/physics_frame_event_contract.mjs'
+      - 'engine/world/static_collision_lifecycle_contract.mjs'
+      - '.github/workflows/atlas-terrain-replacement.yml'
+  workflow_dispatch:
+
+jobs:
+  terrain-replacement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check engine/world/terrain_replacement_coordinator.mjs
+          node --check engine/world/test_terrain_replacement_coordinator.mjs
+      - name: Regressions
+        run: node engine/world/test_terrain_replacement_coordinator.mjs
