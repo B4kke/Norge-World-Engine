@@ -1,4 +1,5 @@
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { loadPreviewEnvironment } from './previewEnvironment.mjs';
 import { createThreeGroundRenderer } from './threeGroundRenderer.mjs';
 
 function normalizeRendererInterface(renderer) {
@@ -12,6 +13,7 @@ function normalizeRendererInterface(renderer) {
 export async function createPreview1Renderer({
   backend = 'auto',
   graphicsProfile = 'balanced',
+  environment = null,
   onBackendFallback = () => {},
   ...options
 } = {}) {
@@ -19,9 +21,11 @@ export async function createPreview1Renderer({
   const profile = typeof graphicsProfile === 'string'
     ? resolveGraphicsProfile(graphicsProfile)
     : graphicsProfile;
+  const resolvedEnvironment = environment ?? await loadPreviewEnvironment();
 
   const renderer = await createThreeGroundRenderer({
     ...options,
+    environment: resolvedEnvironment,
     graphicsProfile: profile,
     backend: rendererPreference,
     onBackendFallback,
