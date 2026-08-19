@@ -26,6 +26,7 @@ jobs:
         run: |
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
+          node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
@@ -37,9 +38,16 @@ jobs:
           node prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs | tee /tmp/atlas-rapier-matrix.json
           python -m json.tool /tmp/atlas-rapier-matrix.json > /dev/null
 
-      - name: Upload matrix evidence
+      - name: Run contact-rich snapshot/replay epoch probe
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs | tee /tmp/atlas-rapier-contact-replay.json
+          python -m json.tool /tmp/atlas-rapier-contact-replay.json > /dev/null
+
+      - name: Upload ATLAS physics evidence
         uses: actions/upload-artifact@v4
         with:
-          name: atlas-rapier-matrix
-          path: /tmp/atlas-rapier-matrix.json
+          name: atlas-rapier-evidence
+          path: |
+            /tmp/atlas-rapier-matrix.json
+            /tmp/atlas-rapier-contact-replay.json
           retention-days: 7
