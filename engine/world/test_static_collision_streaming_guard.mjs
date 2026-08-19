@@ -22,10 +22,11 @@ function initialState(dependentEntityIds = ['entity:car']) {
   });
 }
 
-function makeGuard({ state = initialState(), frame = physicsFrame, downstreamDispose = async () => {} } = {}) {
+function makeGuard({ state = initialState(), frame = physicsFrame, simulationTick = 10, downstreamDispose = async () => {} } = {}) {
   return createStaticCollisionStreamingGuard({
     initialState: state,
     getCurrentPhysicsFrame: () => frame,
+    getSimulationTick: () => simulationTick,
     getCollisionIdentity: (candidateTile, candidatePayload) => candidateTile.id === tile.id
       ? { collisionId: 'collision:nannestad:0:0', artifactSha256: candidatePayload.artifactSha256 }
       : null,
@@ -106,10 +107,11 @@ await check('artifact mismatch blocks disposal before downstream mutation', asyn
   const guard = createStaticCollisionStreamingGuard({
     initialState: initialState([]),
     getCurrentPhysicsFrame: () => physicsFrame,
+    getSimulationTick: () => 10,
     getCollisionIdentity: () => ({ collisionId: 'collision:nannestad:0:0', artifactSha256: 'b'.repeat(64) }),
     disposeTile: async () => { downstreamCalls += 1; },
   });
-  await assert.rejects(guard.disposeTile(tile, payload, { tick: 1 }), /artifact does not match/);
+  await assert.rejects(guard.disposeTile(tile, payload), /artifact does not match/);
   assert.equal(downstreamCalls, 0);
   assert.equal(guard.getState().collisions.length, 1);
 });
@@ -119,7 +121,7 @@ await check('downstream disposal failure rolls back collision lifecycle commit',
     state: initialState([]),
     downstreamDispose: async () => { throw new Error('renderer/runtime disposal failed'); },
   });
-  await assert.rejects(guard.disposeTile(tile, payload, { tick: 1 }), /disposal failed/);
+  await assert.rejects(guard.disposeTile(tile, payload), /disposal failed/);
   assert.equal(guard.getState().collisions.length, 1);
 });
 
@@ -128,12 +130,25 @@ await check('unbound streaming tile passes through without collision authority',
   const guard = createStaticCollisionStreamingGuard({
     initialState: initialState([]),
     getCurrentPhysicsFrame: () => physicsFrame,
+    getSimulationTick: () => 10,
     getCollisionIdentity: () => null,
     disposeTile: async () => { downstreamCalls += 1; },
   });
-  await guard.disposeTile({ id: 'visual-only', centerE: 1, centerN: 1 }, {}, { tick: 1 });
+  await guard.disposeTile({ id: 'visual-only', centerE: 1, centerN: 1 }, {});
   assert.equal(downstreamCalls, 1);
   assert.equal(guard.getState().collisions.length, 1);
 });
 
-console.log(JSON.stringify({ schema: 'nwe.static-collision-streaming-guard-regression/0.1', passed, total: 6 }));
+await check('missing simulation tick authority fails closed before disposal', async () => {
+  let downstreamCalls = 0;
+  const guard = makeGuard({
+    state: initialState([]),
+    simulationTick: undefined,
+    downstreamDispose: async () => { downstreamCalls += 1; },
+  });
+  await assert.rejects(guard.disposeTile(tile, payload), /simulation tick/);
+  assert.equal(downstreamCalls, 0);
+  assert.equal(guard.getState().collisions.length, 1);
+});
+
+console.log(JSON.stringify({ schema: 'nwe.static-collision-streaming-guard-regression/0.1', passed, total: 7 }));
