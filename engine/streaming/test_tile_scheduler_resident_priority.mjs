@@ -168,12 +168,90 @@ async function testFailedPreemptionDefersCandidateWithoutBreakingSchedulerLoop()
   assert.equal(events.filter((event) => event.type === 'activation-deferred-budget').length, 1);
 }
 
+async function testConcurrentPreemptionDeactivatesIncumbentExactlyOnce() {
+  const incumbent = { id: 'incumbent', centerE: 900, centerN: 0 };
+  const winner = { id: 'winner', centerE: 0, centerN: 0 };
+  const deferred = { id: 'deferred', centerE: 100, centerN: 0 };
+  const loadResolvers = new Map();
+  const loadStarted = new Map();
+  const deactivations = [];
+  const events = [];
+  let releaseDeactivation;
+  let notifyDeactivationStarted;
+  const deactivationStarted = new Promise((resolve) => { notifyDeactivationStarted = resolve; });
+  const deactivationGate = new Promise((resolve) => { releaseDeactivation = resolve; });
+
+  const scheduler = new TileStreamingScheduler({
+    activeRadiusMeters: 1000,
+    retainRadiusMeters: 2000,
+    maxResidentTiles: 3,
+    maxConcurrentLoads: 2,
+    maxCacheBytes: 1000,
+    maxResidentBytes: 100,
+    loadTile: async (tile) => {
+      if (tile.id === 'incumbent') return { payload: { id: tile.id }, byteSize: 100 };
+      let notifyStarted;
+      const started = new Promise((resolve) => { notifyStarted = resolve; });
+      loadStarted.set(tile.id, started);
+      notifyStarted();
+      return new Promise((resolve) => loadResolvers.set(tile.id, resolve));
+    },
+    deactivateTile: async (tile, _payload, { reason }) => {
+      deactivations.push([tile.id, reason]);
+      if (reason === 'resident-budget-preempted') {
+        notifyDeactivationStarted();
+        await deactivationGate;
+      }
+    },
+    onEvent: (event) => events.push(event),
+  });
+
+  await scheduler.update({ e: 900, n: 0 }, [incumbent]);
+  await scheduler.whenIdle();
+  assert.equal(scheduler.snapshot().records.find((record) => record.id === 'incumbent').state, 'resident');
+
+  await scheduler.update({ e: 0, n: 0 }, [winner, deferred, incumbent]);
+  while (loadResolvers.size < 2) await new Promise((resolve) => setImmediate(resolve));
+
+  // Resolve both higher-priority loads in the same turn. The first activation starts
+  // async preemption; the second must observe the incumbent as deactivating and defer.
+  loadResolvers.get('winner')({ payload: { id: 'winner' }, byteSize: 100 });
+  loadResolvers.get('deferred')({ payload: { id: 'deferred' }, byteSize: 100 });
+  await deactivationStarted;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const mid = scheduler.snapshot();
+  assert.equal(mid.records.find((record) => record.id === 'incumbent').state, 'deactivating');
+  assert.equal(mid.metrics.deactivatingCount, 1);
+  assert.equal(mid.metrics.bytesResident, 100, 'in-flight deactivation must retain resident byte accounting');
+  assert.equal(mid.metrics.bytesActivating, 0);
+  assert.equal(mid.metrics.residentBudgetOvercommitBytes, 0);
+  assert.equal(events.filter((event) => event.type === 'activation-deferred-budget').length, 1);
+  assert.deepEqual(deactivations, [['incumbent', 'resident-budget-preempted']], 'incumbent deactivation must be invoked exactly once');
+
+  releaseDeactivation();
+  const snapshot = await scheduler.whenIdle();
+
+  assert.equal(snapshot.metrics.residentBudgetOvercommitBytes, 0);
+  assert.equal(snapshot.metrics.residentBudgetPreemptions, 1);
+  assert.equal(snapshot.metrics.residentBudgetDeferrals, 1);
+  assert.equal(snapshot.metrics.residentBudgetPreemptionFailures, 0);
+  assert.equal(snapshot.records.find((record) => record.id === 'winner').state, 'resident');
+  assert.equal(snapshot.records.find((record) => record.id === 'deferred').state, 'cached');
+  assert.equal(snapshot.records.find((record) => record.id === 'incumbent').state, 'cached');
+  assert.equal(snapshot.metrics.bytesResident, 100);
+  assert.equal(snapshot.metrics.bytesActivating, 0);
+  assert.equal(snapshot.metrics.bytesCached, 200);
+  assert.deepEqual(deactivations, [['incumbent', 'resident-budget-preempted']]);
+}
+
 async function main() {
   await testNearerTilePreemptsLowerPriorityResidentAfterOutOfOrderLoads();
   await testOversizedHigherPriorityTileDoesNotEvictUsefulResident();
   await testEqualDistanceUsesTileIdTieBreakForPreemption();
   await testFailedPreemptionDefersCandidateWithoutBreakingSchedulerLoop();
-  console.log('resident budget priority regressions: PASS (4 cases)');
+  await testConcurrentPreemptionDeactivatesIncumbentExactlyOnce();
+  console.log('resident budget priority regressions: PASS (5 cases)');
 }
 
 main().catch((error) => {
