@@ -268,6 +268,16 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
 
   return { header: sceneGeometry.header, firstFrame, stats, invalidate, dispose, activateTerrainResource, deactivateTerrainResource, getTerrainResourceLifecycle: terrainResourceSnapshot,
     setCharacterAnimationState(state, options) { const snapshot = humanoid.setAnimationState(state, options); dirty = true; return snapshot; },
+    setCharacterRenderPose(pose) {
+      if (!(pose?.position instanceof Float32Array) || pose.position.length !== 3) throw new TypeError('THREE_GROUND_CHARACTER_POSE_REQUIRED');
+      const renderPose = {
+        ...pose,
+        position: new Float32Array([pose.position[0], pose.position[1] + HUMANOID_GROUND_LIFT_M, pose.position[2]]),
+      };
+      const snapshot = humanoid.setRenderPose(renderPose);
+      dirty = true;
+      return snapshot;
+    },
     getCharacterState() { return humanoid.snapshot(); },
   };
 }
