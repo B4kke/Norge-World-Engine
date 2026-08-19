@@ -71,6 +71,7 @@ export function rankTileCandidates(camera, tiles, {
 export class TileStreamingScheduler {
   constructor({
     loadTile,
+    admitLoad = null,
     activateTile = async () => {},
     deactivateTile = async () => {},
     disposeTile = async () => {},
@@ -86,6 +87,7 @@ export class TileStreamingScheduler {
     onEvent = () => {},
   } = {}) {
     if (typeof loadTile !== 'function') throw new TypeError('loadTile is required');
+    if (admitLoad != null && typeof admitLoad !== 'function') throw new TypeError('admitLoad must be a function when provided');
     for (const [name, fn] of Object.entries({ activateTile, deactivateTile, disposeTile, clock, onEvent })) {
       if (typeof fn !== 'function') throw new TypeError(`${name} must be a function`);
     }
@@ -101,6 +103,7 @@ export class TileStreamingScheduler {
 
     Object.assign(this, {
       loadTile,
+      admitLoad,
       activateTile,
       deactivateTile,
       disposeTile,
@@ -129,6 +132,8 @@ export class TileStreamingScheduler {
       loadsStarted: 0,
       loadsCompleted: 0,
       loadsFailed: 0,
+      loadAdmissionDeferrals: 0,
+      loadAdmissionFailures: 0,
       retriesQueued: 0,
       retryDeferrals: 0,
       retryExhaustions: 0,
@@ -433,15 +438,62 @@ export class TileStreamingScheduler {
 
   #drainQueue() {
     while (this.activeLoads < this.maxConcurrentLoads) {
-      const next = [...this.records.values()]
+      const candidates = [...this.records.values()]
         .filter((record) => record.desired && record.state === 'queued')
-        .sort((a, b) => a.priority - b.priority || a.tile.id.localeCompare(b.tile.id))[0];
-      if (!next) return;
-      this.#startLoad(next);
+        .sort((a, b) => a.priority - b.priority || a.tile.id.localeCompare(b.tile.id));
+      if (candidates.length === 0) return;
+
+      let started = false;
+      for (const next of candidates) {
+        let admission = null;
+        if (this.admitLoad) {
+          try {
+            admission = this.admitLoad(next.tile, {
+              priority: next.priority,
+              attempt: next.loadAttempts + 1,
+            });
+            if (admission && typeof admission.then === 'function') {
+              throw new TypeError('admitLoad must be synchronous and non-blocking');
+            }
+            if (admission === undefined) {
+              throw new TypeError('admitLoad must return null/false to defer or a non-null admission token to grant');
+            }
+          } catch (error) {
+            next.state = 'failed';
+            next.error = error;
+            next.loadAttempts += 1;
+            next.retryNotBefore = this.clock() + this.retryDelayMs;
+            next.retryExhaustedReported = false;
+            this.metrics.loadAdmissionFailures += 1;
+            this.#emit('load-admission-failed', {
+              tileId: next.tile.id,
+              attempt: next.loadAttempts,
+              retryNotBefore: next.retryNotBefore,
+              message: String(error?.message ?? error),
+            });
+            continue;
+          }
+          if (admission === null || admission === false) {
+            this.metrics.loadAdmissionDeferrals += 1;
+            this.#emit('load-admission-deferred', {
+              tileId: next.tile.id,
+              priority: next.priority,
+              attempt: next.loadAttempts + 1,
+            });
+            continue;
+          }
+          if (admission === true) admission = null;
+        }
+
+        this.#startLoad(next, admission);
+        started = true;
+        break;
+      }
+      if (!started) return;
     }
   }
 
-  #startLoad(record) {
+  #startLoad(record, admission = null) {
     record.state = 'loading';
     const controller = new AbortController();
     record.controller = controller;
@@ -456,7 +508,7 @@ export class TileStreamingScheduler {
     this.#emit('load-started', { tileId: record.tile.id, priority: record.priority, attempt });
 
     const promise = Promise.resolve()
-      .then(() => this.loadTile(record.tile, { signal: controller.signal, attempt }))
+      .then(() => this.loadTile(record.tile, { signal: controller.signal, attempt, admission }))
       .then(async (result) => {
         if (record.loadToken !== token || record.state !== 'loading') {
           this.metrics.staleCompletionsDropped += 1;
