@@ -78,7 +78,7 @@ jobs:
       - name: Install World Compiler dependencies
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Compile and stage real Preview 1 snapshot
+      - name: Compile and stage real Preview 1 + 3x3 terrain snapshot
         run: |
           mkdir -p /tmp/nwe-preview-cache /tmp/nwe-preview
           python tools/preview/stage_preview1_snapshot.py \
@@ -87,7 +87,7 @@ jobs:
             --commit-sha "$GITHUB_SHA" \
             | tee /tmp/nwe-preview-stage.json
           python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
-          du -ah /tmp/nwe-preview | sort -h | tail -20
+          du -ah /tmp/nwe-preview | sort -h | tail -30
 
       - uses: actions/setup-node@v4
         with:
@@ -108,27 +108,45 @@ jobs:
           if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') {
             throw new Error(`unexpected preview manifest ${manifest.schema}/${manifest.status}`);
           }
-          for (const name of ['terrain', 'roads', 'buildings']) {
-            const layer = manifest[name];
+          if (!Array.isArray(manifest.terrain_tiles) || manifest.terrain_tiles.length !== 9) {
+            throw new Error(`expected 9 terrain tiles, got ${manifest.terrain_tiles?.length ?? 'missing'}`);
+          }
+          const terrainIds = manifest.terrain_tiles.map((entry) => entry?.tile?.id);
+          if (new Set(terrainIds).size !== 9 || !terrainIds.includes(manifest.tile.id)) {
+            throw new Error(`invalid terrain tile set ${JSON.stringify(terrainIds)}`);
+          }
+          const centerTerrain = manifest.terrain_tiles.find((entry) => entry.tile.id === manifest.tile.id);
+          if (!centerTerrain || centerTerrain.artifact_sha256 !== manifest.terrain.artifact_sha256) {
+            throw new Error('center terrain compatibility alias does not match terrain_tiles center');
+          }
+
+          function verifyLayer(label, layer) {
             const bundlePath = path.join(root, layer.bundle.replace(/^\.\//, ''));
             const artifactPath = path.join(root, layer.compiled_path.replace(/^\.\//, ''));
             const bundle = JSON.parse(fs.readFileSync(bundlePath, 'utf8'));
             const bytes = new Uint8Array(fs.readFileSync(artifactPath));
             const verification = verifyRuntimeBundle(bundle, bytes);
             if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') {
-              throw new Error(`${name}: ${verification.code}: ${verification.detail}`);
+              throw new Error(`${label}: ${verification.code}: ${verification.detail}`);
             }
             if (bundle.artifact_ref.sha256 !== layer.artifact_sha256) {
-              throw new Error(`${name}: manifest/artifact SHA mismatch`);
+              throw new Error(`${label}: manifest/artifact SHA mismatch`);
             }
-            console.log(JSON.stringify({ layer: name, sha256: layer.artifact_sha256, bytes: bytes.byteLength, verification: verification.code }));
+            if (layer.tile?.id && bundle.artifact_ref.tile_id !== layer.tile.id) {
+              throw new Error(`${label}: bundle/tile id mismatch`);
+            }
+            console.log(JSON.stringify({ layer: label, tile_id: bundle.artifact_ref.tile_id, sha256: layer.artifact_sha256, bytes: bytes.byteLength, verification: verification.code }));
           }
+
+          for (const entry of manifest.terrain_tiles) verifyLayer(`terrain:${entry.tile.id}`, entry);
+          verifyLayer('roads', manifest.roads);
+          verifyLayer('buildings', manifest.buildings);
           NODE
 
       - name: Build deployable World Viewer
         run: npm run build --workspace @nwe/world-viewer
 
-      - name: Real Preview 1 browser composition gate
+      - name: Backward-compatible Preview 1 browser composition gate
         run: |
           node --check apps/world-viewer/run_preview1_browser_smoke.mjs
           (google-chrome --version || google-chrome-stable --version || chromium --version || chromium-browser --version)
@@ -139,10 +157,23 @@ jobs:
             --timeout-ms 90000
           cat /tmp/nwe-preview1-browser-proof.json
 
+      - name: Real Preview 3x3 browser composition gate
+        run: |
+          node --check apps/world-viewer/run_preview3_browser_smoke.mjs
+          node apps/world-viewer/run_preview3_browser_smoke.mjs \
+            --runtime-root /tmp/nwe-preview \
+            --dist-root apps/world-viewer/dist \
+            --output /tmp/nwe-preview3-browser-proof.json \
+            --timeout-ms 120000
+          cat /tmp/nwe-preview3-browser-proof.json
+
       - uses: actions/upload-artifact@v4
         with:
-          name: preview1-browser-proof-${{ github.sha }}
-          path: /tmp/nwe-preview1-browser-proof.json
+          name: preview-browser-proofs-${{ github.sha }}
+          path: |
+            /tmp/nwe-preview1-browser-proof.json
+            /tmp/nwe-preview3-browser-proof.json
+            /tmp/nwe-preview-stage.json
           if-no-files-found: error
           retention-days: 7
 
@@ -162,13 +193,14 @@ jobs:
           cat > README.md <<'TXT'
           # Norge World Engine runtime preview artifacts
 
-          This orphan branch is a replaceable transport snapshot for the public Preview 1 viewer.
+          This orphan branch is a replaceable transport snapshot for the public Nannestad viewer.
           It contains only compiled, provenance-bound runtime artifacts and attribution metadata.
           Raw Kartverket/NVDB/OSM source data is never published here.
 
+          The current snapshot exposes a backward-compatible center tile plus a real compiled 3x3 terrain grid.
           This is not the selected long-term runtime object-store/CDN architecture.
           TXT
           git add README.md nannestad-preview-1
-          git commit -m "Publish Nannestad Preview 1 runtime snapshot ${GITHUB_SHA}"
+          git commit -m "Publish Nannestad Preview runtime snapshot ${GITHUB_SHA}"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin HEAD:preview-runtime
