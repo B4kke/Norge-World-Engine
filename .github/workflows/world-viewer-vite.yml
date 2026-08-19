@@ -45,11 +45,13 @@ jobs:
           node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
           node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
           node --check apps/world-viewer/src/preview1Renderer.mjs
+          node --check apps/world-viewer/src/threeGroundRenderer.mjs
           node --check apps/world-viewer/src/browserArtifactProfile.mjs
           node --check apps/world-viewer/src/browserArtifactProfileEntry.mjs
           node --check apps/world-viewer/run_browser_artifact_profile_smoke.mjs
           node --check apps/world-viewer/run_preview1_renderer_benchmark.mjs
           node --check apps/world-viewer/run_device_evidence_browser_smoke.mjs
+          node apps/world-viewer/test_three_ground_renderer.mjs
           node apps/world-viewer/test_preview_camera_controls.mjs
           node apps/world-viewer/test_graphics_profiles.mjs
           node apps/world-viewer/test_renderer_observability.mjs
@@ -78,8 +80,9 @@ jobs:
           test -f apps/world-viewer/dist/preview3.html
           test -f apps/world-viewer/dist/device-evidence.html
           test -f apps/world-viewer/dist/browser-artifact-profile.html
-          grep -q 'preview3Entry' apps/world-viewer/index.html
+          grep -q 'src/main.ts' apps/world-viewer/index.html
           grep -q 'src/main.ts' apps/world-viewer/preview1.html
+          grep -q 'preview3Entry' apps/world-viewer/preview3.html
           test -d apps/world-viewer/dist/assets
           find apps/world-viewer/dist -maxdepth 2 -type f -print
 
