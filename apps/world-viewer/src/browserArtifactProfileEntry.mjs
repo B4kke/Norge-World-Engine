@@ -3,7 +3,12 @@ import {
   classifyProfileBuildIdentity,
   profileVerifiedJsonArtifact,
   normalizeProfileIterations,
+  PROFILE_MAX_ITERATIONS,
 } from './browserArtifactProfile.mjs';
+import {
+  DECODE_PLACEMENT_DEFAULT_ITERATIONS,
+  runBrowserDecodePlacementExperiment,
+} from './browserDecodePlacementExperiment.mjs';
 import { monotonicNow } from './rendererObservability.mjs';
 
 const DEFAULT_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
@@ -26,11 +31,21 @@ function browserContext() {
   };
 }
 
+function normalizeReportUrl(value) {
+  if (!value) return null;
+  const target = new URL(value, location.href);
+  if (target.origin !== location.origin || target.pathname !== '/__profile_report') {
+    throw new Error('PROFILE_REPORT_TARGET_REJECTED');
+  }
+  return target.href;
+}
+
 function queryConfig() {
   const params = new URLSearchParams(location.search);
   return {
     manifestUrl: params.get('manifest') || DEFAULT_MANIFEST,
-    iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: 20 }),
+    iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: PROFILE_MAX_ITERATIONS }),
+    reportUrl: normalizeReportUrl(params.get('report')),
   };
 }
 
@@ -41,19 +56,34 @@ function buildIdentity() {
   });
 }
 
+async function publishReport(report, reportUrl) {
+  globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+  if (!reportUrl) return;
+  const response = await fetch(reportUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(report),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`PROFILE_REPORT_POST_FAILED: ${response.status}`);
+}
+
 async function run() {
   runButton.disabled = true;
   output.textContent = 'Running…';
-  const { manifestUrl, iterations } = queryConfig();
-  const requests = [];
-  const guardedFetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input?.url;
-    assertCompiledTransport(String(url ?? ''));
-    requests.push(String(url));
-    return fetch(input, init);
-  };
-
+  let reportUrl = null;
   try {
+    const config = queryConfig();
+    const { manifestUrl, iterations } = config;
+    reportUrl = config.reportUrl;
+    const requests = [];
+    const guardedFetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url;
+      assertCompiledTransport(String(url ?? ''));
+      requests.push(String(url));
+      return fetch(input, init);
+    };
+
     const startedAt = monotonicNow();
     assertCompiledTransport(manifestUrl);
     const manifestResponse = await guardedFetch(manifestUrl, { cache: 'no-store' });
@@ -83,6 +113,13 @@ async function run() {
         bytes: loaded.bytes,
         iterations,
       });
+      const decodePlacement = layer.name === 'roads'
+        ? await runBrowserDecodePlacementExperiment({
+            bytes: loaded.bytes,
+            artifactSha256: loaded.artifactRef.sha256,
+            iterations: DECODE_PLACEMENT_DEFAULT_ITERATIONS,
+          })
+        : null;
       layerReports[layer.name] = {
         bundle_url: layer.bundleUrl,
         artifact_url: loaded.artifactUrl,
@@ -91,13 +128,14 @@ async function run() {
         production_load_ms: productionLoadMs,
         production_verification_code: loaded.verification.code,
         isolated_replay: replay,
+        decode_placement_experiment: decodePlacement,
       };
     }
 
     const report = {
-      schema: 'nwe.browser-provenance-profile-report/0.2',
+      schema: 'nwe.browser-provenance-profile-report/0.3',
       status: 'PASS',
-      claim_scope: 'hosted/browser verification+JSON-decode profiling only',
+      claim_scope: 'hosted/browser verification+JSON-decode profiling plus road decode-placement scheduling experiment',
       manifest_url: manifestBase,
       tile_id: manifest.tile?.id ?? null,
       iterations,
@@ -107,19 +145,22 @@ async function run() {
       timing_ms: { total: monotonicNow() - startedAt },
       build: buildIdentity(),
       browser: browserContext(),
-      note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass. Build binding is reported separately: timing from an UNBOUND build must not be presented as exact-commit evidence.',
+      note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass. Roads additionally run a bounded scheduling experiment comparing main-thread decode/JSON.parse with a module Worker roundtrip on the same already-verified bytes. That experiment does not re-run or cache provenance and does not select STRØM worker policy. Build binding is reported separately: timing from an UNBOUND build must not be presented as exact-commit evidence.',
     };
     output.textContent = JSON.stringify(report, null, 2);
-    globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+    await publishReport(report, reportUrl);
   } catch (error) {
     const report = {
-      schema: 'nwe.browser-provenance-profile-report/0.2',
+      schema: 'nwe.browser-provenance-profile-report/0.3',
       status: 'ERROR',
       error: error instanceof Error ? error.message : String(error),
       build: buildIdentity(),
     };
     output.textContent = JSON.stringify(report, null, 2);
     globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+    if (reportUrl) {
+      try { await publishReport(report, reportUrl); } catch {}
+    }
   } finally {
     runButton.disabled = false;
   }
