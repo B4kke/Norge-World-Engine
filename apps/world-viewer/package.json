@@ -8,8 +8,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "node test_device_evidence.mjs && node test_device_counterpart.mjs && vite build",
+    "build": "node test_device_evidence.mjs && node test_device_counterpart.mjs && node test_webgpu_timestamp_probe.mjs && vite build",
     "test:device-evidence": "node test_device_evidence.mjs && node test_device_counterpart.mjs",
+    "test:webgpu-timestamp": "node test_webgpu_timestamp_probe.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
