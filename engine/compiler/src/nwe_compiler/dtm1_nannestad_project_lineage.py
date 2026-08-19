@@ -18,9 +18,6 @@ _REQUIRED_FIELDS = (
     "HOYDESYSTEM",
     "KOORDINATSYSTEM",
     "OPPLOSNING",
-    "DTM_INTERPOLATIONTYPE",
-    "BEST",
-    "BEST_OPEN",
 )
 
 
@@ -66,10 +63,12 @@ def _optional_float(value: Any) -> float | None:
 
 
 def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...]:
-    """Normalize one provider ArcGIS project-coverage query deterministically.
+    """Normalize provider DTM project-catalog metadata deterministically.
 
     This validates only provider-returned project metadata. It intentionally does
-    not interpret PRIORITET/BEST/BEST_OPEN as DTM1 source-winner semantics.
+    not interpret PRIORITET, BEST, or BEST_OPEN as DTM1 source-winner semantics.
+    BEST fields are optional because they exist on the project-coverage surface,
+    not on every provider DTM mosaic catalog surface.
     """
     if not isinstance(payload, dict):
         raise Dtm1NannestadProjectLineageError("project query payload must be an object")
@@ -110,9 +109,9 @@ def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...
                 hoydesystem=_optional_str(attrs["HOYDESYSTEM"]),
                 koordinatsystem=_optional_str(attrs["KOORDINATSYSTEM"]),
                 opplosning=_optional_float(attrs["OPPLOSNING"]),
-                dtm_interpolationtype=_optional_str(attrs["DTM_INTERPOLATIONTYPE"]),
-                best=_optional_int(attrs["BEST"]),
-                best_open=_optional_int(attrs["BEST_OPEN"]),
+                dtm_interpolationtype=_optional_str(attrs.get("DTM_INTERPOLATIONTYPE")),
+                best=_optional_int(attrs.get("BEST")),
+                best_open=_optional_int(attrs.get("BEST_OPEN")),
             )
         )
     return tuple(sorted(records, key=lambda record: (record.las_project_id, record.las_project_name)))
@@ -155,7 +154,7 @@ def assess_overlap_project_lineage(
         "production_seam_authority": False,
         "authority_status": "UNPROVEN",
         "claim_calibration": {
-            "fact": "provider project coverage metadata is bound to exact points inside the DTM1 overlap",
+            "fact": "provider DTM project-catalog metadata is bound to exact points inside the DTM1 overlap",
             "inference": "stable project membership can strengthen provenance for the overlap area",
             "not_proven": (
                 "PRIORITET/BEST/BEST_OPEN meaning for national DTM1 generation, source-sample winner, "
