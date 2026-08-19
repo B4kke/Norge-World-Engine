@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nwe.physics-frame-membership-event/0.1-candidate",
+  "title": "NWE Physics Frame Membership Event v0.1 candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "tick",
+    "worldFrameId",
+    "entityId",
+    "phase",
+    "fromPhysicsFrameId",
+    "fromEpoch",
+    "toPhysicsFrameId",
+    "toEpoch",
+    "reason"
+  ],
+  "properties": {
+    "schema": { "const": "nwe.physics-frame-membership-event/0.1-candidate" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "worldFrameId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "phase": { "const": "after-frame-maintenance" },
+    "fromPhysicsFrameId": { "type": ["string", "null"], "minLength": 1 },
+    "fromEpoch": { "type": ["integer", "null"], "minimum": 0 },
+    "toPhysicsFrameId": { "type": ["string", "null"], "minLength": 1 },
+    "toEpoch": { "type": ["integer", "null"], "minimum": 0 },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "fromPhysicsFrameId": { "type": "null" } } },
+      "then": { "properties": { "fromEpoch": { "type": "null" } } },
+      "else": { "properties": { "fromEpoch": { "type": "integer", "minimum": 0 } } }
+    },
+    {
+      "if": { "properties": { "toPhysicsFrameId": { "type": "null" } } },
+      "then": { "properties": { "toEpoch": { "type": "null" } } },
+      "else": { "properties": { "toEpoch": { "type": "integer", "minimum": 0 } } }
+    },
+    {
+      "not": {
+        "properties": {
+          "fromPhysicsFrameId": { "type": "null" },
+          "toPhysicsFrameId": { "type": "null" }
+        },
+        "required": ["fromPhysicsFrameId", "toPhysicsFrameId"]
+      }
+    }
+  ]
+}
