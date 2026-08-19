@@ -190,6 +190,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install runtime + World Viewer dependencies
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
+
       - name: Verify all nine exact artifacts with runtime verifier
         run: |
           node --input-type=module <<'NODE'
