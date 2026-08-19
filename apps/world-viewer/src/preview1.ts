@@ -8,6 +8,7 @@ import { observeStreamingLifecycleAdapters } from '../../../engine/streaming/lif
 import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { createPreview1CharacterRuntime } from './preview1CharacterRuntime.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
 import { browserMemorySnapshot, createFrameGapMonitor, monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
@@ -361,6 +362,7 @@ export async function runPreview1({
         onFrame(frame);
       },
     });
+    const characterRuntime = createPreview1CharacterRuntime({ terrainPayload: terrain.payload, renderer });
     terrain.bindRendererLifecycle(renderer);
 
     onPhase('first-frame');
@@ -422,17 +424,19 @@ export async function runPreview1({
         verification_code: buildings.verification.code,
         count: buildings.artifact.features?.length ?? 0,
       },
+      character: characterRuntime.snapshot(),
       renderer: {
         ...renderer.stats,
         terrain_resource_lifecycle: terrain.getRendererLifecycle(),
         fallback: rendererFallback,
         first_frame: firstFrame,
+        character: renderer.getCharacterState(),
       },
       attribution: manifest.attribution ?? [],
     };
     onPhase('ready');
     onReady(result);
-    return { result, renderer };
+    return { result, renderer, characterRuntime };
   } catch (error) {
     startupFrameMonitor.stop();
     throw error;
