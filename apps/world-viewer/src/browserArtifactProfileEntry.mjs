@@ -26,11 +26,21 @@ function browserContext() {
   };
 }
 
+function normalizeReportUrl(value) {
+  if (!value) return null;
+  const target = new URL(value, location.href);
+  if (target.origin !== location.origin || target.pathname !== '/__profile_report') {
+    throw new Error('PROFILE_REPORT_TARGET_REJECTED');
+  }
+  return target.href;
+}
+
 function queryConfig() {
   const params = new URLSearchParams(location.search);
   return {
     manifestUrl: params.get('manifest') || DEFAULT_MANIFEST,
     iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: 20 }),
+    reportUrl: normalizeReportUrl(params.get('report')),
   };
 }
 
@@ -41,19 +51,34 @@ function buildIdentity() {
   });
 }
 
+async function publishReport(report, reportUrl) {
+  globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+  if (!reportUrl) return;
+  const response = await fetch(reportUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(report),
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`PROFILE_REPORT_POST_FAILED: ${response.status}`);
+}
+
 async function run() {
   runButton.disabled = true;
   output.textContent = 'Running…';
-  const { manifestUrl, iterations } = queryConfig();
-  const requests = [];
-  const guardedFetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input?.url;
-    assertCompiledTransport(String(url ?? ''));
-    requests.push(String(url));
-    return fetch(input, init);
-  };
-
+  let reportUrl = null;
   try {
+    const config = queryConfig();
+    const { manifestUrl, iterations } = config;
+    reportUrl = config.reportUrl;
+    const requests = [];
+    const guardedFetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url;
+      assertCompiledTransport(String(url ?? ''));
+      requests.push(String(url));
+      return fetch(input, init);
+    };
+
     const startedAt = monotonicNow();
     assertCompiledTransport(manifestUrl);
     const manifestResponse = await guardedFetch(manifestUrl, { cache: 'no-store' });
@@ -110,7 +135,7 @@ async function run() {
       note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass. Build binding is reported separately: timing from an UNBOUND build must not be presented as exact-commit evidence.',
     };
     output.textContent = JSON.stringify(report, null, 2);
-    globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+    await publishReport(report, reportUrl);
   } catch (error) {
     const report = {
       schema: 'nwe.browser-provenance-profile-report/0.2',
@@ -120,6 +145,9 @@ async function run() {
     };
     output.textContent = JSON.stringify(report, null, 2);
     globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
+    if (reportUrl) {
+      try { await publishReport(report, reportUrl); } catch {}
+    }
   } finally {
     runButton.disabled = false;
   }
