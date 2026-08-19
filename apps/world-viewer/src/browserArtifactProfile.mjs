@@ -34,6 +34,25 @@ export function classifyPercentileEvidence(sampleCount) {
   };
 }
 
+export function classifyProfileBuildIdentity({ gitCommitSha = null, deploymentId = null } = {}) {
+  const normalizedCommit = typeof gitCommitSha === 'string' && /^[0-9a-f]{40}$/i.test(gitCommitSha.trim())
+    ? gitCommitSha.trim().toLowerCase()
+    : null;
+  const normalizedDeployment = typeof deploymentId === 'string' && deploymentId.trim().length > 0
+    ? deploymentId.trim()
+    : null;
+
+  return {
+    status: normalizedCommit
+      ? (normalizedDeployment ? 'EXACT_COMMIT_AND_DEPLOYMENT' : 'EXACT_COMMIT_ONLY')
+      : 'UNBOUND',
+    exact_commit_bound: Boolean(normalizedCommit),
+    deployment_bound: Boolean(normalizedDeployment),
+    git_commit_sha: normalizedCommit,
+    deployment_id: normalizedDeployment,
+  };
+}
+
 function assertRuntimeVerificationPass(result) {
   if (!result?.ok || result?.decision !== 'READY_FOR_RUNTIME' || result?.code !== 'RUNTIME_VERIFICATION_PASS') {
     throw new Error(`PROFILE_RUNTIME_VERIFICATION_REJECTED: ${result?.code ?? 'UNKNOWN'} / ${result?.decision ?? 'UNKNOWN'}`);
