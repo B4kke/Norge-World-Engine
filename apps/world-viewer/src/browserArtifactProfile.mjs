@@ -1,7 +1,7 @@
 import { verifyRuntimeBundleWeb } from '../../../engine/streaming/runtime_verifier_web.mjs';
 import { monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
-const PROFILE_SCHEMA = 'nwe.browser-artifact-profile/0.1';
+const PROFILE_SCHEMA = 'nwe.browser-artifact-profile/0.2';
 
 export function normalizeProfileIterations(value, { min = 1, max = 20 } = {}) {
   const parsed = Number(value);
@@ -17,15 +17,13 @@ function assertRuntimeVerificationPass(result) {
   }
 }
 
-function decodeUtf8Json(bytes) {
-  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-}
-
 function summarizeSamples(samples) {
   if (!samples.length) return null;
   return {
     iterations: samples.length,
     verification_ms: summarizeFrameGaps(samples.map((sample) => sample.verification_ms)),
+    utf8_decode_ms: summarizeFrameGaps(samples.map((sample) => sample.utf8_decode_ms)),
+    json_parse_ms: summarizeFrameGaps(samples.map((sample) => sample.json_parse_ms)),
     decode_ms: summarizeFrameGaps(samples.map((sample) => sample.decode_ms)),
     verification_plus_decode_ms: summarizeFrameGaps(samples.map((sample) => sample.total_ms)),
   };
@@ -52,14 +50,21 @@ export async function profileVerifiedJsonArtifact({
     const verifyMs = now() - verifyStartedAt;
     assertRuntimeVerificationPass(verification);
 
-    const decodeStartedAt = now();
-    const artifact = decodeUtf8Json(bytes);
-    const decodeMs = now() - decodeStartedAt;
+    const utf8StartedAt = now();
+    const jsonText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const utf8DecodeMs = now() - utf8StartedAt;
+
+    const parseStartedAt = now();
+    const artifact = JSON.parse(jsonText);
+    const jsonParseMs = now() - parseStartedAt;
     if (!artifact || typeof artifact !== 'object') throw new Error('PROFILE_ARTIFACT_JSON_NOT_OBJECT');
 
+    const decodeMs = utf8DecodeMs + jsonParseMs;
     samples.push({
       iteration: index + 1,
       verification_ms: verifyMs,
+      utf8_decode_ms: utf8DecodeMs,
+      json_parse_ms: jsonParseMs,
       decode_ms: decodeMs,
       total_ms: verifyMs + decodeMs,
     });
@@ -79,15 +84,19 @@ export async function profileVerifiedJsonArtifact({
     artifact_bytes: bytes.byteLength,
     iterations: count,
     verification_ms: overall.verification_ms,
+    utf8_decode_ms: overall.utf8_decode_ms,
+    json_parse_ms: overall.json_parse_ms,
     decode_ms: overall.decode_ms,
     verification_plus_decode_ms: overall.verification_plus_decode_ms,
     first_replay: {
       verification_ms: firstReplay.verification_ms,
+      utf8_decode_ms: firstReplay.utf8_decode_ms,
+      json_parse_ms: firstReplay.json_parse_ms,
       decode_ms: firstReplay.decode_ms,
       total_ms: firstReplay.total_ms,
     },
     steady_state: summarizeSamples(steadyStateSamples),
     samples,
-    note: 'Replays the shared full RuntimeVerificationBundle verifier and strict UTF-8 JSON decode against already-fetched compiled artifact bytes. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. It never replaces the production verification path and excludes network time.',
+    note: 'Replays the shared full RuntimeVerificationBundle verifier against already-fetched compiled artifact bytes, then times strict UTF-8 decoding and JSON.parse separately. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. It never replaces the production verification path and excludes network time.',
   };
 }
