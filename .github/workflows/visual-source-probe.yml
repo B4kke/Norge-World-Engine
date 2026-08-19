@@ -38,24 +38,37 @@ jobs:
           with open('/tmp/nwe-vegetation-real-source-probe.json', encoding='utf-8') as handle:
               report = json.load(handle)
           with open('/tmp/nwe-sr16-metadata-links.json', encoding='utf-8') as handle:
-              sr16_metadata = json.load(handle)
+              metadata = json.load(handle)
 
-          atom = report['sr16_atom']
+          def atom_summary(atom):
+              return {
+                  'atom_http': atom['http'],
+                  'entry_count': atom['entry_count'],
+                  'nannestad_entry_count': atom['nannestad_entry_count'],
+                  'nannestad_data_link_count': atom['nannestad_data_link_count'],
+                  'nannestad_data_links': atom['nannestad_data_links'],
+                  'nannestad_snapshot': atom['nannestad_snapshot'],
+                  'candidate_data_link_count': atom['candidate_data_link_count'],
+              }
+
           ar50_cap = report['ar50_capabilities']
           ar50 = report['ar50_sample']
           summary = {
               'status': report['status'],
               'tile': report['tile'],
               'sr16': {
-                  'atom_http': atom['http'],
-                  'entry_count': atom['entry_count'],
-                  'nannestad_or_3238_mentions': atom['nannestad_or_3238_mentions'],
-                  'nannestad_entry_count': atom['nannestad_entry_count'],
-                  'nannestad_data_link_count': atom['nannestad_data_link_count'],
-                  'nannestad_data_links': atom['nannestad_data_links'],
-                  'nannestad_snapshot': atom['nannestad_snapshot'],
-                  'candidate_data_link_count': atom['candidate_data_link_count'],
-                  'license_access_fields': sr16_metadata['license_access_fields'],
+                  'raster': atom_summary(report['sr16_atoms']['raster']),
+                  'vector': atom_summary(report['sr16_atoms']['vector']),
+                  'raster_metadata': {
+                      'license_access_fields': metadata['datasets']['sr16_raster']['license_access_fields'],
+                      'format_fields': metadata['datasets']['sr16_raster']['format_fields'],
+                      'distribution_structures': metadata['datasets']['sr16_raster']['distribution_structures'],
+                  },
+                  'vector_metadata': {
+                      'license_access_fields': metadata['datasets']['sr16_vector']['license_access_fields'],
+                      'format_fields': metadata['datasets']['sr16_vector']['format_fields'],
+                      'distribution_structures': metadata['datasets']['sr16_vector']['distribution_structures'],
+                  },
               },
               'ar50': {
                   'capabilities_http': ar50_cap['http'],
@@ -67,7 +80,6 @@ jobs:
                   'requested_crs': ar50['requested_crs'],
                   'requested_bounds': ar50['requested_bounds'],
                   'feature_member_count_capped': ar50['feature_member_count_capped'],
-                  'feature_element_names': ar50['feature_element_names'],
                   'property_names': ar50['property_names'],
                   'value_preview': ar50['value_preview'],
               },
