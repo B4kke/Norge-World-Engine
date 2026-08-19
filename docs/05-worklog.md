@@ -30,7 +30,7 @@ Every completed work session appends exactly one entry using this structure:
 
 ## Logging rules
 
-- Always record **date, local time/timezone + agent + task ID** in the heading.
+- Always record **date, local time/timezone, agent and task ID** in the heading.
 - `What` says what changed, not what the agent intended to do.
 - `Why` ties the work to the active queue in `docs/06-task-queue.md`.
 - `Result / evidence` is concise. Link proof files rather than pasting full logs.
@@ -114,9 +114,9 @@ Every completed work session appends exactly one entry using this structure:
 
 **Result / evidence**
 - FACT: isolated local Node syntax/regression execution of the new contract logic passes.
-- FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires byte-equivalent authoritative transform values while allowing derived local coordinates to change.
+- FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires exactly equal authoritative transform values while allowing derived local coordinates to change.
 - FACT: the contract rejects foreign world frames and non-finite movement/heading/height inputs.
-- HOSTED CI: GitHub baseline/ATLAS workflows are running on draft PR #72; no hosted PASS is claimed until completion.
+- FACT: code-bearing head `f6b8ed3f480844e07e20cfd5a94d5cc64fba5e8d` passed GitHub `baseline` run `32292789347` and `atlas-rapier-physics` run `32292789343`.
 
 **Changed**
 - Branch `agent/atlas-ground-06a`, draft PR #72.
