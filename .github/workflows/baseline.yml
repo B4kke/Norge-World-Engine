@@ -58,6 +58,9 @@ jobs:
           node --check engine/world/world_contract.mjs
           node --check engine/world/test_world_contract.mjs
           node engine/world/test_world_contract.mjs
+          node --check engine/world/character_transform_contract.mjs
+          node --check engine/world/test_character_transform_contract.mjs
+          node engine/world/test_character_transform_contract.mjs
           node --check engine/world/network_state_contract.mjs
           node --check engine/world/test_network_state_contract.mjs
           node engine/world/test_network_state_contract.mjs
