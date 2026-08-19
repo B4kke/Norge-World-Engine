@@ -210,3 +210,29 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-07`: implement the first bounded lighting/shadow/atmosphere/tone-mapping pass without changing world truth or destroying the proven navigation budget.
+
+## 2026-08-20 00:06 CEST — FORGE — P1-VEGETATION-01-SOURCE-AUDIT
+
+**What**
+- Recovered the existing vegetation source audit and re-verified it against current 2026 NIBIO/Geonorge/data.norge primary metadata instead of starting a new source plan.
+- Refined the open baseline from a vague `AR5 + SR16` concept to `SR16R + AR50 + existing NWE road/building exclusion geometry`.
+- Documented FKB-AR5 and Nasjonalt grunnkart for arealanalyse as capability-gated licensed enrichments rather than required public dependencies.
+- Defined a bounded Nannestad real-sample admission gate before any vegetation source becomes canonical compiler input.
+
+**Why**
+- `P1-VEGETATION-01` is the next visible-quality data layer after the active playable P0. Establishing a legally reproducible source stack now avoids building tree placement around data the public NWE pipeline cannot lawfully acquire or redistribute, while not displacing active `P0-GROUND-07/08` renderer/integration work.
+
+**Result / evidence**
+- FACT: NIBIO's 30-Jan-2026 SR16 product sheet documents full Norwegian forest coverage, 16×16 m SR16R cells, ±1-pixel positional accuracy, dominant species, mean/overheight, tree counts per hectare, canopy cover, LAI, remote-sensing year and uncertainty estimates; SR16R also has harvesting-update semantics that are not yet implemented equivalently for SR16V segments.
+- FACT: current SR16 download/Atom distributions are exposed with NLOD 1.0/open-license metadata; exact distribution metadata still belongs in each future SourceSnapshot.
+- FACT: AR50 is nationwide and useful for coarse land-cover exclusion/classification, but its 1:50k generalization merges areas below 15 dekar and cannot be treated as exact vegetation-edge truth.
+- FACT: NIBIO explicitly restricts FKB-AR5 download to Geovekst/Norge digitalt rights; current Nasjonalt grunnkart for arealanalyse distributions are likewise tied to a Norge digitalt license/restricted access.
+- NOT YET PROVEN: no real Nannestad SR16R/AR50 source bytes were acquired in this audit, so neither source is promoted to an admitted compiler dependency yet.
+
+**Changed**
+- Branch `agent/forge-vegetation-sources`.
+- `docs/data-licenses/visual-sources.md`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P1-VEGETATION-01-SAMPLE`: when P0 milestone acceptance is complete, acquire and inventory one real Nannestad SR16R + AR50 sample through official download paths and prove cache/offline reproducibility before defining the vegetation runtime artifact.
