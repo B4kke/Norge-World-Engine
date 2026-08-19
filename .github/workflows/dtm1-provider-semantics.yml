@@ -1,0 +1,97 @@
+name: dtm1-provider-semantics
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_provider_semantics.py'
+      - 'engine/compiler/tests/test_dtm1_provider_semantics.py'
+      - '.github/workflows/dtm1-provider-semantics.yml'
+  workflow_dispatch:
+
+jobs:
+  provider-semantics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run provider-semantics regressions
+        run: pytest -q engine/compiler/tests/test_dtm1_provider_semantics.py
+
+      - name: Fetch and classify official Høydedata product specification
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from urllib.request import Request, urlopen
+
+          from nwe_compiler.dtm1_provider_semantics import classify_provider_semantics
+          from nwe_compiler.terrain_acquisition import USER_AGENT
+
+          URL = 'https://dokument.geonorge.no/produktspesifikasjoner/punktsky/1.0.3/index.html'
+          req = Request(URL, headers={'User-Agent': USER_AGENT, 'Accept': 'text/html,application/xhtml+xml'})
+          with urlopen(req, timeout=60) as response:
+              if response.status != 200:
+                  raise RuntimeError(f'HTTP {response.status}: {URL}')
+              payload = response.read()
+
+          text = payload.decode('utf-8')
+          result = classify_provider_semantics(text)
+          semantics = result['semantics']
+          required_provider_facts = {
+              'pointcloud_is_primary_dataset': semantics['pointcloud_is_primary_dataset'],
+              'products_are_derived_automatically': semantics['products_are_derived_automatically'],
+              'national_grid_artifacts_are_explicitly_possible': semantics['national_grid_artifacts_are_explicitly_possible'],
+              'dtm_generation_method_documented': semantics['dtm_generation_method_documented'],
+              'nlod_license_documented': semantics['nlod_license_documented'],
+          }
+          evidence = {
+              'schema': 'nwe.dtm1-provider-semantics-live-proof/0.1',
+              'source_url': URL,
+              'source_sha256': hashlib.sha256(payload).hexdigest(),
+              'source_size_bytes': len(payload),
+              'required_provider_facts': required_provider_facts,
+              'classification': result,
+              'status': 'PROVIDER_SEMANTICS_CONFIRMED_SEAM_AUTHORITY_UNPROVEN',
+          }
+          with open('/tmp/dtm1-provider-semantics.json', 'w', encoding='utf-8') as fh:
+              json.dump(evidence, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+
+          print(json.dumps({
+              'source_sha256': evidence['source_sha256'],
+              'source_size_bytes': evidence['source_size_bytes'],
+              'required_provider_facts': required_provider_facts,
+              'production_seam_authority': semantics['production_seam_authority'],
+              'authority_status': semantics['authority_status'],
+          }, indent=2, sort_keys=True))
+
+          if not all(required_provider_facts.values()):
+              raise SystemExit('official provider semantics changed or became incomplete; fail closed')
+          if semantics['production_seam_authority'] is not False or semantics['authority_status'] != 'UNPROVEN':
+              raise SystemExit('provider document must not create implicit seam authority')
+          PY
+
+      - name: Assert evidence workspace contains no raw geodata
+        if: always()
+        run: |
+          if find /tmp -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'raw geodata unexpectedly present in evidence workspace'
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dtm1-provider-semantics-${{ github.sha }}
+          path: /tmp/dtm1-provider-semantics.json
+          if-no-files-found: warn
+          retention-days: 7
