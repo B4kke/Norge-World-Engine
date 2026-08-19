@@ -48,6 +48,7 @@ export function createPreview1Renderer(options: any): Promise<{
     camera_mode?: string;
     character?: HumanoidRenderState;
     building_materials?: any;
+    vegetation?: VegetationRenderState;
     renderer_visual_style?: GroundVisualStyleState;
     timing_ms: any;
   };
@@ -59,6 +60,43 @@ export function createPreview1Renderer(options: any): Promise<{
   getCameraState(): { yaw: number; pitch: number; distance: number; target: number[] };
   getVisualStyle(): GroundVisualStyleState;
 }>;
+
+type VegetationRenderState = {
+  schema: 'nwe.vegetation-render-layer/0.1' | string;
+  authority: 'renderer-only-synthetic';
+  placement_schema: 'nwe.synthetic-vegetation-placement/0.1' | string;
+  instance_count: number;
+  conifer_count: number;
+  broadleaf_count: number;
+  draw_calls: number;
+  mesh_count: number;
+  gpu_buffer_count: number;
+  gpu_buffer_payload_bytes: number;
+  instance_matrix_payload_bytes: number;
+  instance_color_payload_bytes: number;
+  shared_geometry_payload_bytes: number;
+  geometry_strategy: string;
+  material_strategy: string;
+  source_asset: string | null;
+  source_asset_status: string;
+  placement: {
+    authority: 'renderer-only-synthetic';
+    placement_source: string;
+    future_replacement: string;
+    seed: number;
+    grid_spacing_m: number;
+    occupancy: number;
+    road_clearance_m: number;
+    building_clearance_m: number;
+    spawn_clearance_m: number;
+    max_grade: number;
+    candidate_cells: number;
+    conifer_count: number;
+    broadleaf_count: number;
+    rejected: { density: number; road: number; building: number; spawn: number; slope: number };
+    render_origin: readonly number[];
+  };
+};
 
 type GroundVisualStyleState = {
   schema: 'nwe.ground-visual-style/0.1' | string;
