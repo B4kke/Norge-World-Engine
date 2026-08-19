@@ -119,8 +119,9 @@ def current_nannestad_seam_matrix() -> dict:
                 discriminating_for_nannestad=True,
                 provenance_fields=("LAS_PROJECT_ID", "SISTEFLYDATO"),
                 blocker=(
-                    "provider newest-project semantics are documented for hoydedata_orig/original-LAZ "
-                    "selection, not the national DTM1 GeoTIFF seam"
+                    "provider metadata documents newest-project semantics for hoydedata_orig/original-LAZ "
+                    "and documents that the DTM WMS displays the latest project based on projects that "
+                    "update NHM; neither statement is bound to downloadable national DTM1 GeoTIFF overlap"
                 ),
             ),
             SeamCandidateEvidence(
