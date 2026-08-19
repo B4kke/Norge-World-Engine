@@ -50,8 +50,11 @@ jobs:
                   'atom_http': atom['http'],
                   'entry_count': atom['entry_count'],
                   'nannestad_or_3238_mentions': atom['nannestad_or_3238_mentions'],
+                  'nannestad_entry_count': atom['nannestad_entry_count'],
+                  'nannestad_data_link_count': atom['nannestad_data_link_count'],
+                  'nannestad_data_links': atom['nannestad_data_links'],
+                  'nannestad_snapshot': atom['nannestad_snapshot'],
                   'candidate_data_link_count': atom['candidate_data_link_count'],
-                  'candidate_data_links': atom['candidate_data_links'][:12],
                   'license_access_fields': sr16_metadata['license_access_fields'],
               },
               'ar50': {
