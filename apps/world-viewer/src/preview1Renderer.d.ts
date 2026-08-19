@@ -8,6 +8,7 @@ export function createPreview1Renderer(options: any): Promise<{
     backend: 'webgpu' | 'webgl2';
     pixelRatio: number;
     camera: { yaw: number; pitch: number; distance: number };
+    character?: HumanoidRenderState;
   }>;
   stats: {
     terrain_vertices: number;
@@ -42,6 +43,7 @@ export function createPreview1Renderer(options: any): Promise<{
     gpu_texture_payload_bytes?: number;
     timestamp_query_supported: boolean;
     camera_eye_height_m?: number;
+    character?: HumanoidRenderState;
     building_materials?: {
       schema: string;
       source_backed: { wall: string; roof: string };
@@ -53,9 +55,35 @@ export function createPreview1Renderer(options: any): Promise<{
       adapter_device_cpu_ms?: number;
       scene_build_cpu_ms: number;
       gpu_resource_apply_cpu_ms: number;
+      humanoid_load_cpu_ms?: number;
       renderer_init_cpu_ms: number;
     };
   };
   invalidate(): void;
   dispose(): void;
+  setCharacterAnimationState(state: 'idle' | 'walk', options?: { fadeSeconds?: number }): HumanoidRenderState;
+  getCharacterState(): HumanoidRenderState;
 }>;
+
+type HumanoidRenderState = {
+  schema: 'nwe.humanoid-render-state/0.1' | string;
+  asset_id: string;
+  source_commit: string;
+  source_git_blob_sha1: string;
+  source_byte_size: number;
+  license: string;
+  source_request_url: string;
+  source_request_origin: string;
+  runtime_dependency: 'commit-pinned-renderer-asset' | string;
+  state: 'idle' | 'walk';
+  idle_clip: string;
+  walk_clip: string;
+  render_mesh_count: number;
+  normalized_height_m: number;
+  renderer_only_spawn: true;
+  animation_state_probe: {
+    schema: 'nwe.humanoid-animation-state-probe/0.1' | string;
+    status: 'PASS' | string;
+    states: readonly ['idle', 'walk', 'idle'] | readonly string[];
+  } | null;
+};
