@@ -22,11 +22,17 @@ jobs:
         working-directory: prototypes/atlas-rapier-physics
         run: npm install --package-lock=false --ignore-scripts
 
-      - name: Syntax check probes
+      - name: Syntax check ATLAS world/physics probes
         run: |
+          node --check engine/world/physics_frame_event_contract.mjs
+          node --check engine/world/test_physics_frame_event_contract.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
+          python -m json.tool engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json > /dev/null
+
+      - name: Run physics frame maintenance event regressions
+        run: node engine/world/test_physics_frame_event_contract.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
