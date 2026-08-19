@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createPreviewSceneGeometry } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
+import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
 
 const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
 const TERRAIN_MATERIAL_SCHEMA = 'nwe.terrain-render-style/0.1';
@@ -295,8 +296,9 @@ function createThreeGroundRendererFromInitialized({
 
   const camera = new THREE.PerspectiveCamera(58, 1, 0.15, 2200);
   const centerGround = groundHeightAtCenter(terrainPayload);
+  const cameraTarget = [0, centerGround + 1.55, -28];
   camera.position.set(0, centerGround + 1.7, 14);
-  camera.lookAt(0, centerGround + 1.55, -28);
+  camera.lookAt(...cameraTarget);
 
   let stopped = false;
   let dirty = true;
@@ -304,6 +306,12 @@ function createThreeGroundRendererFromInitialized({
   let firstFrameResolve;
   let firstFrameReject;
   let firstFrameSettled = false;
+  const cameraControls = installThreePreviewCameraControls({
+    canvas,
+    camera,
+    target: cameraTarget,
+    onChange: () => { dirty = true; },
+  });
   const firstFrame = new Promise((resolve, reject) => {
     firstFrameResolve = resolve;
     firstFrameReject = reject;
@@ -366,6 +374,7 @@ function createThreeGroundRendererFromInitialized({
       resize();
       const startedAt = monotonicNow();
       await renderer.renderAsync(scene, camera);
+      const cameraState = cameraControls.snapshot();
       const frame = {
         at: now,
         drawGapMs: lastDrawAt ? now - lastDrawAt : null,
@@ -373,7 +382,12 @@ function createThreeGroundRendererFromInitialized({
         drawCalls: [terrainMesh, roadMesh, resolvedBuildingMesh, fallbackBuildingMesh].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length,
         backend: activeBackend,
         pixelRatio: renderer.getPixelRatio(),
-        camera: { yaw: 0, pitch: 0, distance: 14, eye_height_m: 1.7 },
+        camera: {
+          yaw: cameraState.yaw,
+          pitch: cameraState.pitch,
+          distance: cameraState.distance,
+          eye_height_m: camera.position.y - centerGround,
+        },
       };
       onFrame(frame);
       lastDrawAt = now;
@@ -403,6 +417,7 @@ function createThreeGroundRendererFromInitialized({
     if (stopped) return;
     stopped = true;
     renderer.setAnimationLoop(null);
+    cameraControls.dispose();
     if (terrainMesh) {
       scene.remove(terrainMesh);
       terrainMesh.geometry.dispose();
