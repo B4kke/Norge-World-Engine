@@ -53,6 +53,11 @@ export function createStreamingTraceRecorder({
     return append('terrain-load-observation', observation);
   }
 
+  function onLifecycleObservation(observation) {
+    if (!observation || typeof observation !== 'object') return null;
+    return append('lifecycle-observation', observation);
+  }
+
   function captureSnapshot(snapshot, label = null) {
     if (!snapshot || typeof snapshot !== 'object') throw new TypeError('snapshot must be an object');
     return append('scheduler-snapshot', {
@@ -83,6 +88,7 @@ export function createStreamingTraceRecorder({
   return Object.freeze({
     onSchedulerEvent,
     onLoadObservation,
+    onLifecycleObservation,
     captureSnapshot,
     exportTrace,
   });
