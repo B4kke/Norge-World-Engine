@@ -268,3 +268,33 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-VEGETATION-01-ARTIFACT`: after P0 milestone acceptance, define and prove one tiny renderer-neutral deterministic vegetation artifact candidate from the admitted SR16V + AR50 normalized boundary, with source/config provenance and no renderer-owned semantics.
+
+## 2026-08-20 01:51 CEST — FORGE — P1-VEGETATION-01-ARTIFACT
+
+**What**
+- Inspected LUMEN PR #80 and kept its Three.js/Poly Haven instancing, asset choice and visible-instance budget in renderer ownership while replacing the missing FORGE side of the handoff.
+- Added `nwe.vegetation-representative-artifact/0.1-candidate`: a renderer-neutral deterministic compiler artifact over normalized SR16V + AR50 with source-backed segment semantics and explicitly procedural representative positions/yaw.
+- Preserved SR16V tree class, modeled mean height, >=16 cm DBH tree density, uncertainty, canopy cover, remote-sensing year and update date; applied coarse AR50 non-forest exclusion only.
+- Added real-sample compile/evidence/verifier tooling and extended the manual heavy source gate through artifact compilation; ordinary PR source probing was restored to lightweight mode after the materially new gate passed.
+
+**Why**
+- PR #80 already proved useful renderer infrastructure but still hard-required `nwe.synthetic-vegetation-placement/0.1`. The highest-value FORGE work was therefore the missing source-backed renderer-neutral input contract, not another renderer implementation or another vegetation-source research cycle.
+
+**Result / evidence**
+- FACT: `baseline` run `32314719926` PASS and heavy real-source `visual-source-probe` run `32314719935` PASS on code-bearing head `de91525ac45c4ca19eb5ed4b5fb470e2be1dbedd`.
+- FACT: the real 1 km Nannestad sample compiled `92` usable SR16V segments into `828` deterministic representative points over `516753.05 m²`; coarse AR50 non-forest suppression removed `112923.69 m²`.
+- FACT: source-backed `srtrean_ge16` semantics represented `23493.8875` modeled trees with DBH >=16 cm; representative weights sum to the same modeled aggregate within floating-point tolerance.
+- FACT: same normalized A1/A2 input produced byte-identical RFC8785 artifact bytes; independent AR50 acquisition B produced the same semantic artifact hash. Artifact SHA-256 `9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636`; semantic SHA-256 `320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f`; compiler-config ID `f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e`.
+- EXPERIMENT: `16` representatives/hectare is only the current bounded representation target. It is not source tree density or a selected production LOD policy; changing it changes compiler-config/artifact identity.
+- TRUTH BOUNDARY: representative easting/northing/yaw are deterministic generated detail, not observed individual trees. The artifact contains no Three/WebGPU types, asset IDs, render origin or terrain Z and does not yet apply exact accepted road/building exclusion.
+
+**Changed**
+- Draft PR #79 / branch `agent/forge-vegetation-sources`.
+- `engine/compiler/src/nwe_compiler/vegetation.py` and `engine/compiler/tests/test_vegetation.py`.
+- `tools/visual-data/compile_vegetation_representative_sample.py` and `tools/visual-data/verify_vegetation_representative_sample.py`.
+- `.github/workflows/vegetation-source-sample.yml` and temporary-then-restored `.github/workflows/visual-source-probe.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+- CI evidence artifact `9387699149`; raw/bulk provider geodata remains outside Git.
+
+**Next**
+- `P1-VEGETATION-01-RENDERER-HANDOFF`: LUMEN adapts PR #80 to consume the candidate FORGE artifact while keeping render-local conversion, accepted-DTM grounding, local road/building/spawn/slope filtering, asset mapping, visible-instance budgets and LOD as presentation/runtime concerns.
