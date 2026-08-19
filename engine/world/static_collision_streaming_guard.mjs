@@ -4,6 +4,7 @@ import {
   STATIC_COLLISION_LIFECYCLE_PHASE,
   STATIC_COLLISION_LIFECYCLE_SCHEMA,
 } from './static_collision_lifecycle_contract.mjs';
+import { deriveStaticCollisionDependencies } from './static_collision_occupancy_contract.mjs';
 
 function requireFunction(value, label) {
   if (typeof value !== 'function') throw new TypeError(`${label} must be a function`);
@@ -102,6 +103,38 @@ export function createStaticCollisionStreamingGuard({
     return state;
   }
 
+  function syncDependenciesFromOccupancy({ snapshot, expectedCompletedPhysicsTick, lifecycleTick = getSimulationTick() } = {}) {
+    const currentPhysicsFrame = getCurrentPhysicsFrame();
+    const derived = deriveStaticCollisionDependencies({
+      snapshot,
+      collisionState: state,
+      expectedTick: requireTick(expectedCompletedPhysicsTick),
+      currentPhysicsFrame,
+    });
+    let candidateState = state;
+    for (const dependency of derived) {
+      const collision = candidateState.collisions.find((entry) => entry.collisionId === dependency.collisionId);
+      if (!collision) throw new Error(`no resident static collision ${dependency.collisionId}`);
+      const event = createStaticCollisionLifecycleEvent({
+        schema: STATIC_COLLISION_LIFECYCLE_SCHEMA,
+        phase: STATIC_COLLISION_LIFECYCLE_PHASE,
+        tick: requireTick(lifecycleTick),
+        action: 'SET_DEPENDENCIES',
+        collisionId: collision.collisionId,
+        tileId: collision.tileId,
+        artifactSha256: collision.artifactSha256,
+        previousArtifactSha256: null,
+        worldFrameId: candidateState.worldFrameId,
+        physicsFrame: currentPhysicsFrame,
+        dependentEntityIds: dependency.dependentEntityIds,
+        continuity: 'none',
+      });
+      candidateState = applyStaticCollisionLifecycleEvent({ state: candidateState, event, currentPhysicsFrame });
+    }
+    state = candidateState;
+    return state;
+  }
+
   async function guardedDisposeTile(tile, payload, context = {}) {
     const identity = requireIdentity(getCollisionIdentity(tile, payload));
     if (identity == null) return disposeTile(tile, payload, context);
@@ -127,6 +160,7 @@ export function createStaticCollisionStreamingGuard({
   return Object.freeze({
     getState,
     setDependencies,
+    syncDependenciesFromOccupancy,
     disposeTile: guardedDisposeTile,
   });
 }
