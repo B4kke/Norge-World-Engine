@@ -3,6 +3,8 @@ name: strom-retained-budget
 on:
   pull_request:
     paths:
+      - 'engine/streaming/tile_scheduler.mjs'
+      - 'engine/streaming/test_tile_scheduler_load_admission.mjs'
       - 'engine/streaming/retained_byte_budget.mjs'
       - 'engine/streaming/test_retained_byte_budget.mjs'
       - 'engine/streaming/benchmark_retained_byte_budget.mjs'
@@ -22,6 +24,8 @@ jobs:
           node-version: '22'
       - name: Syntax
         run: |
+          node --check engine/streaming/tile_scheduler.mjs
+          node --check engine/streaming/test_tile_scheduler_load_admission.mjs
           node --check engine/streaming/retained_byte_budget.mjs
           node --check engine/streaming/test_retained_byte_budget.mjs
           node --check engine/streaming/benchmark_retained_byte_budget.mjs
@@ -30,6 +34,7 @@ jobs:
           node --check engine/streaming/benchmark_retained_admission_priority.mjs
       - name: Regressions
         run: |
+          node engine/streaming/test_tile_scheduler_load_admission.mjs
           node engine/streaming/test_retained_byte_budget.mjs
           node engine/streaming/test_retained_budget_lifecycle_adapter.mjs
       - name: Benchmarks
