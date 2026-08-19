@@ -106,8 +106,25 @@ function assertLayer(layer, expectedSha, name) {
   if (!layer.isolated_replay?.steady_state) throw new Error(`PROFILE_SMOKE_STEADY_STATE: ${name}`);
 }
 
+function assertRoadDecodePlacement(layer) {
+  const experiment = layer?.decode_placement_experiment;
+  if (experiment?.schema !== 'nwe.browser-decode-placement-experiment/0.1') throw new Error('PROFILE_SMOKE_DECODE_PLACEMENT_SCHEMA');
+  if (experiment.status !== 'PASS') throw new Error('PROFILE_SMOKE_DECODE_PLACEMENT_STATUS');
+  if (experiment.experiment_only !== true || experiment.production_policy_selected !== false) {
+    throw new Error('PROFILE_SMOKE_DECODE_PLACEMENT_CLAIM_BOUNDARY');
+  }
+  if (experiment.provenance_reverified_in_experiment !== false) throw new Error('PROFILE_SMOKE_DECODE_PLACEMENT_PROVENANCE_BOUNDARY');
+  if (experiment.artifact_sha256 !== EXPECTED.roadsSha) throw new Error('PROFILE_SMOKE_DECODE_PLACEMENT_SHA');
+  if (experiment.iterations !== 20) throw new Error(`PROFILE_SMOKE_DECODE_PLACEMENT_ITERATIONS: ${experiment.iterations}`);
+  if (experiment.main_thread?.per_iteration_ms?.samples !== 20) throw new Error('PROFILE_SMOKE_MAIN_DECODE_SAMPLES');
+  if (experiment.worker_roundtrip?.roundtrip_ms?.samples !== 20) throw new Error('PROFILE_SMOKE_WORKER_ROUNDTRIP_SAMPLES');
+  if (experiment.worker_roundtrip?.worker_decode_ms?.samples !== 20) throw new Error('PROFILE_SMOKE_WORKER_DECODE_SAMPLES');
+  if ((experiment.main_thread?.frame_gaps_ms?.samples ?? 0) < 1) throw new Error('PROFILE_SMOKE_MAIN_FRAME_GAPS_MISSING');
+  if ((experiment.worker_roundtrip?.frame_gaps_ms?.samples ?? 0) < 1) throw new Error('PROFILE_SMOKE_WORKER_FRAME_GAPS_MISSING');
+}
+
 function assertReport(report, expectedCommit) {
-  if (report?.schema !== 'nwe.browser-provenance-profile-report/0.2') throw new Error('PROFILE_SMOKE_SCHEMA');
+  if (report?.schema !== 'nwe.browser-provenance-profile-report/0.3') throw new Error('PROFILE_SMOKE_SCHEMA');
   if (report.status !== 'PASS') throw new Error(`PROFILE_SMOKE_STATUS: ${report?.error ?? 'unknown failure'}`);
   if (report.tile_id !== EXPECTED.tileId) throw new Error(`PROFILE_SMOKE_TILE: ${report.tile_id}`);
   if (report.raw_source_calls !== 0) throw new Error(`PROFILE_SMOKE_RAW_SOURCE_CALLS: ${report.raw_source_calls}`);
@@ -117,8 +134,10 @@ function assertReport(report, expectedCommit) {
   }
   assertLayer(report.layers?.roads, EXPECTED.roadsSha, 'roads');
   assertLayer(report.layers?.buildings, EXPECTED.buildingsSha, 'buildings');
+  assertRoadDecodePlacement(report.layers?.roads);
+  if (report.layers?.buildings?.decode_placement_experiment !== null) throw new Error('PROFILE_SMOKE_BUILDING_DECODE_PLACEMENT_UNEXPECTED');
   return {
-    schema: 'nwe.browser-provenance-profile-ci-proof/0.1',
+    schema: 'nwe.browser-provenance-profile-ci-proof/0.2',
     status: 'PASS',
     evidence_class: 'hosted-headless-chrome-exact-real',
     tile_id: report.tile_id,
@@ -128,7 +147,7 @@ function assertReport(report, expectedCommit) {
     raw_source_calls: report.raw_source_calls,
     timing_ms: report.timing_ms,
     layers: report.layers,
-    interpretation: 'Exact-commit hosted Chrome measurement of the production verified road/building artifact path plus isolated verifier/UTF-8/JSON replay. It does not bypass RuntimeVerificationBundle, does not include raw geodata acquisition, and is not device-specific performance evidence.',
+    interpretation: 'Exact-commit hosted Chrome measurement of the production verified road/building artifact path plus isolated verifier/UTF-8/JSON replay. Roads additionally run a bounded main-thread-vs-module-Worker decode placement experiment on the same already-verified bytes; the Worker roundtrip includes byte copy/transfer setup and structured-cloned parsed-object return. This does not bypass RuntimeVerificationBundle, does not include raw geodata acquisition, does not select STRØM worker policy, and is not device-specific performance evidence.',
   };
 }
 
