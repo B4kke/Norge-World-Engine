@@ -63,6 +63,8 @@ assert.match(humanoid, /setRenderPose/, 'humanoid must expose a renderer-only po
 const renderer = readFileSync(new URL('./src/threeGroundRenderer.mjs', import.meta.url), 'utf8');
 assert.match(renderer, /createLicensedHumanoid/, 'normal Three ground renderer must load the licensed humanoid');
 assert.match(renderer, /setCharacterAnimationState/, 'renderer adapter must expose animation state change');
+assert.match(renderer, /setCharacterRenderPose/, 'renderer adapter must expose derived character pose input');
+assert.match(renderer, /HUMANOID_GROUND_LIFT_M/, 'renderer-only character ground lift must stay explicit');
 assert.match(renderer, /getCharacterState/, 'renderer adapter must expose renderer-local character state');
 assert.match(renderer, /renderer_only_spawn:\s*true|characterSnapshot/, 'character renderer state must remain presentation-only');
 assert.match(renderer, /humanoid\.update\(deltaSeconds\)/, 'animation mixer must advance on the renderer animation loop');
