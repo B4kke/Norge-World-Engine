@@ -21,6 +21,16 @@ function decodeUtf8Json(bytes) {
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 }
 
+function summarizeSamples(samples) {
+  if (!samples.length) return null;
+  return {
+    iterations: samples.length,
+    verification_ms: summarizeFrameGaps(samples.map((sample) => sample.verification_ms)),
+    decode_ms: summarizeFrameGaps(samples.map((sample) => sample.decode_ms)),
+    verification_plus_decode_ms: summarizeFrameGaps(samples.map((sample) => sample.total_ms)),
+  };
+}
+
 export async function profileVerifiedJsonArtifact({
   bundle,
   bytes,
@@ -55,6 +65,10 @@ export async function profileVerifiedJsonArtifact({
     });
   }
 
+  const firstReplay = samples[0];
+  const steadyStateSamples = samples.slice(1);
+  const overall = summarizeSamples(samples);
+
   return {
     schema: PROFILE_SCHEMA,
     status: 'PASS',
@@ -64,10 +78,16 @@ export async function profileVerifiedJsonArtifact({
     artifact_sha256: bundle.artifact_ref.sha256 ?? null,
     artifact_bytes: bytes.byteLength,
     iterations: count,
-    verification_ms: summarizeFrameGaps(samples.map((sample) => sample.verification_ms)),
-    decode_ms: summarizeFrameGaps(samples.map((sample) => sample.decode_ms)),
-    verification_plus_decode_ms: summarizeFrameGaps(samples.map((sample) => sample.total_ms)),
+    verification_ms: overall.verification_ms,
+    decode_ms: overall.decode_ms,
+    verification_plus_decode_ms: overall.verification_plus_decode_ms,
+    first_replay: {
+      verification_ms: firstReplay.verification_ms,
+      decode_ms: firstReplay.decode_ms,
+      total_ms: firstReplay.total_ms,
+    },
+    steady_state: summarizeSamples(steadyStateSamples),
     samples,
-    note: 'Replays the shared full RuntimeVerificationBundle verifier and strict UTF-8 JSON decode against already-fetched compiled artifact bytes. It never replaces the production verification path and excludes network time.',
+    note: 'Replays the shared full RuntimeVerificationBundle verifier and strict UTF-8 JSON decode against already-fetched compiled artifact bytes. First replay is reported separately from later steady-state samples so warm-up/JIT effects are not silently folded into cache/worker decisions. It never replaces the production verification path and excludes network time.',
   };
 }
