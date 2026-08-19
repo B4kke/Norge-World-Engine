@@ -3,21 +3,21 @@ import * as THREE from 'three/webgpu';
 export const GROUND_VISUAL_STYLE = Object.freeze({
   schema: 'nwe.ground-visual-style/0.1',
   toneMapping: 'ACESFilmicToneMapping',
-  toneMappingExposure: 1.05,
+  toneMappingExposure: 0.96,
   outputColorSpace: 'SRGBColorSpace',
-  skyColor: 0xa9c8da,
-  fogNearM: 170,
-  fogFarM: 1050,
+  skyColor: 0xb4cad9,
+  fogNearM: 190,
+  fogFarM: 1150,
   shadowType: 'BasicShadowMap',
   shadowMapSize: 1024,
   shadowHalfExtentM: 70,
   shadowNearM: 1,
-  shadowFarM: 280,
-  shadowBias: -0.00015,
-  shadowNormalBias: 0.035,
-  shadowIntensity: 0.82,
+  shadowFarM: 300,
+  shadowBias: -0.00005,
+  shadowNormalBias: 0.06,
+  shadowIntensity: 0.58,
   shadowAnchorUpdateDistanceM: 8,
-  sunOffset: Object.freeze([-65, 120, 50]),
+  sunOffset: Object.freeze([-55, 145, 45]),
   sunTargetHeightM: 1,
 });
 
@@ -64,14 +64,14 @@ export function configureObjectShadowRole(root, options) {
 }
 
 export function createGroundLighting(scene) {
-  if (!scene?.add) throw new TypeError('scene is required');
+  if (!scene?.add) throw new TypeError('scene.add is required');
   const style = GROUND_VISUAL_STYLE;
   scene.background = new THREE.Color(style.skyColor);
   scene.fog = new THREE.Fog(style.skyColor, style.fogNearM, style.fogFarM);
 
-  const hemisphere = new THREE.HemisphereLight(0xd9edff, 0x4b5544, 1.25);
+  const hemisphere = new THREE.HemisphereLight(0xddefff, 0x626b5c, 1.45);
   const sunTarget = new THREE.Object3D();
-  const sun = new THREE.DirectionalLight(0xfff0cf, 3.1);
+  const sun = new THREE.DirectionalLight(0xfff8e8, 2.35);
   sun.castShadow = true;
   sun.target = sunTarget;
   sun.shadow.mapSize.set(style.shadowMapSize, style.shadowMapSize);
