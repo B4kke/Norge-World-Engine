@@ -30,7 +30,7 @@ Every completed work session appends exactly one entry using this structure:
 
 ## Logging rules
 
-- Always record **date, local time/timezone + agent + task ID** in the heading.
+- Always record **date, local time/timezone, agent and task ID** in the heading.
 - `What` says what changed, not what the agent intended to do.
 - `Why` ties the work to the active queue in `docs/06-task-queue.md`.
 - `Result / evidence` is concise. Link proof files rather than pasting full logs.
@@ -171,7 +171,7 @@ Every completed work session appends exactly one entry using this structure:
 - FACT: the upstream bundle exposes ten source skill areas and declares MIT licensing; its draft WebGPU/TSL update targets Three r185 and corrects stale WebGPU/post-processing assumptions.
 - FACT: native WebGPU and WebGL2 shader languages remain different; TSL is treated only as a Three-adapter bridge that can target both backends.
 - ARCHITECTURE: no compiler/world/provenance/streaming/simulation contract or executable viewer path changed; Three/TSL/WebGPU objects remain presentation-only.
-- VALIDATION: branch structure/frontmatter was written to satisfy `scripts/validate_agent_skills.py`; hosted CI/static confirmation is pending on draft PR #76 and is not claimed PASS yet.
+- FACT: GitHub Actions baseline run `32298564154` completed `Validate repo-local Agent Skills` successfully on skill-bearing head `be52402d4193a574574244c10513488f7c78d1d1`; the broader baseline was still running at handoff and is not claimed PASS here.
 
 **Changed**
 - Branch `agent/lumen-gpu-skills`, draft PR #76.
