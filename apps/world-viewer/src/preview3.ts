@@ -21,6 +21,16 @@ function absoluteUrl(reference: string, base: string) {
   return new URL(reference, base).href;
 }
 
+function previewTransportResolver(manifestBase: string) {
+  return (reference: string, bundleUrl: string) => {
+    if (reference.startsWith('cache://compiled/')) {
+      const relative = reference.slice('cache://compiled/'.length);
+      return new URL(`./compiled/${relative}`, manifestBase).href;
+    }
+    return new URL(reference, bundleUrl).href;
+  };
+}
+
 function assertManifest(value: any) {
   if (!value || value.schema !== 'nwe.world-preview-manifest/0.1' || value.status !== 'REAL_COMPILED') {
     throw new Error(`PREVIEW3_MANIFEST_INVALID: ${value?.schema ?? 'missing'}/${value?.status ?? 'missing'}`);
@@ -99,6 +109,7 @@ export async function runPreview3({
   const profile = resolveGraphicsProfile(graphicsProfile);
   const startedAt = monotonicNow();
   const manifestBase = new URL(manifestUrl, location.href).href;
+  const resolveTransport = previewTransportResolver(manifestBase);
 
   onPhase('manifest');
   const manifest = await fetchManifest(manifestBase, fetchImpl);
@@ -126,6 +137,7 @@ export async function runPreview3({
         bundleUrl: absoluteUrl(entry.bundle, manifestBase),
         expectedTileId: tile.id,
         fetchImpl,
+        resolveTransport,
         signal,
       });
     },
