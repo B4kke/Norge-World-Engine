@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  THREE_CHARACTER_FOLLOW_DEFAULTS,
   THREE_GROUND_CAMERA_LIMITS,
   cameraStateFromPose,
   installThreePreviewCameraControls,
@@ -69,13 +70,23 @@ const controls = installThreePreviewCameraControls({
 
 assert.equal(canvas.style.touchAction, 'none', 'touch gestures must stay owned by the 3D canvas');
 assert.equal(canvas.listenerCount(), 7, 'camera controls must install pointer, wheel, reset and context-menu listeners');
+
+const follow = controls.followTarget([10, 20, -30], { headingRadians: Math.PI / 2, initialize: true });
+assert.deepEqual(follow.target, [10, 20 + THREE_CHARACTER_FOLLOW_DEFAULTS.targetHeightM, -30]);
+assert.ok(Math.abs(follow.yaw + Math.PI / 2) < 1e-12, 'initial follow camera must sit behind an east-facing character');
+assert.equal(follow.pitch, THREE_CHARACTER_FOLLOW_DEFAULTS.pitchRadians);
+assert.equal(follow.distance, THREE_CHARACTER_FOLLOW_DEFAULTS.distanceM);
+const followYaw = follow.yaw;
+const movedFollow = controls.followTarget([11, 21, -31], { headingRadians: 0, initialize: false });
+assert.deepEqual(movedFollow.target, [11, 21 + THREE_CHARACTER_FOLLOW_DEFAULTS.targetHeightM, -31]);
+assert.equal(movedFollow.yaw, followYaw, 'character movement must translate the orbit target without stealing the user orbit angle');
+
 const beforeOrbit = controls.snapshot();
 assert.equal(canvas.dispatch('pointerdown', { clientX: 100, clientY: 100 }), true);
 assert.equal(canvas.dispatch('pointermove', { clientX: 130, clientY: 110 }), true);
 const afterOrbit = controls.snapshot();
 assert.notEqual(afterOrbit.yaw, beforeOrbit.yaw, 'pointer drag must orbit the Three camera');
 assert.notEqual(afterOrbit.pitch, beforeOrbit.pitch, 'pointer drag must change ground-camera pitch');
-assert.ok(afterOrbit.pitch < 0.08, 'first orbit must not jump to the legacy overview-camera minimum pitch');
 assert.ok(changes >= 1);
 assert.ok(camera.lastLookAt, 'orbit must update the Three camera pose');
 

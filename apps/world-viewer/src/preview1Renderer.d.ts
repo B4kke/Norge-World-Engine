@@ -7,7 +7,7 @@ export function createPreview1Renderer(options: any): Promise<{
     drawCalls: number;
     backend: 'webgpu' | 'webgl2';
     pixelRatio: number;
-    camera: { yaw: number; pitch: number; distance: number };
+    camera: { yaw: number; pitch: number; distance: number; target?: number[] };
     character?: HumanoidRenderState;
   }>;
   stats: {
@@ -43,26 +43,17 @@ export function createPreview1Renderer(options: any): Promise<{
     gpu_texture_payload_bytes?: number;
     timestamp_query_supported: boolean;
     camera_eye_height_m?: number;
+    camera_mode?: string;
     character?: HumanoidRenderState;
-    building_materials?: {
-      schema: string;
-      source_backed: { wall: string; roof: string };
-      unresolved: { wall: string; roof: string };
-      height_semantics: { source_backed: string; unresolved: string };
-      roof_triangulation: string;
-    };
-    timing_ms: {
-      adapter_device_cpu_ms?: number;
-      scene_build_cpu_ms: number;
-      gpu_resource_apply_cpu_ms: number;
-      humanoid_load_cpu_ms?: number;
-      renderer_init_cpu_ms: number;
-    };
+    building_materials?: any;
+    timing_ms: any;
   };
   invalidate(): void;
   dispose(): void;
   setCharacterAnimationState(state: 'idle' | 'walk', options?: { fadeSeconds?: number }): HumanoidRenderState;
+  setCharacterRenderPose(pose: { entityId?: string; worldFrameId?: string; originSeriesId?: string; originEpoch?: number; position: Float32Array; headingRadians: number }): HumanoidRenderState;
   getCharacterState(): HumanoidRenderState;
+  getCameraState(): { yaw: number; pitch: number; distance: number; target: number[] };
 }>;
 
 type HumanoidRenderState = {
@@ -81,9 +72,6 @@ type HumanoidRenderState = {
   render_mesh_count: number;
   normalized_height_m: number;
   renderer_only_spawn: true;
-  animation_state_probe: {
-    schema: 'nwe.humanoid-animation-state-probe/0.1' | string;
-    status: 'PASS' | string;
-    states: readonly ['idle', 'walk', 'idle'] | readonly string[];
-  } | null;
+  animation_state_probe: any;
+  render_pose?: { entity_id: string | null; world_frame_id: string | null; origin_series_id: string | null; origin_epoch: number | null; position: readonly number[]; heading_radians: number; model_forward_yaw_offset: number } | null;
 };

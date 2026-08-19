@@ -8,6 +8,9 @@ import { observeStreamingLifecycleAdapters } from '../../../engine/streaming/lif
 import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { installPreview1CharacterControls } from './preview1CharacterControls.mjs';
+import { runPreview1CharacterMovementProbe } from './preview1CharacterMovementProbe.mjs';
+import { createPreview1CharacterRuntime } from './preview1CharacterRuntime.mjs';
 import { createPreview1Renderer } from './preview1Renderer.mjs';
 import { browserMemorySnapshot, createFrameGapMonitor, monotonicNow, summarizeFrameGaps } from './rendererObservability.mjs';
 
@@ -70,9 +73,7 @@ async function runRendererFrameBenchmark(renderer: any, frameEvents: any[], requ
 }
 
 function lifecycleCheckpoint(label: string, state: any) {
-  if (!state || state.schema !== TERRAIN_RESOURCE_SCHEMA) {
-    throw new Error(`PREVIEW_TERRAIN_RESOURCE_STATE_INVALID: ${label}`);
-  }
+  if (!state || state.schema !== TERRAIN_RESOURCE_SCHEMA) throw new Error(`PREVIEW_TERRAIN_RESOURCE_STATE_INVALID: ${label}`);
   return {
     label,
     backend: state.backend ?? null,
@@ -124,11 +125,7 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
     }),
   });
 
-  const observedLoadTile = createObservedTerrainTileLoadFunction({
-    loadTile: baseLoadTile,
-    onObservation: traceRecorder.onLoadObservation,
-  });
-
+  const observedLoadTile = createObservedTerrainTileLoadFunction({ loadTile: baseLoadTile, onObservation: traceRecorder.onLoadObservation });
   const lifecycleAdapters = observeStreamingLifecycleAdapters({
     activateTile: async (_tile: any, nextPayload: any) => {
       payload = nextPayload;
@@ -164,17 +161,12 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
   if (latestSnapshot.metrics.loadsCompleted !== 1 || latestSnapshot.metrics.loadsFailed !== 0) throw new Error(`PREVIEW_TERRAIN_SCHEDULER: ${JSON.stringify(latestSnapshot.metrics)}`);
 
   const bindRendererLifecycle = (renderer: any) => {
-    if (!renderer
-      || typeof renderer.getTerrainResourceLifecycle !== 'function'
-      || typeof renderer.activateTerrainResource !== 'function'
-      || typeof renderer.deactivateTerrainResource !== 'function') {
+    if (!renderer || typeof renderer.getTerrainResourceLifecycle !== 'function' || typeof renderer.activateTerrainResource !== 'function' || typeof renderer.deactivateTerrainResource !== 'function') {
       throw new Error('PREVIEW_TERRAIN_RESOURCE_ADAPTER_MISSING');
     }
     rendererLifecycle = renderer;
     const initial = lifecycleCheckpoint('initial-resident', rendererLifecycle.getTerrainResourceLifecycle());
-    if (!initial.active || initial.tile_id !== descriptor.id || initial.artifact_sha256 !== payload.artifact.sha256) {
-      throw new Error(`PREVIEW_TERRAIN_RESOURCE_INITIAL_STATE: ${JSON.stringify(initial)}`);
-    }
+    if (!initial.active || initial.tile_id !== descriptor.id || initial.artifact_sha256 !== payload.artifact.sha256) throw new Error(`PREVIEW_TERRAIN_RESOURCE_INITIAL_STATE: ${JSON.stringify(initial)}`);
     return initial;
   };
 
@@ -187,80 +179,47 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
     const outsideCamera = { e: center.e + STREAMING_MOVEMENT_OFFSET_M, n: center.n };
     const initialRenderer = lifecycleCheckpoint('initial-resident', rendererLifecycle.getTerrainResourceLifecycle());
     const initialBufferCount = initialRenderer.current_buffer_count;
-    if (!Number.isInteger(initialBufferCount) || initialBufferCount <= 0 || !(initialRenderer.current_payload_bytes > 0)) {
-      throw new Error(`PREVIEW_TERRAIN_RESOURCE_INITIAL_BUFFERS_INVALID: ${JSON.stringify(initialRenderer)}`);
-    }
+    if (!Number.isInteger(initialBufferCount) || initialBufferCount <= 0 || !(initialRenderer.current_payload_bytes > 0)) throw new Error(`PREVIEW_TERRAIN_RESOURCE_INITIAL_BUFFERS_INVALID: ${JSON.stringify(initialRenderer)}`);
 
     await scheduler.update(outsideCamera, [descriptor]);
     const outsideSnapshot = await scheduler.whenIdle();
     traceRecorder.captureSnapshot(outsideSnapshot, 'outside-active-inside-retain');
     const outsideRecord = outsideSnapshot.records.find((record: any) => record.id === descriptor.id);
-    if (outsideRecord?.state !== 'cached') {
-      throw new Error(`PREVIEW_STREAMING_MOVEMENT_OUTSIDE_STATE: ${outsideRecord?.state ?? 'missing'}`);
-    }
+    if (outsideRecord?.state !== 'cached') throw new Error(`PREVIEW_STREAMING_MOVEMENT_OUTSIDE_STATE: ${outsideRecord?.state ?? 'missing'}`);
     const outsideRenderer = lifecycleCheckpoint('outside-active-inside-retain', rendererLifecycle.getTerrainResourceLifecycle());
-    if (outsideRenderer.active || outsideRenderer.current_buffer_count !== 0 || outsideRenderer.current_payload_bytes !== 0) {
-      throw new Error(`PREVIEW_TERRAIN_RESOURCE_NOT_RELEASED: ${JSON.stringify(outsideRenderer)}`);
-    }
+    if (outsideRenderer.active || outsideRenderer.current_buffer_count !== 0 || outsideRenderer.current_payload_bytes !== 0) throw new Error(`PREVIEW_TERRAIN_RESOURCE_NOT_RELEASED: ${JSON.stringify(outsideRenderer)}`);
     await animationFrame();
 
     await scheduler.update({ e: center.e, n: center.n }, [descriptor]);
     latestSnapshot = await scheduler.whenIdle();
     traceRecorder.captureSnapshot(latestSnapshot, 'returned-center');
     const returnRecord = latestSnapshot.records.find((record: any) => record.id === descriptor.id);
-    if (returnRecord?.state !== 'resident') {
-      throw new Error(`PREVIEW_STREAMING_MOVEMENT_RETURN_STATE: ${returnRecord?.state ?? 'missing'}`);
-    }
+    if (returnRecord?.state !== 'resident') throw new Error(`PREVIEW_STREAMING_MOVEMENT_RETURN_STATE: ${returnRecord?.state ?? 'missing'}`);
     const returnedRenderer = lifecycleCheckpoint('returned-center', rendererLifecycle.getTerrainResourceLifecycle());
-    if (!returnedRenderer.active || returnedRenderer.current_buffer_count !== initialBufferCount || returnedRenderer.current_payload_bytes <= 0) {
-      throw new Error(`PREVIEW_TERRAIN_RESOURCE_NOT_RECREATED: ${JSON.stringify(returnedRenderer)}`);
-    }
+    if (!returnedRenderer.active || returnedRenderer.current_buffer_count !== initialBufferCount || returnedRenderer.current_payload_bytes <= 0) throw new Error(`PREVIEW_TERRAIN_RESOURCE_NOT_RECREATED: ${JSON.stringify(returnedRenderer)}`);
     await animationFrame();
 
     const cacheHitsDelta = latestSnapshot.metrics.cacheHits - cacheHitsBefore;
     const loadsStartedDelta = latestSnapshot.metrics.loadsStarted - loadsStartedBefore;
     const createsDelta = returnedRenderer.creates - initialRenderer.creates;
     const destroysDelta = returnedRenderer.destroys - initialRenderer.destroys;
-    if (resolverCalls !== resolverCallsBefore || loadsStartedDelta !== 0 || cacheHitsDelta !== 1) {
-      throw new Error(`PREVIEW_STREAMING_MOVEMENT_REFETCH: ${JSON.stringify({ resolverCallsBefore, resolverCallsAfter: resolverCalls, loadsStartedDelta, cacheHitsDelta })}`);
-    }
-    if (createsDelta !== 1 || destroysDelta !== 1 || outsideRenderer.destroys - initialRenderer.destroys !== 1) {
-      throw new Error(`PREVIEW_TERRAIN_RESOURCE_LIFECYCLE_COUNTS: ${JSON.stringify({ initialRenderer, outsideRenderer, returnedRenderer, createsDelta, destroysDelta })}`);
-    }
-    if (initialRenderer.backend !== outsideRenderer.backend || initialRenderer.backend !== returnedRenderer.backend) {
-      throw new Error('PREVIEW_TERRAIN_RESOURCE_BACKEND_CHANGED');
-    }
-    if (initialRenderer.physical_vram_release_observed || outsideRenderer.physical_vram_release_observed || returnedRenderer.physical_vram_release_observed) {
-      throw new Error('PREVIEW_TERRAIN_RESOURCE_VRAM_CLAIM_INVALID');
-    }
+    if (resolverCalls !== resolverCallsBefore || loadsStartedDelta !== 0 || cacheHitsDelta !== 1) throw new Error(`PREVIEW_STREAMING_MOVEMENT_REFETCH: ${JSON.stringify({ resolverCallsBefore, resolverCallsAfter: resolverCalls, loadsStartedDelta, cacheHitsDelta })}`);
+    if (createsDelta !== 1 || destroysDelta !== 1 || outsideRenderer.destroys - initialRenderer.destroys !== 1) throw new Error(`PREVIEW_TERRAIN_RESOURCE_LIFECYCLE_COUNTS: ${JSON.stringify({ initialRenderer, outsideRenderer, returnedRenderer, createsDelta, destroysDelta })}`);
+    if (initialRenderer.backend !== outsideRenderer.backend || initialRenderer.backend !== returnedRenderer.backend) throw new Error('PREVIEW_TERRAIN_RESOURCE_BACKEND_CHANGED');
+    if (initialRenderer.physical_vram_release_observed || outsideRenderer.physical_vram_release_observed || returnedRenderer.physical_vram_release_observed) throw new Error('PREVIEW_TERRAIN_RESOURCE_VRAM_CLAIM_INVALID');
 
     const rawLifecycle = rendererLifecycle.getTerrainResourceLifecycle();
     const createTimings = Array.isArray(rawLifecycle?.create_timing_ms) ? rawLifecycle.create_timing_ms : [];
     const destroyTimings = Array.isArray(rawLifecycle?.destroy_timing_ms) ? rawLifecycle.destroy_timing_ms : [];
     rendererLifecycleObserved = true;
     lastMovementProbe = {
-      schema: 'nwe.single-tile-streaming-movement-probe/0.1',
-      status: 'PASS',
-      path: 'center->outside-active-inside-retain->center',
-      tile_id: descriptor.id,
-      movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M,
-      active_radius_m: STREAMING_ACTIVE_RADIUS_M,
-      retain_radius_m: STREAMING_RETAIN_RADIUS_M,
-      checkpoints: ['initial-resident', 'outside-active-inside-retain', 'returned-center'],
-      resolver_calls_before: resolverCallsBefore,
-      resolver_calls_after: resolverCalls,
-      loads_started_delta: loadsStartedDelta,
-      cache_hits_delta: cacheHitsDelta,
-      duration_ms: monotonicNow() - startedAt,
-      renderer_resource_lifecycle_observed: true,
-      renderer_backend: returnedRenderer.backend,
-      renderer_resource_checkpoints: [initialRenderer, outsideRenderer, returnedRenderer],
-      renderer_resource_creates_delta: createsDelta,
-      renderer_resource_destroys_delta: destroysDelta,
-      renderer_resource_timing_ms: {
-        deactivate: destroyTimings.length ? Number(destroyTimings.at(-1)) : null,
-        reactivate: createTimings.length ? Number(createTimings.at(-1)) : null,
-      },
+      schema: 'nwe.single-tile-streaming-movement-probe/0.1', status: 'PASS', path: 'center->outside-active-inside-retain->center', tile_id: descriptor.id,
+      movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M, active_radius_m: STREAMING_ACTIVE_RADIUS_M, retain_radius_m: STREAMING_RETAIN_RADIUS_M,
+      checkpoints: ['initial-resident', 'outside-active-inside-retain', 'returned-center'], resolver_calls_before: resolverCallsBefore, resolver_calls_after: resolverCalls,
+      loads_started_delta: loadsStartedDelta, cache_hits_delta: cacheHitsDelta, duration_ms: monotonicNow() - startedAt,
+      renderer_resource_lifecycle_observed: true, renderer_backend: returnedRenderer.backend, renderer_resource_checkpoints: [initialRenderer, outsideRenderer, returnedRenderer],
+      renderer_resource_creates_delta: createsDelta, renderer_resource_destroys_delta: destroysDelta,
+      renderer_resource_timing_ms: { deactivate: destroyTimings.length ? Number(destroyTimings.at(-1)) : null, reactivate: createTimings.length ? Number(createTimings.at(-1)) : null },
       physical_vram_release_observed: false,
       note: 'Verified runtime/cache and renderer terrain-resource round-trip. Terrain buffers are removed while cached and recreated from retained verified payload without refetch. Physical VRAM reclamation timing is not observed.',
     };
@@ -268,27 +227,15 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
   };
 
   const exportStreamingTrace = (movementProbeEnabled: boolean) => traceRecorder.exportTrace({
-    tile_id: descriptor.id,
-    probe_id: 'preview1-single-tile-cache-roundtrip-v0.1',
-    movement_probe_enabled: movementProbeEnabled,
-    active_radius_m: STREAMING_ACTIVE_RADIUS_M,
-    retain_radius_m: STREAMING_RETAIN_RADIUS_M,
-    movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M,
+    tile_id: descriptor.id, probe_id: 'preview1-single-tile-cache-roundtrip-v0.1', movement_probe_enabled: movementProbeEnabled,
+    active_radius_m: STREAMING_ACTIVE_RADIUS_M, retain_radius_m: STREAMING_RETAIN_RADIUS_M, movement_offset_e_m: STREAMING_MOVEMENT_OFFSET_M,
     renderer_resource_lifecycle_observed: movementProbeEnabled && rendererLifecycleObserved,
     renderer_backend: movementProbeEnabled ? lastMovementProbe?.renderer_backend ?? null : null,
     physical_vram_release_observed: false,
   });
 
-  return {
-    payload,
-    bundleUrl: terrainBundleUrl,
-    bindRendererLifecycle,
-    getSnapshot: () => latestSnapshot,
-    getResolverCalls: () => resolverCalls,
-    getRendererLifecycle: () => rendererLifecycle?.getTerrainResourceLifecycle?.() ?? null,
-    runMovementProbe,
-    exportStreamingTrace,
-  };
+  return { payload, bundleUrl: terrainBundleUrl, bindRendererLifecycle, getSnapshot: () => latestSnapshot, getResolverCalls: () => resolverCalls,
+    getRendererLifecycle: () => rendererLifecycle?.getTerrainResourceLifecycle?.() ?? null, runMovementProbe, exportStreamingTrace };
 }
 
 export async function runPreview1({
@@ -299,6 +246,7 @@ export async function runPreview1({
   rendererPreference = 'auto',
   benchmarkFrameCount = Number(new URLSearchParams(location.search).get('previewBenchmarkFrames') || '0'),
   streamingMovementProbe = false,
+  characterMovementProbe = new URLSearchParams(location.search).get('previewCharacterMovementProbe') === '1',
   onPhase = () => {},
   onReady = () => {},
   onFrame = () => {},
@@ -310,6 +258,7 @@ export async function runPreview1({
   rendererPreference?: string;
   benchmarkFrameCount?: number;
   streamingMovementProbe?: boolean;
+  characterMovementProbe?: boolean;
   onPhase?: (phase: string) => void;
   onReady?: (result: any) => void;
   onFrame?: (frame: any) => void;
@@ -317,15 +266,16 @@ export async function runPreview1({
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl is required');
   if (typeof streamingMovementProbe !== 'boolean') throw new TypeError('streamingMovementProbe must be boolean');
-  if (!Number.isInteger(benchmarkFrameCount) || benchmarkFrameCount < 0 || benchmarkFrameCount > 600) {
-    throw new RangeError('benchmarkFrameCount must be an integer within [0, 600]');
-  }
+  if (typeof characterMovementProbe !== 'boolean') throw new TypeError('characterMovementProbe must be boolean');
+  if (!Number.isInteger(benchmarkFrameCount) || benchmarkFrameCount < 0 || benchmarkFrameCount > 600) throw new RangeError('benchmarkFrameCount must be an integer within [0, 600]');
+
   const profile = resolveGraphicsProfile(graphicsProfile);
   const rendererChoice = resolveRendererPreference(rendererPreference);
   const startedAt = monotonicNow();
   const startupFrameMonitor = createFrameGapMonitor();
   startupFrameMonitor.start();
   const rendererFrames: any[] = [];
+  let characterControls: any = null;
 
   try {
     onPhase('manifest');
@@ -337,30 +287,17 @@ export async function runPreview1({
     const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
     const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
     const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
-
     if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
 
     let rendererFallback: any = null;
     onPhase('renderer');
     const renderer = await createPreview1Renderer({
-      canvas,
-      terrainPayload: terrain.payload,
-      roadsArtifact: roads.artifact,
-      buildingsArtifact: buildings.artifact,
-      graphicsProfile: profile,
-      backend: rendererChoice,
-      onBackendFallback: (fallback: any) => {
-        rendererFallback = {
-          from: fallback.from,
-          to: fallback.to,
-          reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error),
-        };
-      },
-      onFrame: (frame: any) => {
-        rendererFrames.push(frame);
-        onFrame(frame);
-      },
+      canvas, terrainPayload: terrain.payload, roadsArtifact: roads.artifact, buildingsArtifact: buildings.artifact,
+      graphicsProfile: profile, backend: rendererChoice,
+      onBackendFallback: (fallback: any) => { rendererFallback = { from: fallback.from, to: fallback.to, reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error) }; },
+      onFrame: (frame: any) => { rendererFrames.push(frame); onFrame(frame); },
     });
+    const characterRuntime = createPreview1CharacterRuntime({ terrainPayload: terrain.payload, renderer });
     terrain.bindRendererLifecycle(renderer);
 
     onPhase('first-frame');
@@ -368,72 +305,53 @@ export async function runPreview1({
     const inputToFirstFrameReadyMs = monotonicNow() - startedAt;
     const startupRafGap = startupFrameMonitor.stop();
 
+    let characterMovementProof = null;
+    if (characterMovementProbe) {
+      onPhase('character-movement-probe');
+      characterMovementProof = await runPreview1CharacterMovementProbe({ runtime: characterRuntime, renderer, animationFrame });
+    }
+    characterControls = installPreview1CharacterControls({ canvas, runtime: characterRuntime });
+
     let movementProbe = null;
     if (streamingMovementProbe) {
       onPhase('streaming-movement-probe');
       movementProbe = await terrain.runMovementProbe();
     }
     const streamingTrace = terrain.exportStreamingTrace(streamingMovementProbe);
-    if (streamingTrace.droppedEntries !== 0) {
-      throw new Error(`PREVIEW_STREAMING_TRACE_DROPPED: ${streamingTrace.droppedEntries}`);
-    }
+    if (streamingTrace.droppedEntries !== 0) throw new Error(`PREVIEW_STREAMING_TRACE_DROPPED: ${streamingTrace.droppedEntries}`);
 
     let rendererFrameBenchmark = null;
     if (benchmarkFrameCount > 0) {
       onPhase('renderer-benchmark');
       rendererFrameBenchmark = await runRendererFrameBenchmark(renderer, rendererFrames, benchmarkFrameCount);
-      if (rendererFrameBenchmark.measured_frames !== benchmarkFrameCount) {
-        throw new Error(`PREVIEW_RENDERER_BENCHMARK_INCOMPLETE: ${rendererFrameBenchmark.measured_frames}/${benchmarkFrameCount}`);
-      }
+      if (rendererFrameBenchmark.measured_frames !== benchmarkFrameCount) throw new Error(`PREVIEW_RENDERER_BENCHMARK_INCOMPLETE: ${rendererFrameBenchmark.measured_frames}/${benchmarkFrameCount}`);
     }
 
     const terrainSnapshot = terrain.getSnapshot();
     const result = {
-      schema: 'nwe.world-preview-runtime/0.1',
-      status: 'PASS',
-      manifest,
-      manifestUrl: manifestBase,
-      tile_id: manifest.tile.id,
-      graphics_profile: profile.id,
-      renderer_preference: rendererChoice,
-      timing_ms: {
-        input_to_first_frame_ready_ms: inputToFirstFrameReadyMs,
-        startup_raf_gap: startupRafGap,
-        renderer_frame_benchmark: rendererFrameBenchmark,
-      },
+      schema: 'nwe.world-preview-runtime/0.1', status: 'PASS', manifest, manifestUrl: manifestBase, tile_id: manifest.tile.id,
+      graphics_profile: profile.id, renderer_preference: rendererChoice,
+      timing_ms: { input_to_first_frame_ready_ms: inputToFirstFrameReadyMs, startup_raf_gap: startupRafGap, renderer_frame_benchmark: rendererFrameBenchmark },
       browser_memory: browserMemorySnapshot(),
       terrain: {
-        artifact_sha256: terrain.payload.artifact.sha256,
-        verification_code: terrain.payload.verification.code,
+        artifact_sha256: terrain.payload.artifact.sha256, verification_code: terrain.payload.verification.code,
         retained_bytes: terrainSnapshot.records.find((record: any) => record.id === manifest.tile.id)?.byteSize ?? null,
-        scheduler: terrainSnapshot.metrics,
-        resolver_calls: terrain.getResolverCalls(),
-        timing_ms: terrain.payload.timingMs,
-        movement_probe: movementProbe,
-        streaming_trace: streamingTrace,
+        scheduler: terrainSnapshot.metrics, resolver_calls: terrain.getResolverCalls(), timing_ms: terrain.payload.timingMs,
+        movement_probe: movementProbe, streaming_trace: streamingTrace,
       },
-      roads: {
-        artifact_sha256: roads.artifactRef.sha256,
-        verification_code: roads.verification.code,
-        count: roads.artifact.paths?.length ?? 0,
-      },
-      buildings: {
-        artifact_sha256: buildings.artifactRef.sha256,
-        verification_code: buildings.verification.code,
-        count: buildings.artifact.features?.length ?? 0,
-      },
-      renderer: {
-        ...renderer.stats,
-        terrain_resource_lifecycle: terrain.getRendererLifecycle(),
-        fallback: rendererFallback,
-        first_frame: firstFrame,
-      },
+      roads: { artifact_sha256: roads.artifactRef.sha256, verification_code: roads.verification.code, count: roads.artifact.paths?.length ?? 0 },
+      buildings: { artifact_sha256: buildings.artifactRef.sha256, verification_code: buildings.verification.code, count: buildings.artifact.features?.length ?? 0 },
+      character: characterRuntime.snapshot(),
+      character_movement_probe: characterMovementProof,
+      character_controls: characterControls.snapshot(),
+      renderer: { ...renderer.stats, terrain_resource_lifecycle: terrain.getRendererLifecycle(), fallback: rendererFallback, first_frame: firstFrame, character: renderer.getCharacterState(), camera: renderer.getCameraState() },
       attribution: manifest.attribution ?? [],
     };
     onPhase('ready');
     onReady(result);
-    return { result, renderer };
+    return { result, renderer, characterRuntime, characterControls };
   } catch (error) {
+    characterControls?.dispose?.();
     startupFrameMonitor.stop();
     throw error;
   }
