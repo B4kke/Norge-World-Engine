@@ -59,7 +59,9 @@ async function testCancelledWaiterNeverMaterializes() {
 }
 
 async function testAbortAfterMaterializationCleansPayloadAndReservation() {
+  let markStarted;
   let releaseMaterialization;
+  const started = new Promise((resolve) => { markStarted = resolve; });
   const materialized = new Promise((resolve) => { releaseMaterialization = resolve; });
   const disposed = [];
   const controller = new AbortController();
@@ -67,6 +69,7 @@ async function testAbortAfterMaterializationCleansPayloadAndReservation() {
     maxRetainedBytes: 100,
     estimateTileBytes: () => 100,
     loadTile: async () => {
+      markStarted();
       await materialized;
       return { payload: { id: 'late' }, byteSize: 100 };
     },
@@ -74,6 +77,7 @@ async function testAbortAfterMaterializationCleansPayloadAndReservation() {
   });
 
   const promise = adapter.loadTile(tile('a'), { signal: controller.signal });
+  await started;
   controller.abort(new DOMException('camera moved', 'AbortError'));
   releaseMaterialization();
   await assert.rejects(promise, (error) => error?.name === 'AbortError');
