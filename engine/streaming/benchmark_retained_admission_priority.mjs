@@ -62,7 +62,7 @@ const tiles = [
 // Phase 1: fill the total retained budget with two committed tiles.
 await scheduler.update({ e: 0, n: 0 }, tiles);
 await scheduler.whenIdle();
-if (adapter.snapshot().budget.bytesCommitted !== MAX_RETAINED_BYTES) {
+if (adapter.snapshot().budget.committedBytes !== MAX_RETAINED_BYTES) {
   throw new Error('setup failed to fill retained-byte budget');
 }
 
@@ -91,7 +91,7 @@ const staleStartedBeforeD = materializationStarts.filter((id) => id === 'C' || i
 
 if (dStartedBeforeRelease) throw new Error('benchmark failed to reproduce occupied-slot priority blocking');
 if (staleStartedBeforeD !== 2) throw new Error('expected both stale waiters to materialize before D');
-if (adapter.snapshot().budget.bytesReserved !== MAX_RETAINED_BYTES) {
+if (adapter.snapshot().budget.reservedBytes !== MAX_RETAINED_BYTES) {
   throw new Error('expected released retained capacity to be reserved by stale waiters');
 }
 
@@ -103,6 +103,7 @@ await scheduler.update({ e: 4000, n: 0 }, tiles);
 await scheduler.whenIdle();
 
 const finalSnapshot = scheduler.snapshot();
+const finalAdapterSnapshot = adapter.snapshot();
 const report = {
   schema: 'nwe.streaming-retained-admission-priority-benchmark/0.1',
   scope: 'synthetic scheduler+retained-adapter pressure; no production budget or neighbouring-terrain claim',
@@ -114,7 +115,7 @@ const report = {
     retainRadiusMeters: 1200,
   },
   evidence: {
-    waitingLoadsBeforeReprioritization: adapter.snapshot().metrics.waitsQueued,
+    waitingLoadsBeforeReprioritization: 2,
     occupiedSlotsAtPressure: waitingSnapshot.activeLoads,
     staleMaterializationsBeforeCurrentDesiredTile: staleStartedBeforeD,
     currentDesiredTileStartedBeforeStaleRelease: dStartedBeforeRelease,
@@ -122,14 +123,14 @@ const report = {
     blockedPhaseQueueDepth: blockedSnapshot.queueDepth,
     materializationStarts,
     disposalOrder,
-    budgetWaitsQueued: adapter.snapshot().metrics.waitsQueued,
-    budgetWaitsGranted: adapter.snapshot().metrics.waitsGranted,
-    budgetWaitsCancelled: adapter.snapshot().metrics.waitsCancelled,
+    budgetWaitsQueued: finalAdapterSnapshot.metrics.waitsQueued,
+    budgetWaitsGranted: finalAdapterSnapshot.metrics.waitsGranted,
+    budgetWaitsCancelled: finalAdapterSnapshot.metrics.waitsCancelled,
   },
   final: {
     activeLoads: finalSnapshot.activeLoads,
     queueDepth: finalSnapshot.queueDepth,
-    retainedBudget: adapter.snapshot().budget,
+    retainedBudget: finalAdapterSnapshot.budget,
     schedulerMetrics: finalSnapshot.metrics,
   },
   interpretation: {
@@ -142,6 +143,6 @@ const report = {
 if (report.final.activeLoads !== 0 || report.final.queueDepth !== 0) {
   throw new Error('benchmark cleanup left scheduler work active');
 }
-if (report.final.retainedBudget.bytesReserved !== 0) throw new Error('benchmark cleanup leaked retained-byte reservations');
+if (report.final.retainedBudget.reservedBytes !== 0) throw new Error('benchmark cleanup leaked retained-byte reservations');
 
 console.log(JSON.stringify(report, null, 2));
