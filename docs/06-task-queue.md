@@ -6,6 +6,10 @@ Priority is evidence-driven. Do not close tasks from prose alone.
 
 Physical Android/mobile testing follows `docs/07-testing-policy.md`: it is milestone-based, batched and infrequent. Missing fresh physical-device evidence blocks only claims that are specifically about mobile/device behavior or performance; it must not become the automatic `Next` item or block unrelated compiler, world-model, streaming, renderer or browser-runtime progress. Prefer automated CI, exact-artifact browser tests and reproducible benchmarks for ordinary development.
 
+## Execution-chain reference
+
+`docs/08-revised-engine-chain.md` defines the current intended dependency sequence from the working 3×3 candidate toward larger-world quality and scale. It does **not** override evidence/status below. Current near-term order is: movement-driven 3×3 residency/budgets → terrain LOD → 3×3 roads/buildings → geometry enrichment → materials/vegetation → imagery → procedural detail → 10×10/25×25 scale proof. FORGE/SENTINEL continue Atom DTM1 ↔ WCS canonical-source reconciliation in parallel rather than blocking renderer/runtime experiments or silently declaring WCS authoritative.
+
 ## P0 — Critical
 
 ### P0-COORDINATES-01 — World state vs render-local coordinates
@@ -80,7 +84,7 @@ Physical Android/mobile testing follows `docs/07-testing-policy.md`: it is miles
 **Resource evidence:** terrain buffer accounting changed `595,992 -> 0 -> 595,992` B and buffer count `3 -> 0 -> 3`; final state had 2 creates / 1 destroy. This proves renderer resource object lifecycle, not physical VRAM reclamation timing.  
 **Proof:** `docs/proofs/2026-08-18-terrain-runtime-pipeline.md`, `docs/proofs/2026-08-18-world-viewer-terrain-worker.md`, `docs/proofs/2026-08-19-sentinel-device-lifecycle-restack.md`.  
 **Open:** real 2×2/3×3 terrain remains blocked by `P0-MULTITILE-TERRAIN-01`. Hard resident/GPU budgets, worker pooling, verification caching and LOD remain unselected. Genuine device-specific performance remains a later milestone evidence class, not a routine blocker.  
-**Next:** make the runtime ready for multiple promoted terrain tiles, improve cache/resource observability and design measured budget/LOD experiments that can run automatically. Batch physical mobile validation later when enough changes have accumulated to justify one run.
+**Next:** execute phase 1 of `docs/08-revised-engine-chain.md`: finish/falsify the multi-tile movement/resource-pressure harness (current STRØM PR #62), then use the same scheduler/budget evidence surface for the first terrain-LOD experiment. Do not select production budget or LOD constants from synthetic evidence alone.
 
 ### P0-ARCH-REUSE-01 — 3D Tiles/runtime reuse spike
 **Status:** TOOLING + CESIUM BASELINE BUILD PASS / SHARED TERRAIN+VECTOR RENDER ARTIFACT OPEN  
@@ -113,6 +117,8 @@ DTM1, vector and viewer real-data workflows have reusable main/PR/manual trigger
 - full-Norway prebuild;
 - FKB work that blocks terrain/viewer measurement;
 - production imagery dependency before redistribution/cache rights are documented.
+
+The revised engine chain permits a bounded **material/vegetation foundation** before full imagery because it can produce a large visual improvement without making imagery a production dependency. This does not authorize cosmetic work to jump ahead of the active movement/budget/LOD and multi-tile vector gates.
 
 ## LUMEN device-evidence capability — retained, not a routine gate
 
