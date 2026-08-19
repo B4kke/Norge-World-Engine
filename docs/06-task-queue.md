@@ -129,7 +129,18 @@ Multipolygon/relation ingestion, DOM-DTM/FKB capability-gated height enrichment 
 Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
 
 ## P1-VEGETATION-01 — Norwegian vegetation layer
-Small licensed asset set, deterministic/source-backed placement, GPU instancing and distance LOD/impostors.
+**Status:** SOURCE BASIS AUDITED / IMPLEMENTATION DEFERRED UNTIL P0 MILESTONE ACCEPTANCE / REAL-SAMPLE ADMISSION GATE OPEN  
+**Owner:** FORGE source/compiler + LUMEN presentation
+
+**Candidate open baseline:** NIBIO `SR16R` for 16×16 m forest structure + NIBIO `AR50` for coarse nationwide non-forest classification/exclusion + already accepted NWE road/building geometry for local suppression. Preserve SR16 source attributes and uncertainty separately from generated tree instances.
+
+**Licensed enrichments, not baseline:** FKB-AR5 and Nasjonalt grunnkart for arealanalyse currently require Geovekst/Norge digitalt rights under the verified access model. NIBIO regional vegetation maps may enrich covered areas but are not nationwide.
+
+**Truth guard:** SR16 does not provide authoritative individual-tree positions. Tree placement, within-cell species/height variation, asset choice and rotations/scales are deterministic procedural detail unless a future source explicitly proves otherwise.
+
+**Next source gate — `P1-VEGETATION-01-SAMPLE`:** after P0 milestone acceptance, FORGE acquires one real Nannestad SR16R + AR50 sample through official download paths; records exact license/source identity, hashes, CRS/bounds/schema/raster metadata and temporal fields; then proves a tiny cached/offline deterministic normalization before any vegetation runtime artifact is selected.
+
+**Later renderer goal:** small licensed asset set, deterministic/source-backed placement, GPU instancing and distance LOD/impostors.
 
 ## P1-MATERIALS-01 — Renderer-neutral material semantics
 Stable material IDs/parameters in world/runtime data; Three.js maps them to PBR/shaders. Do not encode Three material classes into compiled world artifacts.
