@@ -8,6 +8,7 @@ export const GROUND_VISUAL_STYLE = Object.freeze({
   skyColor: 0xa9c8da,
   fogNearM: 170,
   fogFarM: 1050,
+  shadowType: 'BasicShadowMap',
   shadowMapSize: 1024,
   shadowHalfExtentM: 70,
   shadowNearM: 1,
@@ -33,12 +34,14 @@ export function configureGroundRendererVisualStyle(renderer) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = GROUND_VISUAL_STYLE.toneMappingExposure;
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.BasicShadowMap;
   return Object.freeze({
     schema: GROUND_VISUAL_STYLE.schema,
     tone_mapping: GROUND_VISUAL_STYLE.toneMapping,
     tone_mapping_exposure: renderer.toneMappingExposure,
     output_color_space: GROUND_VISUAL_STYLE.outputColorSpace,
     shadows_enabled: renderer.shadowMap.enabled === true,
+    shadow_filter: GROUND_VISUAL_STYLE.shadowType,
   });
 }
 
@@ -128,6 +131,7 @@ export function createGroundLighting(scene) {
       }),
       shadow: Object.freeze({
         strategy: 'single-player-following-directional-frustum',
+        filter: style.shadowType,
         map_size: style.shadowMapSize,
         half_extent_m: style.shadowHalfExtentM,
         near_m: style.shadowNearM,
