@@ -8,6 +8,8 @@ on:
       - 'engine/streaming/retained_budget_lifecycle_adapter.mjs'
       - 'engine/streaming/test_retained_admission_fairness.mjs'
       - 'engine/streaming/benchmark_retained_admission_fairness.mjs'
+      - 'engine/streaming/test_retained_admission_starvation.mjs'
+      - 'engine/streaming/benchmark_retained_admission_starvation.mjs'
       - '.github/workflows/strom-admission-fairness.yml'
   workflow_dispatch:
 
@@ -23,9 +25,15 @@ jobs:
         run: |
           node --check engine/streaming/test_retained_admission_fairness.mjs
           node --check engine/streaming/benchmark_retained_admission_fairness.mjs
+          node --check engine/streaming/test_retained_admission_starvation.mjs
+          node --check engine/streaming/benchmark_retained_admission_starvation.mjs
       - name: Regressions
-        run: node engine/streaming/test_retained_admission_fairness.mjs
+        run: |
+          node engine/streaming/test_retained_admission_fairness.mjs
+          node engine/streaming/test_retained_admission_starvation.mjs
       - name: Benchmark
         run: |
           node engine/streaming/benchmark_retained_admission_fairness.mjs | tee /tmp/nwe-retained-admission-fairness.json
           python -m json.tool /tmp/nwe-retained-admission-fairness.json > /dev/null
+          node engine/streaming/benchmark_retained_admission_starvation.mjs | tee /tmp/nwe-retained-admission-starvation.json
+          python -m json.tool /tmp/nwe-retained-admission-starvation.json > /dev/null
