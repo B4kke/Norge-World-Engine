@@ -76,6 +76,9 @@ jobs:
           node --check engine/world/static_collision_contract.mjs
           node --check engine/world/test_static_collision_contract.mjs
           node engine/world/test_static_collision_contract.mjs
+          node --check engine/world/static_collision_occupancy_contract.mjs
+          node --check engine/world/test_static_collision_occupancy_contract.mjs
+          node engine/world/test_static_collision_occupancy_contract.mjs
           node --check prototypes/atlas-physics-local-collision/physics_local_collision_probe.mjs
           node --check prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
           node prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
@@ -86,6 +89,7 @@ jobs:
           python -m json.tool engine/world/schemas/physics-frame-maintenance-batch-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-membership-event-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/static-world-collision-binding-v0.1.schema.json > /dev/null
+          python -m json.tool engine/world/schemas/static-collision-occupancy-snapshot-v0.1.schema.json > /dev/null
 
       - name: Runtime provenance reconstruction regression
         run: |
