@@ -9,7 +9,7 @@ const tileBytes = 100;
 const materialized = [];
 const disposed = [];
 const adapter = createRetainedBudgetLifecycleAdapter({
-  maxRetainedBytes: 300,
+  maxRetainedBytes: 200,
   estimateTileBytes() { return tileBytes; },
   async loadTile(tile) {
     materialized.push(tile.id);
@@ -58,7 +58,7 @@ assert.ok(disposed.length > 0);
 for (const sample of report.samples) {
   assert.ok(sample.scheduler.bytesResident <= 200);
   assert.ok(sample.scheduler.bytesCached <= 100);
-  assert.ok(sample.resource.committedBytes + sample.resource.reservedBytes <= 300);
+  assert.ok(sample.resource.committedBytes + sample.resource.reservedBytes <= 200);
   assert.equal(sample.resource.overcommitBytes, 0);
 }
 assert.equal(report.summary.finalActiveLoads, 0);
