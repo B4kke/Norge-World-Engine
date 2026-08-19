@@ -28,14 +28,49 @@ jobs:
 
       - name: Probe current official source contracts
         run: |
-          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json
-          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json
-          python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json
-          python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json
-          cat /tmp/nwe-visual-source-probe.json
-          cat /tmp/nwe-visual-order-selection.json
-          cat /tmp/nwe-sr16-metadata-links.json
-          cat /tmp/nwe-vegetation-real-source-probe.json
+          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json >/dev/null
+          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json >/dev/null
+          python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json >/dev/null
+          python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json >/dev/null
+          python - <<'PY'
+          import json
+
+          with open('/tmp/nwe-vegetation-real-source-probe.json', encoding='utf-8') as handle:
+              report = json.load(handle)
+          with open('/tmp/nwe-sr16-metadata-links.json', encoding='utf-8') as handle:
+              sr16_metadata = json.load(handle)
+
+          atom = report['sr16_atom']
+          ar50_cap = report['ar50_capabilities']
+          ar50 = report['ar50_sample']
+          summary = {
+              'status': report['status'],
+              'tile': report['tile'],
+              'sr16': {
+                  'atom_http': atom['http'],
+                  'entry_count': atom['entry_count'],
+                  'nannestad_or_3238_mentions': atom['nannestad_or_3238_mentions'],
+                  'candidate_data_link_count': atom['candidate_data_link_count'],
+                  'candidate_data_links': atom['candidate_data_links'][:12],
+                  'license_access_fields': sr16_metadata['license_access_fields'],
+              },
+              'ar50': {
+                  'capabilities_http': ar50_cap['http'],
+                  'wfs_version': ar50_cap['wfs_version'],
+                  'feature_types': ar50_cap['feature_types'],
+                  'sample_status': ar50['status'],
+                  'sample_http': ar50['http'],
+                  'feature_type': ar50['feature_type'],
+                  'requested_crs': ar50['requested_crs'],
+                  'requested_bounds': ar50['requested_bounds'],
+                  'feature_member_count_capped': ar50['feature_member_count_capped'],
+                  'feature_element_names': ar50['feature_element_names'],
+                  'property_names': ar50['property_names'],
+                  'value_preview': ar50['value_preview'],
+              },
+          }
+          print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
 
       - uses: actions/upload-artifact@v4
         with:
