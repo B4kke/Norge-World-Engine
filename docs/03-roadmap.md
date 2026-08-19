@@ -4,6 +4,10 @@
 
 Build a technically credible, measurable and replaceable foundation that can stream real Norwegian 3D world data and later host simulation/game systems.
 
+## Validation strategy
+
+Normal progress is automated-first: contracts/regressions, hosted CI, exact-artifact browser tests and reproducible benchmarks. Physical Android/mobile tests are occasional milestone checks for genuinely device-specific questions, not a per-change gate. Missing a fresh handset run must not stall unrelated engine work. See `docs/07-testing-policy.md`.
+
 ## P0 — Nannestad vertical slice
 
 1. **World contract** — explicit CRS, vertical datum, stable tile identity, local render origin and provenance semantics.

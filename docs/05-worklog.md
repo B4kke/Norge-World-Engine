@@ -425,3 +425,23 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 - Complete final PR-head CI after documentation reconciliation, then integrate #44 if the current `main` composition remains mergeable and green.
 - Next runtime/device gate is physical Android Chrome with forced WebGL2 and genuine WebGPU captures under the same session/build/artifact/camera/surface/measurement-window/streaming contract; do not interpret timing if either backend falls back.
 - Keep multi-tile DTM1 seam/source-overlap authority independent and fail-closed.
+
+## 2026-08-19 — Manual physical-device testing becomes milestone-based
+
+**Gjort**
+- Added `docs/07-testing-policy.md` as the project-wide validation cadence: automated regressions, hosted CI and exact-artifact browser evidence are the normal development path; physical handset tests are scarce milestone checks.
+- Updated `AGENTS.md`, `nwe-project-start`, `nwe-quality-gates`, `nwe-renderer-platform`, `nwe-runtime-streaming` and the LUMEN/STRØM/SENTINEL role charters so agents do not automatically ask the user to test Android after ordinary changes.
+- Updated README, roadmap and `docs/06-task-queue.md` so the active next work is larger-world/multi-tile terrain, streaming/resource budgets, LOD and automated browser/WebGPU experiments rather than repeated manual device runs.
+- Historical worklog entries above are retained as history. Any old `Neste` that requests Android/device testing is superseded by the current task queue and `docs/07-testing-policy.md`.
+
+**Bevist**
+- The policy is represented in the startup contract loaded by every agent and in the domain skills most likely to request device evidence.
+- Physical-device evidence remains available for claims specifically about mobile/device behavior or performance, but absence of a fresh handset run no longer blocks platform-neutral engine progress.
+- Repo-local Agent Skill validation passes on the policy branch before integration.
+
+**Endret**
+- No architecture or renderer decision changed; `docs/04-decisions.md` remains unchanged.
+- Manual user effort is now explicitly treated as a scarce project resource and device questions must be batched into meaningful milestone runs.
+
+**Neste**
+- Resume the highest-value engine work from `docs/06-task-queue.md`; do not schedule a physical Android run unless a genuinely device-specific blocker or accumulated milestone justifies it.

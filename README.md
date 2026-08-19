@@ -8,15 +8,17 @@ A geospatial world-engine project whose long-term target is to treat Norway as t
 
 Geographic/geometric correctness and photorealism are separate goals. Raw geodata, canonical world data, runtime artifacts, rendering and dynamic simulation are separate layers.
 
-## Current evidence state — 2026-08-18
+## Current evidence state — 2026-08-19
 
-The single-tile Nannestad vertical is no longer source/terrain-blocked: accepted real DTM1 terrain plus NVDB road and OSM building artifacts have deterministic cold/offline proof and pass runtime verification. Browser full-graph provenance, vector batching, renderer-neutral tile scheduling and an actual browser module DedicatedWorker terrain path are also proven.
+The single-tile Nannestad vertical is no longer source/terrain-blocked: accepted real DTM1 terrain plus NVDB road and OSM building artifacts have deterministic cold/offline proof and pass runtime verification. Browser full-graph provenance, vector batching, renderer-neutral tile scheduling, an actual browser module DedicatedWorker terrain path, and exact-real hosted Chrome movement/cache + terrain-resource lifecycle are proven.
 
 Important open P0 gates remain:
 - real neighboring DTM1 terrain is fail-closed until an evidence-backed overlap/seam transform exists;
-- exact-real browser/Android movement and performance evidence is still needed before worker/cache/LOD/backend policy is selected;
+- larger-world streaming, cache/resource budgets and LOD remain evidence-driven;
 - whole-Norway coordinate/indexing/render-origin policy remains open;
 - final WebGPU/WebGL/Cesium/3D Tiles/Unreal roles remain evidence-driven.
+
+Physical Android/mobile testing is **not** a routine per-change gate. It is an occasional milestone/device-specific validation step under `docs/07-testing-policy.md`; normal engine progress should rely on automated CI, exact-artifact browser tests and reproducible benchmarks without repeatedly requiring user-operated handset tests.
 
 `apps/world-viewer` is the deployable Vite/Vercel measurement shell. Its existence does not select the final renderer.
 
@@ -38,7 +40,7 @@ engine/simulation/          Future deterministic simulation foundation
 tools/                      Data verification and runtime packaging tools
 prototypes/                 Isolated/historical experiments, including Cesium baseline
 tests/fixtures/             Small deterministic proof fixtures
-docs/                       Decisions, roadmap, worklog, proofs and queue
+docs/                       Decisions, roadmap, worklog, proofs, queue and testing policy
 data/                       README only; raw/generated data stays untracked
 ```
 
@@ -66,7 +68,7 @@ python scripts/validate_agent_skills.py
 
 ## Baseline checks
 
-Run the narrow checks relevant to the active task, then the repository baseline/CI before handoff. Node workspace and browser checks require installed dependencies.
+Run the narrow checks relevant to the active task, then the repository baseline/CI before handoff. Node workspace and browser checks require installed dependencies. Physical-device testing follows `docs/07-testing-policy.md` and is not a default baseline requirement.
 
 ```bash
 python scripts/validate_agent_skills.py
