@@ -28,7 +28,15 @@ The candidate wire schema is `nwe.network-spatial-snapshot/0.1-candidate`. It re
 
 Velocity remains expressed along the authoritative world-frame axes in metres per second, so a pure translation rebase changes local position but cannot create false velocity. `reframePhysicsBody()` reconstructs authoritative world position from the old physics frame before deriving the new local position. A render-origin shift is unrelated and cannot mutate physics state.
 
-`nwe.simulation-spatial-snapshot/0.1-candidate` deliberately serializes authoritative world position + velocity and excludes both render-origin and physics-local frame state. This makes replay/checkpoint identity independent from disposable local-frame schedules. It is a boundary experiment, not a selected physics engine, integration method, precision, island size or rebase threshold.
+`nwe.simulation-spatial-snapshot/0.1-candidate` deliberately serializes authoritative world position + velocity and excludes both render-origin and physics-local frame state. This makes snapshot authority independent from disposable local-frame storage. It is a boundary experiment, not a selected physics engine, integration method, precision, island size or rebase threshold.
+
+## Physics frame maintenance as replay input
+
+`physics_frame_event_contract.mjs` adds `nwe.physics-frame-maintenance-event/0.1-candidate` for the narrower case where a physics backend is sensitive to local-frame maintenance schedule. The event carries simulation tick, authoritative `worldFrameId`, independent `physicsFrameId`, consecutive `fromEpoch -> toEpoch`, authoritative from/to world anchors, their derived world-space delta and a reason.
+
+The event is **not physical movement** and it is not render-origin state. It exists so a deterministic replay path does not have to infer hidden backend-frame transitions. Deserialization/application fails closed on stale epochs, foreign frame series/world frames, tampered anchor deltas, unsupported fields or invalid event ordering. Multiple physics islands may therefore maintain independent epoch sequences while sharing the same authoritative world frame.
+
+This does not make backend snapshots authoritative. The contact-rich Rapier/WASM probe shows why the distinction matters: same-checkpoint/same-frame-schedule replay can be exactly repeatable, while a translation-only physics-frame rebase before otherwise identical continuation can alter later solver results. Until a backend-specific invariant rebase mechanism is proven, replay must treat the frame-maintenance schedule as simulation-relevant input or rebuild backend state from authoritative world state at defined boundaries.
 
 ## Physics-local collision precision probe
 
@@ -42,7 +50,8 @@ The important candidate invariant is stronger than “local Float32 is more prec
 
 - No whole-Norway horizontal CRS/indexing strategy is selected.
 - No render-origin anchor or shift threshold is selected.
-- No physics engine, physics precision, island size, integration method or rebasing threshold is selected.
+- No physics engine, physics precision, island size, integration method or rebasing threshold/frequency is selected.
+- No backend-local physics snapshot/persistence policy is selected.
 - No production networking authority, replication topology, prediction model, compression or quantization is selected.
 - No tile size or tile-local storage precision is selected by this module.
 - `projected-cartesian-height` is the candidate v0.1 arithmetic model exercised by current Prototype-0 evidence; replacing/expanding it requires a versioned contract and representative measurements.
@@ -59,12 +68,16 @@ node engine/world/test_network_state_contract.mjs
 node --check engine/world/physics_state_contract.mjs
 node --check engine/world/test_physics_state_contract.mjs
 node engine/world/test_physics_state_contract.mjs
+node --check engine/world/physics_frame_event_contract.mjs
+node --check engine/world/test_physics_frame_event_contract.mjs
+node engine/world/test_physics_frame_event_contract.mjs
 node --check prototypes/atlas-physics-local-collision/physics_local_collision_probe.mjs
 node --check prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
 node prototypes/atlas-physics-local-collision/test_physics_local_collision_probe.mjs
 python -m json.tool engine/world/schemas/authoritative-world-snapshot-v0.1.schema.json >/dev/null
 python -m json.tool engine/world/schemas/network-spatial-snapshot-v0.1.schema.json >/dev/null
 python -m json.tool engine/world/schemas/simulation-spatial-snapshot-v0.1.schema.json >/dev/null
+python -m json.tool engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json >/dev/null
 ```
 
-The world adversarial suite covers large absolute coordinates, origin shift mid-tick, temporal delta across epoch boundaries, historical origin retention, tile-boundary crossing, entity crossing the render anchor, authoritative serialization/replay and a render-independent subsystem adapter. The network suite adds deterministic wire serialization, explicit bounded quantization, network-frame rebasing, stale/foreign epoch rejection, world-frame mismatch rejection, safe-integer overflow rejection and explicit refusal of render-origin leakage. The physics suite adds large-coordinate reconstruction, 1,000 unrelated render-origin shifts, physics rebase mid-tick, stale-epoch rejection, anchor crossing, byte-identical authoritative snapshots across rebase schedules, replay under a different physics anchor and foreign-world rejection. The collision probe adds a concrete contact workload that compares fixed and rebased physics-frame schedules under Float64-local and Float32-local candidate backend state.
+The world adversarial suite covers large absolute coordinates, origin shift mid-tick, temporal delta across epoch boundaries, historical origin retention, tile-boundary crossing, entity crossing the render anchor, authoritative serialization/replay and a render-independent subsystem adapter. The network suite adds deterministic wire serialization, explicit bounded quantization, network-frame rebasing, stale/foreign epoch rejection, world-frame mismatch rejection, safe-integer overflow rejection and explicit refusal of render-origin leakage. The physics suite adds large-coordinate reconstruction, 1,000 unrelated render-origin shifts, physics rebase mid-tick, stale-epoch rejection, anchor crossing, byte-identical authoritative snapshots across rebase schedules, replay under a different physics anchor and foreign-world rejection. The maintenance-event suite adds deterministic event serialization, exact epoch progression, stale/foreign frame rejection, tamper detection, presentation-field rejection, ordered replay and multiple-island sequencing. The collision and Rapier probes provide concrete contact workloads that compare fixed and rebased physics-frame schedules under candidate backend state.
