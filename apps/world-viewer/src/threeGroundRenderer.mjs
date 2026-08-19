@@ -3,6 +3,7 @@ import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers
 import { createPreviewSceneGeometry } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
+import { createThreeEnvironment } from './threeEnvironment.mjs';
 
 const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
 const TERRAIN_MATERIAL_SCHEMA = 'nwe.terrain-render-style/0.1';
@@ -103,7 +104,6 @@ function createTerrainVertexColors(positions, normals) {
     const slope = 1 - clamp01(normals[offset + 1]);
     const macro = clamp01(0.5 + 0.25 * Math.sin(x * 0.011) + 0.25 * Math.cos(z * 0.009));
     const micro = 0.5 + 0.5 * Math.sin((x + z) * 0.047 + y * 0.031);
-    // Renderer-only styling: adds low-frequency ground variation without asserting land-cover semantics.
     colors[offset] = clamp01(0.54 + macro * 0.15 + slope * 0.09 + micro * 0.025);
     colors[offset + 1] = clamp01(0.67 + macro * 0.16 - slope * 0.07 + micro * 0.02);
     colors[offset + 2] = clamp01(0.47 + macro * 0.10 - slope * 0.035 + micro * 0.018);
@@ -138,12 +138,14 @@ export async function createThreeGroundRenderer({
   terrainPayload,
   roadsArtifact,
   buildingsArtifact,
+  environment,
   graphicsProfile,
   backend = 'auto',
   onBackendFallback = () => {},
   onFrame = () => {},
 } = {}) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
+  if (environment?.schema !== 'nwe.environment-state/0.1') throw new TypeError('normalized environment is required');
   const initStartedAt = monotonicNow();
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, webglAntialias: true };
   const expectedTerrainTileId = terrainPayload?.artifact?.header?.tile_id;
@@ -154,12 +156,7 @@ export async function createThreeGroundRenderer({
   if (requestedBackend === 'webgpu' && !globalThis.navigator?.gpu) throw new Error('WEBGPU_UNAVAILABLE');
   const forceWebGL = requestedBackend === 'webgl2';
 
-  const renderer = new THREE.WebGPURenderer({
-    canvas,
-    antialias: profile.webglAntialias !== false,
-    alpha: false,
-    forceWebGL,
-  });
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: profile.webglAntialias !== false, alpha: false, forceWebGL });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, profile.maxDpr ?? 1.5));
   renderer.setClearColor(0x9eb4bd, 1);
   try {
@@ -168,38 +165,17 @@ export async function createThreeGroundRenderer({
     if (requestedBackend !== 'auto') throw error;
     onBackendFallback({ from: 'webgpu', to: 'webgl2', error });
     renderer.dispose();
-    const fallback = new THREE.WebGPURenderer({
-      canvas,
-      antialias: profile.webglAntialias !== false,
-      alpha: false,
-      forceWebGL: true,
-    });
+    const fallback = new THREE.WebGPURenderer({ canvas, antialias: profile.webglAntialias !== false, alpha: false, forceWebGL: true });
     fallback.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, profile.maxDpr ?? 1.5));
     fallback.setClearColor(0x9eb4bd, 1);
     await fallback.init();
     return createThreeGroundRendererFromInitialized({
-      renderer: fallback,
-      forceWebGL: true,
-      canvas,
-      terrainPayload,
-      roadsArtifact,
-      buildingsArtifact,
-      profile,
-      initStartedAt,
-      onFrame,
+      renderer: fallback, forceWebGL: true, canvas, terrainPayload, roadsArtifact, buildingsArtifact, environment, profile, initStartedAt, onFrame,
     });
   }
 
   return createThreeGroundRendererFromInitialized({
-    renderer,
-    forceWebGL,
-    canvas,
-    terrainPayload,
-    roadsArtifact,
-    buildingsArtifact,
-    profile,
-    initStartedAt,
-    onFrame,
+    renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, environment, profile, initStartedAt, onFrame,
   });
 }
 
@@ -210,6 +186,7 @@ function createThreeGroundRendererFromInitialized({
   terrainPayload,
   roadsArtifact,
   buildingsArtifact,
+  environment,
   profile,
   initStartedAt,
   onFrame,
@@ -222,14 +199,7 @@ function createThreeGroundRendererFromInitialized({
   const activeBackend = backendName(renderer, forceWebGL);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9eb4bd);
-  scene.fog = new THREE.Fog(0x9eb4bd, 220, 1150);
-
-  const hemi = new THREE.HemisphereLight(0xe4f2ff, 0x44513a, 1.35);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff3d2, 2.45);
-  sun.position.set(-180, 320, 140);
-  scene.add(sun);
+  const environmentRenderer = createThreeEnvironment({ scene, renderer, environment });
 
   const terrainColorTexture = createTerrainDetailTexture();
   const terrainSurfaceTexture = createTerrainDetailTexture({ surface: true });
@@ -241,7 +211,7 @@ function createThreeGroundRendererFromInitialized({
 
   const terrainMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.94,
+    roughness: 0.94 - environmentRenderer.wetness * 0.1,
     metalness: 0.0,
     map: terrainColorTexture,
     roughnessMap: terrainSurfaceTexture,
@@ -249,25 +219,25 @@ function createThreeGroundRendererFromInitialized({
     bumpScale: 0.14,
     vertexColors: true,
   });
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide });
-  const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0xb8c1c4, roughness: 0.78, metalness: 0.02, side: THREE.DoubleSide });
-  const fallbackBuildingMaterial = new THREE.MeshStandardMaterial({ color: 0x7c878a, roughness: 0.86, metalness: 0.0, side: THREE.DoubleSide });
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.9 - environmentRenderer.wetness * 0.42, metalness: 0.0, side: THREE.DoubleSide });
+  const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0xb8c1c4, roughness: 0.78 - environmentRenderer.wetness * 0.12, metalness: 0.02, side: THREE.DoubleSide });
+  const fallbackBuildingMaterial = new THREE.MeshStandardMaterial({ color: 0x7c878a, roughness: 0.86 - environmentRenderer.wetness * 0.08, metalness: 0.0, side: THREE.DoubleSide });
 
   const vectorStartedAt = monotonicNow();
   const roadMesh = new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices), roadMaterial);
+  roadMesh.receiveShadow = true;
   const resolvedBuildingMesh = new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.positions, sceneGeometry.buildingsResolved.indices), buildingMaterial);
+  resolvedBuildingMesh.castShadow = true;
+  resolvedBuildingMesh.receiveShadow = true;
   const fallbackBuildingMesh = new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.positions, sceneGeometry.buildingsFallback.indices), fallbackBuildingMaterial);
+  fallbackBuildingMesh.castShadow = true;
+  fallbackBuildingMesh.receiveShadow = true;
   scene.add(roadMesh, resolvedBuildingMesh, fallbackBuildingMesh);
 
   const terrainLifecycle = { creates: 0, destroys: 0, createTimingMs: [], destroyTimingMs: [] };
   let terrainMesh = null;
   const terrainColorBytes = (terrainPayload.mesh.positions.length / 3) * 3 * Float32Array.BYTES_PER_ELEMENT;
-  const terrainPayloadBytes = byteLengthOf(
-    terrainPayload.mesh.positions,
-    terrainPayload.mesh.normals,
-    terrainPayload.mesh.uvs,
-    terrainPayload.mesh.indices,
-  ) + terrainColorBytes;
+  const terrainPayloadBytes = byteLengthOf(terrainPayload.mesh.positions, terrainPayload.mesh.normals, terrainPayload.mesh.uvs, terrainPayload.mesh.indices) + terrainColorBytes;
   const vectorPayloadBytes = byteLengthOf(
     sceneGeometry.roads.positions,
     sceneGeometry.roads.indices,
@@ -281,10 +251,12 @@ function createThreeGroundRendererFromInitialized({
   function makeTerrainMesh(payload) {
     assertTerrainPayloadIdentity(payload, expectedTerrainTileId, expectedTerrainArtifactSha);
     const colors = createTerrainVertexColors(payload.mesh.positions, payload.mesh.normals);
-    return new THREE.Mesh(
+    const mesh = new THREE.Mesh(
       bufferGeometry(payload.mesh.positions, payload.mesh.indices, payload.mesh.normals, payload.mesh.uvs, colors),
       terrainMaterial,
     );
+    mesh.receiveShadow = true;
+    return mesh;
   }
 
   const initialTerrainStartedAt = monotonicNow();
@@ -306,12 +278,7 @@ function createThreeGroundRendererFromInitialized({
   let firstFrameResolve;
   let firstFrameReject;
   let firstFrameSettled = false;
-  const cameraControls = installThreePreviewCameraControls({
-    canvas,
-    camera,
-    target: cameraTarget,
-    onChange: () => { dirty = true; },
-  });
+  const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, onChange: () => { dirty = true; } });
   const firstFrame = new Promise((resolve, reject) => {
     firstFrameResolve = resolve;
     firstFrameReject = reject;
@@ -379,7 +346,7 @@ function createThreeGroundRendererFromInitialized({
         at: now,
         drawGapMs: lastDrawAt ? now - lastDrawAt : null,
         drawCpuMs: monotonicNow() - startedAt,
-        drawCalls: [terrainMesh, roadMesh, resolvedBuildingMesh, fallbackBuildingMesh].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length,
+        drawCalls: 5,
         backend: activeBackend,
         pixelRatio: renderer.getPixelRatio(),
         camera: {
@@ -432,6 +399,7 @@ function createThreeGroundRendererFromInitialized({
     roadMaterial.dispose();
     buildingMaterial.dispose();
     fallbackBuildingMaterial.dispose();
+    environmentRenderer.dispose();
     renderer.dispose();
   };
 
@@ -444,13 +412,14 @@ function createThreeGroundRendererFromInitialized({
     max_dpr: profile.maxDpr,
     pixel_ratio: renderer.getPixelRatio(),
     msaa_samples: profile.webglAntialias === false ? 1 : 4,
-    draw_calls_per_frame: 4,
+    draw_calls_per_frame: 5,
     gpu_buffer_count: 11,
     gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes,
     gpu_texture_payload_bytes: terrainTexturePayloadBytes,
     timestamp_query_supported: false,
     camera_eye_height_m: 1.7,
     render_origin: sceneGeometry.origin,
+    environment: environmentRenderer.stats,
     terrain_material: {
       schema: TERRAIN_MATERIAL_SCHEMA,
       pbr: true,
@@ -461,6 +430,8 @@ function createThreeGroundRendererFromInitialized({
       procedural_detail: 'renderer-only-source-safe',
       vertex_color_variation: true,
       bump_scale: terrainMaterial.bumpScale,
+      roughness: terrainMaterial.roughness,
+      wetness_input: environmentRenderer.wetness,
       geometry_displacement: false,
     },
     timing_ms: {
