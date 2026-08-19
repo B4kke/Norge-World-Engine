@@ -1,4 +1,5 @@
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { resolveCanvasSafeRendererPreference } from './rendererBackendPreflight.mjs';
 import { createThreeGroundRenderer } from './threeGroundRenderer.mjs';
 
 function normalizeRendererInterface(renderer) {
@@ -16,6 +17,9 @@ export async function createPreview1Renderer({
   ...options
 } = {}) {
   const rendererPreference = resolveRendererPreference(backend);
+  const backendPreflight = await resolveCanvasSafeRendererPreference({ requestedBackend: rendererPreference });
+  if (backendPreflight.fallback) onBackendFallback(backendPreflight.fallback);
+
   const profile = typeof graphicsProfile === 'string'
     ? resolveGraphicsProfile(graphicsProfile)
     : graphicsProfile;
@@ -23,7 +27,7 @@ export async function createPreview1Renderer({
   const renderer = await createThreeGroundRenderer({
     ...options,
     graphicsProfile: profile,
-    backend: rendererPreference,
+    backend: backendPreflight.backend,
     onBackendFallback,
   });
   return normalizeRendererInterface(renderer);
