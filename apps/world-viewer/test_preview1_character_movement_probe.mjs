@@ -11,13 +11,8 @@ const runtime = {
       moving,
       character: {
         grounding: { source: 'accepted-dtm-grid', verticalDatum: 'NN2000' },
-        worldTransform: {
-          headingRadians: 0,
-          position: { easting: 101, northing, height: 55 },
-        },
-        threePose: {
-          position: new Float32Array([0, 5, renderZ]),
-        },
+        worldTransform: { headingRadians: 0, position: { easting: 101, northing, height: 55 } },
+        threePose: { position: new Float32Array([0, 5, renderZ]) },
       },
     };
   },
@@ -36,18 +31,14 @@ const runtime = {
 };
 const renderer = {
   getCharacterState() {
-    return {
-      state: rendererState,
-      render_pose: { position: [0, 5.02, renderZ] },
-    };
+    return { state: rendererState, render_pose: { position: [0, 5.02, renderZ] } };
+  },
+  getCameraState() {
+    return { yaw: 0, pitch: 0.22, distance: 6.5, target: [0, 6.2, renderZ] };
   },
 };
 let frames = 0;
-const proof = await runPreview1CharacterMovementProbe({
-  runtime,
-  renderer,
-  animationFrame: async () => { frames += 1; },
-});
+const proof = await runPreview1CharacterMovementProbe({ runtime, renderer, animationFrame: async () => { frames += 1; } });
 assert.equal(proof.status, 'PASS');
 assert.equal(proof.world_delta.planar_m, 1);
 assert.equal(proof.world_delta.north_m, 1);
@@ -55,6 +46,8 @@ assert.equal(proof.walk_state_observed, 'walk');
 assert.equal(proof.idle_state_observed_after_stop, 'idle');
 assert.equal(proof.grounded_height_m, 55);
 assert.equal(proof.renderer_pose_matches_derived, true);
+assert.equal(proof.camera_follow.status, 'PASS');
+assert.deepEqual(proof.camera_follow.target, [0, 6.2, -1]);
 assert.equal(frames, 1);
 
 await assert.rejects(
