@@ -38,12 +38,13 @@ Physical Android/mobile testing follows `docs/07-testing-policy.md`: it is miles
 **Next:** reuse the same fail-closed pattern for later terrain/source families rather than generalizing from filenames.
 
 ### P0-PROVENANCE-02 — Runtime-verifiable lineage
-**Status:** NODE + REAL CHROME FULL-GRAPH PARITY PASS / DEVICE-SPECIFIC COST CHECK DEFERRED TO MILESTONE  
+**Status:** NODE + REAL CHROME FULL-GRAPH PARITY PASS / AUTOMATED COST PROFILER ACTIVE / DEVICE-SPECIFIC COST CHECK DEFERRED TO MILESTONE  
 **Owner area:** `engine/schemas`, `engine/streaming`, browser artifact consumer  
 **Done/evidence:** strict JSON Schema 2020-12 contracts and producer compatibility are merged. Provenance semantics now live once in crypto-agnostic `runtime_verifier_core.mjs`; Node and browser adapters only calculate RFC 8785/JCS + SHA-256 hashes. Hosted parity run `32136500278` requires identical Node/WebCrypto decision, code and reconstructed hashes across all **11** existing happy/adversarial cases. Real Chrome run `32136951610` then reconstructs the complete provenance graphs for the exact Nannestad road/building artifacts before decode and still reports **0 raw-source calls**. Focused browser regressions reject forged lineage and tampered bytes and preserve the pre-fetch raw-source transport guard.  
 **Performance observation:** separate hosted runs moved road/building `verify_decode_ms` from roughly **112.9 / 89.8 ms** before full browser graph verification to **201.7 / 173.4 ms** with it; boot-to-first-visible moved ~788.5 -> ~993.5 ms. The runs are not a controlled crypto-only A/B and other phases varied, so this is a measurement trigger rather than an exact causal cost. Forsøk 18 additionally measured ~20.1 ms WebCrypto/JCS verification for a synthetic 4 MB-class terrain fixture in Chrome. Security semantics remain mandatory.  
-**Proof:** `docs/proofs/2026-08-18-browser-provenance-parity.md` and `docs/proofs/2026-08-18-world-viewer-terrain-worker.md`.  
-**Next:** use automated browser profiling to isolate provenance/decode cost and compare worker/caching strategies if the evidence justifies it. A physical mobile cost check may be batched into a later milestone, but it is not required to continue platform-neutral provenance/runtime work.
+**Profiler:** active LUMEN PR #50 keeps the production verification path intact, then replays the shared verifier on already-fetched accepted road/building bytes. It separates first replay from steady state and verification from UTF-8 decode and `JSON.parse`; impossible/non-finite phase timing now fails closed rather than being silently filtered from percentile summaries.  
+**Proof:** `docs/proofs/2026-08-18-browser-provenance-parity.md`, `docs/proofs/2026-08-18-world-viewer-terrain-worker.md`, `docs/proofs/2026-08-19-lumen-browser-provenance-profile.md`.  
+**Next:** obtain exact-head automated browser measurements from the profiler and compare first-replay vs steady-state verification/UTF-8/JSON-parse cost. Only if repeated cost is material should STRØM/SENTINEL evaluate worker placement or verification caching; mandatory full verification semantics remain unchanged.
 
 ### P0-NVDB-01 — Road adapter
 **Status:** REAL-DATA VERTICAL PASS / WIDTH + PHYSICAL SURFACE SEMANTICS OPEN  
