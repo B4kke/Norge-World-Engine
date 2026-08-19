@@ -66,6 +66,7 @@ type GroundVisualStyleState = {
   tone_mapping_exposure: number;
   output_color_space: 'SRGBColorSpace' | string;
   shadows_enabled: boolean;
+  shadow_filter: 'BasicShadowMap' | string;
   sky: { color: number; fog_near_m: number; fog_far_m: number };
   sun: {
     type: string;
@@ -77,6 +78,7 @@ type GroundVisualStyleState = {
   };
   shadow: {
     strategy: 'single-player-following-directional-frustum' | string;
+    filter: 'BasicShadowMap' | string;
     map_size: number;
     half_extent_m: number;
     near_m: number;
