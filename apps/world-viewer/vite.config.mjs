@@ -19,6 +19,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
+        preview1: resolve(import.meta.dirname, 'preview1.html'),
         preview3: resolve(import.meta.dirname, 'preview3.html'),
         'device-evidence': resolve(import.meta.dirname, 'device-evidence.html'),
         'webgpu-timestamp-probe': resolve(import.meta.dirname, 'webgpu-timestamp-probe.html'),
