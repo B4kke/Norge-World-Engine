@@ -15,8 +15,8 @@
 </head>
 <body>
   <main>
-    <h1>Browser provenance + JSON decode profiler</h1>
-    <p>Profiles the accepted Nannestad road/building compiled artifacts. Production loading still performs full RuntimeVerificationBundle verification. The isolated replay only separates verification from JSON decode on already-fetched bytes; network time is excluded.</p>
+    <h1>Browser provenance + decode profiler</h1>
+    <p>Profiles the accepted Nannestad road/building compiled artifacts. Production loading still performs full RuntimeVerificationBundle verification. The isolated replay separates verification, strict UTF-8 byte-to-text decoding and JSON.parse on already-fetched bytes; network time is excluded.</p>
     <button id="run" type="button">Run profile</button>
     <pre id="output">Starting…</pre>
   </main>
