@@ -129,12 +129,18 @@ Multipolygon/relation ingestion, DOM-DTM/FKB capability-gated height enrichment 
 Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
 
 ## P1-VEGETATION-01 — Norwegian vegetation layer
-**Status:** REAL-SOURCE ADMISSION SAMPLE PASS / IMPLEMENTATION DEFERRED UNTIL P0 MILESTONE ACCEPTANCE  
+**Status:** REAL-SOURCE REPRESENTATIVE ARTIFACT PASS / RENDERER HANDOFF OPEN / CANDIDATE NOT PROMOTED  
 **Owner:** FORGE source/compiler + LUMEN presentation
 
-**Proven public preprocessing baseline candidate:** NIBIO `SR16V` forest polygons + NIBIO `AR50` coarse nationwide area classification/exclusion + already accepted NWE road/building geometry for local suppression. Preserve source attributes/uncertainty separately from generated tree instances.
+**Proven public preprocessing baseline candidate:** NIBIO `SR16V` forest polygons + NIBIO `AR50` coarse nationwide area classification/exclusion. Existing accepted NWE terrain/road/building artifacts remain separate downstream inputs; do not pretend this first representative artifact already applies precise road/building suppression or authoritative ground height.
 
 **Source admission evidence:** `P1-VEGETATION-01-SAMPLE` passed on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`: `baseline` run `32312909195` PASS and heavy `visual-source-probe` run `32312909181` PASS. The 1 km EPSG:25832 tile normalized 124 SR16V polygons + 15 AR50 polygons, same-cache A1/A2 was byte-identical, independent AR50 acquisitions were semantically identical after excluding only proven volatile `kopidato`, and no provider network was required during normalization.
+
+**Representative artifact evidence:** `P1-VEGETATION-01-ARTIFACT` passed on code-bearing head `de91525ac45c4ca19eb5ed4b5fb470e2be1dbedd`: `baseline` run `32314719926` PASS and heavy `visual-source-probe` run `32314719935` PASS. The real Nannestad sample compiled 92 usable SR16V segments into 828 deterministic representative points over 516,753.05 m² after 112,923.69 m² of coarse AR50 non-forest suppression. The compiled source semantics represent 23,493.8875 modeled trees/ha-derived trees with DBH >=16 cm through weighted representatives; the representative-weight sum matches that modeled aggregate. Same normalized cache input was byte-identical, and an independent AR50 acquisition produced the same artifact semantic hash. Artifact SHA-256 is `9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636`; semantic SHA-256 is `320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f`; compiler-config identity is `f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e`.
+
+**Candidate representation policy, not world truth:** the current config targets 16 representatives/hectare to produce a bounded proof artifact. It is a versioned representation/LOD experiment, **not** a claim that Norway has 16 trees/hectare. Each representative carries a modeled-tree weight derived from source-backed `srtrean_ge16`; changing this target changes compiler-config identity and artifact identity.
+
+**SR16V semantics preserved:** `srtreslagsam` source classes remain 1 spruce-dominated, 2 pine-dominated, 3 conifer-mixed, 4 mixed, 5 deciduous-dominated; `srhoydem` is converted from source decimetres to metres; `srtrean_ge16` remains modeled trees/hectare for DBH >=16 cm; available lower/upper uncertainty and standard-error percentage, canopy cover, remote-sensing year and source update date remain attached to the source segment. Representative easting/northing and yaw are explicitly deterministic procedural values, not observed individual-tree positions.
 
 **SR16V source binding:** official Nannestad municipality `3238` Atom/SOSI snapshot, source SHA-256 `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`. Provider UTF-8 bytes remain authoritative; a strict round-trip ISO8859-10 compatibility copy exists only because hosted GDAL/FYBA cannot open the valid UTF-8 SOSI directly.
 
@@ -142,11 +148,11 @@ Compile width/lane/surface/intersection fields that actually support those claim
 
 **Licensed enrichments, not baseline:** FKB-AR5 and Nasjonalt grunnkart for arealanalyse currently require Geovekst/Norge digitalt rights under the verified access model. NIBIO regional vegetation maps may enrich covered areas but are not nationwide.
 
-**Truth guard:** SR16 does not provide authoritative individual-tree positions. Tree placement, within-source-area species/height distributions not explicitly encoded by the source, asset choice and rotations/scales remain deterministic procedural detail unless a future source proves otherwise.
+**Truth guard:** SR16 does not provide authoritative individual-tree positions. The candidate artifact contains no Three.js/WebGPU object types, asset IDs, render origin or terrain Z. It also does not yet apply exact accepted road/building exclusion. Tree placement/yaw and representation density are deterministic procedural data; source class/height/density/uncertainty remain separately identifiable.
 
-**Next implementation gate — `P1-VEGETATION-01-ARTIFACT`:** only when P0 milestone acceptance allows P1 work, FORGE defines a tiny renderer-neutral deterministic vegetation artifact candidate over the proven normalized SR16V + AR50 boundary. The artifact must bind source snapshots + compiler-config identity/seed, retain source-vs-generated semantics and remain reproducible from cache. It must not select Three/WebGPU asset or LOD implementation.
+**Next integration gate — `P1-VEGETATION-01-RENDERER-HANDOFF`:** LUMEN may adapt PR #80's renderer to consume `nwe.vegetation-representative-artifact/0.1-candidate` instead of treating `nwe.synthetic-vegetation-placement/0.1` as the only accepted input. Render-local conversion, accepted-DTM grounding, road/building/spawn/slope presentation filtering, Poly Haven/other asset mapping, visible-instance budgets and LOD remain renderer/runtime concerns. PR #80's 48-visible-instance limit may remain a presentation budget; it must not overwrite source-modeled density or representative weights.
 
-**Later renderer goal:** small licensed asset set, deterministic/source-backed placement, GPU instancing and distance LOD/impostors.
+**Later compiler gate:** if vegetation positions themselves become authoritative simulation/collision state rather than visual representatives, integrate accepted road/building/water exclusion geometry into a separately versioned compiler transform and re-run provenance/determinism gates before promotion.
 
 ## P1-MATERIALS-01 — Renderer-neutral material semantics
 Stable material IDs/parameters in world/runtime data; Three.js maps them to PBR/shaders. Do not encode Three material classes into compiled world artifacts.
