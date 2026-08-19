@@ -25,11 +25,6 @@ DATASETS = {
         "provider": "NIBIO",
         "purpose": "current split raster dataset; license comparison",
     },
-    "sr16_raster_open_legacy_candidate": {
-        "metadata_uuid": "7df9ef08-faf2-4ad3-9ae2-49905f5ea808",
-        "provider": "NIBIO",
-        "purpose": "separate open-NLOD GeoTIFF catalog entry; freshness/continuity probe",
-    },
     "sr16_vector": {
         "metadata_uuid": "27206b9e-4830-4f71-810d-d04c0dc32b59",
         "provider": "NIBIO",
