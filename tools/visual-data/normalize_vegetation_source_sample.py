@@ -153,11 +153,21 @@ def prepare_sosi_fyba_compat(source: Path, destination: Path) -> dict[str, Any]:
 def discover_polygon_layer(ogrinfo: str, source: Path, preferred_tokens: tuple[str, ...]) -> str:
     output = run([ogrinfo, "-ro", "-q", str(source)], timeout=120)
     rows: list[tuple[str, str]] = []
+    name_only_rows: list[str] = []
     for line in output.splitlines():
         match = re.match(r"^\s*\d+\s*:\s*(.*?)\s+\(([^()]*)\)\s*$", line)
         if match:
             rows.append((match.group(1).strip(), match.group(2).strip()))
+            continue
+        name_only = re.match(r"^\s*\d+\s*:\s*(.*?)\s*$", line)
+        if name_only:
+            name_only_rows.append(name_only.group(1).strip())
     polygon_rows = [(name, geom) for name, geom in rows if "polygon" in geom.lower()]
+    if not polygon_rows and len(name_only_rows) == 1:
+        # Some OGR drivers (including the current AR50 GML response) omit geometry type
+        # from the quiet dataset listing. The decoded feature collection is still required
+        # to contain valid polygonal geometry below, so this does not weaken the truth gate.
+        return name_only_rows[0]
     if not polygon_rows:
         raise NormalizationError(f"no polygon layer discovered in {source}; ogrinfo={output[-8000:]}")
     for token in preferred_tokens:
