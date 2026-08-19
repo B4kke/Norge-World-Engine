@@ -21,6 +21,9 @@ export function interpretTimestampPair(begin, end) {
   if (finish < start) {
     return { valid: false, code: 'NON_MONOTONIC_TIMESTAMP', elapsed_ns: null, elapsed_ms: null };
   }
+  if (finish === start) {
+    return { valid: false, code: 'ZERO_DURATION_TIMESTAMP', elapsed_ns: null, elapsed_ms: null };
+  }
   const elapsed = finish - start;
   return {
     valid: true,
