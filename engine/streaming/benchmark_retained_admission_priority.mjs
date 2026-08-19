@@ -5,12 +5,6 @@ const TILE_BYTES = 100;
 const MAX_RETAINED_BYTES = 2 * TILE_BYTES;
 const MAX_CONCURRENT_LOADS = 2;
 
-function deferred() {
-  let resolve;
-  const promise = new Promise((r) => { resolve = r; });
-  return { promise, resolve };
-}
-
 async function waitUntil(predicate, label, timeoutMs = 2000) {
   const started = Date.now();
   while (!predicate()) {
@@ -19,7 +13,6 @@ async function waitUntil(predicate, label, timeoutMs = 2000) {
   }
 }
 
-const staleMaterializationGate = deferred();
 const materializationStarts = [];
 const schedulerEvents = [];
 const budgetEvents = [];
@@ -27,10 +20,9 @@ const disposalOrder = [];
 
 const adapter = createRetainedBudgetLifecycleAdapter({
   maxRetainedBytes: MAX_RETAINED_BYTES,
-  estimateTileBytes: async () => TILE_BYTES,
+  estimateTileBytes: () => TILE_BYTES,
   loadTile: async (tile) => {
     materializationStarts.push(tile.id);
-    if (tile.id === 'C' || tile.id === 'E') await staleMaterializationGate.promise;
     return { payload: { id: tile.id }, byteSize: TILE_BYTES };
   },
   disposeTile: async (tile) => {
@@ -46,6 +38,7 @@ const scheduler = new TileStreamingScheduler({
   maxResidentTiles: 2,
   maxResidentBytes: 2 * TILE_BYTES,
   maxCacheBytes: 2 * TILE_BYTES,
+  admitLoad: adapter.tryAdmitLoad,
   loadTile: adapter.loadTile,
   disposeTile: adapter.disposeTile,
   onEvent: (event) => schedulerEvents.push(event),
@@ -66,39 +59,39 @@ if (adapter.snapshot().budget.committedBytes !== MAX_RETAINED_BYTES) {
 }
 
 await scheduler.update({ e: 1000, n: 0 }, tiles);
-await waitUntil(() => adapter.snapshot().waitingLoads === 2, 'two retained-budget waiters');
-const waitingSnapshot = scheduler.snapshot();
-
-await scheduler.update({ e: 2000, n: 0 }, tiles);
-await waitUntil(
-  () => materializationStarts.includes('C') && materializationStarts.includes('E'),
-  'stale waiter materializations',
-);
-
-const blockedSnapshot = scheduler.snapshot();
-const dStartedBeforeRelease = schedulerEvents.some(
-  (event) => event.type === 'load-started' && event.tileId === 'D',
-);
-const staleStartedBeforeD = materializationStarts.filter((id) => id === 'C' || id === 'E').length;
-
-if (dStartedBeforeRelease) throw new Error('benchmark failed to reproduce occupied-slot priority blocking');
-if (staleStartedBeforeD !== 2) throw new Error('expected both stale waiters to materialize before D');
-if (adapter.snapshot().budget.reservedBytes !== MAX_RETAINED_BYTES) {
-  throw new Error('expected released retained capacity to be reserved by stale waiters');
+const pressureSnapshot = scheduler.snapshot();
+const pressureAdapter = adapter.snapshot();
+if (pressureSnapshot.metrics.activeLoads !== 0) {
+  throw new Error('budget-deferred candidates consumed scheduler load slots');
+}
+if (pressureSnapshot.metrics.queueDepth !== 2) {
+  throw new Error(`expected two budget-deferred queued candidates, got ${pressureSnapshot.metrics.queueDepth}`);
+}
+if (pressureAdapter.waitingLoads !== 0 || pressureAdapter.preAdmittedLoads !== 0) {
+  throw new Error('non-blocking scheduler admission unexpectedly created adapter waiters/reservations');
+}
+if (materializationStarts.some((id) => id === 'C' || id === 'E')) {
+  throw new Error('budget-deferred stale candidates materialized before capacity existed');
 }
 
-staleMaterializationGate.resolve();
-await waitUntil(
-  () => schedulerEvents.filter((event) => event.type === 'load-completed' && (event.tileId === 'C' || event.tileId === 'E')).length === 2,
-  'stale waiter completions',
-);
+await scheduler.update({ e: 2000, n: 0 }, tiles);
+await waitUntil(() => materializationStarts.includes('D'), 'reprioritized desired tile materialization');
+await scheduler.whenIdle();
+
+const staleMaterializationsBeforeD = materializationStarts
+  .slice(0, materializationStarts.indexOf('D'))
+  .filter((id) => id === 'C' || id === 'E').length;
+if (staleMaterializationsBeforeD !== 0) {
+  throw new Error('stale budget-deferred candidate materialized before reprioritized tile D');
+}
+
 await scheduler.update({ e: 4000, n: 0 }, tiles);
 await scheduler.whenIdle();
 
 const finalSnapshot = scheduler.snapshot();
 const finalAdapterSnapshot = adapter.snapshot();
 const report = {
-  schema: 'nwe.streaming-retained-admission-priority-benchmark/0.1',
+  schema: 'nwe.streaming-retained-admission-priority-benchmark/0.2',
   scope: 'synthetic scheduler+retained-adapter pressure; no production budget or neighbouring-terrain claim',
   configuration: {
     tileBytes: TILE_BYTES,
@@ -108,17 +101,18 @@ const report = {
     retainRadiusMeters: 1200,
   },
   evidence: {
-    waitingLoadsBeforeReprioritization: 2,
-    occupiedSlotsAtPressure: waitingSnapshot.metrics.activeLoads,
-    staleMaterializationsBeforeCurrentDesiredTile: staleStartedBeforeD,
-    currentDesiredTileStartedBeforeStaleRelease: dStartedBeforeRelease,
-    blockedPhaseActiveLoads: blockedSnapshot.metrics.activeLoads,
-    blockedPhaseQueueDepth: blockedSnapshot.metrics.queueDepth,
+    deferredQueueDepthAtPressure: pressureSnapshot.metrics.queueDepth,
+    activeLoadsAtPressure: pressureSnapshot.metrics.activeLoads,
+    adapterWaitingLoadsAtPressure: pressureAdapter.waitingLoads,
+    preAdmittedLoadsAtPressure: pressureAdapter.preAdmittedLoads,
+    staleMaterializationsBeforeCurrentDesiredTile: staleMaterializationsBeforeD,
+    currentDesiredTileStarted: materializationStarts.includes('D'),
     materializationStarts,
     disposalOrder,
-    budgetWaitsQueued: finalAdapterSnapshot.metrics.waitsQueued,
-    budgetWaitsGranted: finalAdapterSnapshot.metrics.waitsGranted,
-    budgetWaitsCancelled: finalAdapterSnapshot.metrics.waitsCancelled,
+    schedulerAdmissionDeferrals: finalSnapshot.metrics.loadAdmissionDeferrals,
+    schedulerAdmissionFailures: finalSnapshot.metrics.loadAdmissionFailures,
+    preAdmissionsGranted: finalAdapterSnapshot.metrics.preAdmissionsGranted,
+    preAdmissionsConsumed: finalAdapterSnapshot.metrics.preAdmissionsConsumed,
   },
   final: {
     activeLoads: finalSnapshot.metrics.activeLoads,
@@ -127,8 +121,8 @@ const report = {
     schedulerMetrics: finalSnapshot.metrics,
   },
   interpretation: {
-    fact: 'already-started retained-budget waiters can consume all scheduler load slots and preserve FIFO admission across camera reprioritization',
-    consequence: 'a newly desired higher-priority tile can be delayed behind stale-but-retained waiters until at least one occupied slot completes or is cancelled',
+    fact: 'retained-budget deferrals remain in the scheduler priority queue without consuming activeLoads, and camera reprioritization selects D once capacity is released',
+    consequence: 'the previously reproduced FIFO waiter slot-blocking mechanism is removed without moving retained-byte policy into scheduler core',
     notProven: 'production impact magnitude, optimal admission policy, production retained-byte cap, or device/GPU behavior',
   },
 };
@@ -137,5 +131,6 @@ if (report.final.activeLoads !== 0 || report.final.queueDepth !== 0) {
   throw new Error('benchmark cleanup left scheduler work active');
 }
 if (report.final.retainedBudget.reservedBytes !== 0) throw new Error('benchmark cleanup leaked retained-byte reservations');
+if (report.final.retainedBudget.overcommitBytes !== 0) throw new Error('benchmark exceeded retained-byte accounting cap');
 
 console.log(JSON.stringify(report, null, 2));
