@@ -113,11 +113,18 @@ def prepare_sosi_fyba_compat(source: Path, destination: Path) -> dict[str, Any]:
     except UnicodeDecodeError as error:
         raise NormalizationError(f"SR16V SOSI is not strict UTF-8: {error}") from error
 
-    pattern = re.compile(r"(?m)^(\.\.TEGNSETT[ \t]+)UTF-8[ \t]*$")
-    matches = pattern.findall(text)
+    # NIBIO's current SOSI snapshot uses CRLF. Preserve the provider line ending in the
+    # compatibility copy; the previous regex treated the CR before LF as header content.
+    pattern = re.compile(r"(?m)^(\.\.TEGNSETT[ \t]+)UTF-8[ \t]*(\r?)$")
+    matches = list(pattern.finditer(text))
     if len(matches) != 1:
         raise NormalizationError(f"expected exactly one '..TEGNSETT UTF-8' header, found {len(matches)}")
-    compat_text = pattern.sub(r"\1ISO8859-10", text, count=1)
+    line_ending = "CRLF" if matches[0].group(2) == "\r" else "LF"
+    compat_text = pattern.sub(
+        lambda match: f"{match.group(1)}ISO8859-10{match.group(2)}",
+        text,
+        count=1,
+    )
     try:
         compat_bytes = compat_text.encode("iso8859_10", errors="strict")
     except UnicodeEncodeError as error:
@@ -132,10 +139,11 @@ def prepare_sosi_fyba_compat(source: Path, destination: Path) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(compat_bytes)
     return {
-        "operation": "strict-utf8-to-iso8859-10-fyba-compat-copy-v0.1",
+        "operation": "strict-utf8-to-iso8859-10-fyba-compat-copy-v0.2",
         "provider_bytes_modified": False,
         "source_declared_encoding": "UTF-8",
         "compat_declared_encoding": "ISO8859-10",
+        "source_line_ending": line_ending,
         "strict_roundtrip": True,
         "compat_byte_size": len(compat_bytes),
         "compat_sha256": hashlib.sha256(compat_bytes).hexdigest(),
