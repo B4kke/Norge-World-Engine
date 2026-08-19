@@ -1,468 +1,69 @@
-# 05 — Worklog
-
-Append concise implementation handoffs here. Historical detailed agent logs remain in Google Drive.
-
-## 2026-08-17 — GitHub bootstrap / Drive migration
-
-**Gjort**
-- Established a GitHub-oriented monorepo layout separating `engine/`, `apps/`, `tools/`, `prototypes/`, `tests/`, `docs/` and untracked data/caches.
-- Migrated the current lightweight implementation/proof artifacts from Drive: source-contract verifier, SMIA Atom adapter v0.2, VEKTOR runtime gate v0.3, fixtures and proof JSON.
-- Kept known-defective SMIA/VEKTOR implementations in `prototypes/`; they are not represented as production-ready engine code.
-- Added baseline CI and explicit Git/data hygiene rules.
-- Left the two large one-file Nannestad viewer HTML harnesses (Forsøk 6/7) as historical Drive artifacts during the connector bootstrap; they are not required by CI or the next P0 tasks.
-
-**Bevist**
-- Drive status through ATLAS-04 was reconciled before migration. `02.7` closes the prior SENTINEL findings at contract/test-spec level, but implementation remains incomplete.
-- P0 real-data terrain remains blocked: no production DTM1 Nannestad raw -> normalized -> persisted `REAL_COMPILED` vertical is yet proven.
-
-**Endret**
-- Repository bootstrap files and migration snapshot created.
-- Work policy changed from historical Drive-first implementation to GitHub-first implementation.
-
-**Neste**
-- Implement the two ATLAS-04 regressions (polygon geometry + runtime lineage reconstruction), then execute the authoritative DTM1 real-data vertical.
-
-## 2026-08-17 — Core geospatial/reuse tooling
-
-**Gjort**
-- Added a production-direction Python World Compiler package with pinned Rasterio 1.5.0, pyproj 3.7.2, Shapely 2.1.2 and `rfc8785` 0.1.4.
-- Replaced the known polygon-as-bbox authority with Shapely actual geometry in `engine/compiler`; legacy v0.2 remains only under `prototypes/`.
-- Added a pixel-aligned Rasterio DTM normalizer that refuses implicit reprojection/resampling and emits source/normalized metadata + hashes.
-- Added RFC 8785 canonicalization helpers for Python and Node plus a shared expected SHA-256 vector.
-- Implemented `engine/streaming/runtime_verifier.mjs` from the Drive 02.7 contract: runtime reconstructs every provenance object/edge, excludes transport relocation from immutable ArtifactRef identity, validates promotion gates and verifies compiled bytes before `READY_FOR_RUNTIME`.
-- Added runtime negative regressions for forged self-reported lineage, 1 m clip mutation, raw-source locator and tampered artifact bytes.
-- Added pinned glTF-Transform/meshoptimizer and CesiumGS 3D Tiles validator/tools under `tools/runtime-packaging`.
-- Added an isolated CesiumJS 1.143/Vite benchmark harness for compiled 3D Tiles with tile-progress/load/unload/initial-visible metrics.
-- Added seven repo-local NWE Agent Skills and routed `AGENTS.md` through them; added structural skill validation to baseline CI.
-- Opened draft PR #3 as the integrated replacement for the two separate bootstrap PRs.
-
-**Bevist**
-- Final version verification corrected an initial bad Rasterio 1.5.1 pin: upstream marks 1.5.1 as TBD; 1.5.0 is the released stable version and is now pinned.
-- Local runtime versions: Rasterio 1.5.0, pyproj 3.7.2 and Shapely 2.1.2.
-- Local geospatial regressions PASS: 4 tests covering Shapely box/polygon containment, SENTINEL triangle rejection and byte-repeatable Rasterio clip (`4 passed`).
-- The Node JCS known-vector and runtime lineage regression were executed locally against the exact upstream `canonicalize` v3.0.0 source from tag `v3.0.0`: PASS. The runtime harness accepted a valid bundle/transport relocation and rejected forged lineage, 1 m clip mutation, raw-source reference and wrong artifact bytes.
-- Local Node syntax checks PASS for the schema helper, runtime verifier/regression and Cesium benchmark source.
-- PR #3 is mergeable against `main`.
-- Latest GitHub Actions run #63 for the PR still fails before repository commands execute: the hosted job exposes an empty step list. This is runner/account infrastructure failure, not evidence of a failed repository test.
-- Package/API versions and documented usage were verified against current PyPI/npm/upstream sources before final pinning.
-
-**Ikke bevist / blokkert**
-- Python `rfc8785` could not be installed from PyPI in the isolated container, so its repo test remains CI/dependency-runner validation rather than a local execution proof.
-- The Cesium Vite build and installed npm workspace resolution are not locally proven because package download is blocked; the JCS/runtime test used the exact upstream `canonicalize` v3.0.0 source staged only in the temporary test workspace.
-- P0-REALDATA-01 remains open: this change provides the normalizer/toolchain but does not materialize the production DTM1 15 km GeoTIFF.
-
-**Neste**
-- Use a dependency-capable runner to execute the complete baseline, then materialize the authoritative DTM1 raw → normalized Nannestad artifact. Once a compiled GLB/tileset exists, run the Cesium/custom-viewer comparison instead of adding more viewer features.
-
-## 2026-08-17 — NVDB/OSM vector compiler adapters
-
-**Gjort**
-- Continued on a stacked branch from the latest unmerged `agent/core-geospatial-tooling` state rather than rebuilding from `main` or from historical Drive HTML prototypes.
-- Added `nwe_compiler.roads`: deterministic duplicate suppression, 0.25 m endpoint snapping and graph collapse through degree-2 nodes while preserving NVDB sequence IDs as provenance. This targets the Forsøk 14 observation `443 raw -> 443 paths` where browser logic failed to merge source segmentation.
-- Added `nwe_compiler.sources.nvdb`: segmented road WKT ingestion, explicit EPSG:25833 -> EPSG:25832 reprojection with `always_xy=True`, NN2000 Z preservation, sentinel/invalid Z -> null and Shapely-based 1 km tile clipping. Z at new clip vertices is reconstructed from the original source segment instead of trusting GEOS Z behavior.
-- Added `nwe_compiler.sources.osm_buildings`: OSM Main API/Overpass way ingestion, WGS84 -> EPSG:25832, Shapely polygon validity/area/tile gates, explicit `height` and `building:levels` provenance and unresolved height rather than an authoritative heuristic.
-- Added six vector regressions covering road merge, junction boundaries, NVDB reprojection/Z policy, clip-boundary Z interpolation, OSM building normalization and invalid bow-tie rejection.
-- Opened draft stacked PR #4 against `agent/core-geospatial-tooling`; no merge performed.
-
-**Bevist**
-- Android Forsøk 14 supplied 443 NVDB raw segments and 133 OSM building footprints; source acquisition is feasible, while its browser road graph did not reduce raw segmentation.
-- Local focused vector suite: `6 passed in 0.15s`.
-- The first custom line-clipping implementation was rejected during self-review because repo policy prefers pinned Shapely for generic geometry. It was replaced before handoff and a boundary-Z regression was added.
-- PR #4 is mergeable into the stacked core branch.
-- PR #4 baseline run #67 reproduced the infrastructure failure: one job, `steps: []`, `runner_id: 0`, failure before repository commands execute.
-
-**Endret**
-- Branch: `agent/nvdb-osm-compiler-adapters`, stacked on the current core geospatial tooling branch. No merge to `main`.
-- Compiler now has production-direction vector normalization primitives beside the existing DTM/raster/provenance foundation.
-
-**Neste**
-- Persist real Nannestad NVDB/OSM responses outside Git as raw cache, bind SourceSnapshot/retrieval/license identity, run these adapters over the real 443/133 sample and emit deterministic normalized/compiled vector artifacts with RFC 8785 hashes. Viewer/runtime must then consume artifacts with zero raw NVDB/OSM contact.
-
-## 2026-08-17 — Persisted vector-artifact vertical
-
-**Gjort**
-- Synced PR #4 onto the latest `agent/core-geospatial-tooling` head and preserved the corrected Rasterio 1.5.0/provenance state. Removed an unrelated README drift found during stacked-PR QA.
-- Recovered the exact working NVDB/OSM source requests from Drive `Forsøk 14` and revalidated the live endpoints. The compiler now derives its own source envelopes from all four EPSG:25832 tile corners rather than copying the browser's two-corner OSM bbox.
-- Added `nwe_compiler.acquisition`: source contracts, live fetch boundary, JSON validation, SHA-256 content-addressed raw cache, cache integrity checks, `--offline` fail-closed behavior and SourceSnapshot metadata/licensing.
-- Added `nwe_compiler.vector_artifacts`: deterministic normalized road/building JSON, compiled runtime artifacts, CompilerConfig/CompileLineage/ArtifactRef/PromotionRecord and RuntimeVerificationBundle compatible with `engine/streaming/runtime_verifier.mjs`.
-- Added `nwe-compile-vectors --refresh|--offline` CLI with raw/normalized/compiled counts, bytes, hashes, cache state and phase timings.
-- Added dependency-free `apps/world-viewer/artifact_consumer.mjs`: bundle + compiled-artifact only, WebCrypto SHA-256/size verification and fail-before-fetch rejection of NVDB/OSM/raw-source transports.
-- Documented Prototype-0 NVDB NLOD and OSM ODbL contracts in `docs/data-licenses/vector-sources.md`; no whole-Norway acquisition decision was made.
-
-**Bevist**
-- Exact code copied to the branch was exercised in an isolated repo mirror: existing vector tests + acquisition/cache/artifact structural regressions = `12 passed` (0.19–0.20 s across repeated run).
-- Viewer artifact-boundary regression PASS: 2 cases, happy path performs exactly two requests (bundle + compiled artifact), malicious NVDB transport is rejected before a second request; reported raw source calls = 0.
-- Cold/warm raw-cache fixture proves a second identical acquisition uses cached bytes and performs zero fetcher calls; offline cache miss fails closed.
-- Live NVDB V4 returned segmented `LINESTRING Z` data for the Nannestad query and live OSM API v0.6 returned ODbL-attributed map elements/building ways, confirming the current source shapes remain available.
-
-**Ikke bevist / blokkert**
-- The execution container has no outbound DNS, so the actual live response bytes cannot be persisted into its ignored `data/raw` workspace. GitHub Actions is still zero-step blocked. Therefore no new production raw SHA-256, actual compiler `raw -> normalized -> compiled` count, artifact SHA or cold/warm timing from the live 443/133-class source set is claimed here.
-- Python `rfc8785` remains unavailable in this isolated container. Structural artifact tests inject a deterministic test serializer; production code defaults to the pinned RFC 8785 implementation and full JCS execution remains a dependency-capable-runner gate.
-
-**Endret**
-- PR #4 now carries the acquisition/cache/artifact/viewer boundary rather than browser-local source compilation. Raw geodata remains outside Git by construction.
-
-**Neste**
-- In the first network + dependency-capable execution, run `nwe-compile-vectors --cache-root data --refresh`, record the real NVDB/OSM hashes/counts/artifact metrics, then immediately run `nwe-compile-vectors --cache-root data --offline` and prove identical artifact hashes with zero source requests. Only then wire those persisted artifacts into the visual Nannestad viewer.
-
-## 2026-08-17 — Mobile source bridge + self-hosted CI fallback
-
-**Gjort**
-- Confirmed the repository is private and the authenticated owner has admin permission. Hosted Actions still creates the job but never assigns a runner; the latest inspected job has no steps, no runner id/name and no downloadable log.
-- GitHub integration access to personal billing and repository Actions-permission endpoints returns 403, so quota/budget/payment state cannot be proven programmatically from the connector.
-- Added `.github/workflows/baseline-self-hosted.yml`, manual `workflow_dispatch` on `runs-on: self-hosted`, mirroring the full compiler/JCS/runtime/viewer/Cesium baseline. This gives a private-PC runner path that does not rely on GitHub-hosted minutes.
-- Added `prototypes/nannestad/mobile_source_capture.html`: exact compiler NVDB/OSM URLs, SHA-256, JSON/source-shape validation, IndexedDB raw-byte cache, cold/warm zero-fetch gate and one-file base64-preserving capture export.
-- Produced the same mobile capture HTML as a direct test artifact for Android; JavaScript passes `node --check`.
-- Updated the task queue so mobile acquisition is a diagnostic bridge only: raw bytes may be captured on Android, but production normalization/compilation remains in World Compiler.
-
-**Bevist**
-- GitHub repository metadata: private repo; owner/admin access is present. Workflow YAML is parsed far enough to create the named job, but hosted execution still has `steps: []` / no runner assignment, so this is not evidence of failing compiler code.
-- Current GitHub documentation confirms private repositories consume hosted Actions allowance while self-hosted runners do not consume hosted-runner minutes; exhausted budgets/allowances can block further hosted use.
-- Mobile bridge syntax and exact request contracts are locally validated; actual Android CORS/IndexedDB/download behavior intentionally remains a device test.
-
-**Neste**
-- User: check personal GitHub `Settings -> Billing & Licensing -> Overview / Budgets and alerts` for Actions quota/budget/payment blocking. If not immediately resolved, register the PC at repository `Settings -> Actions -> Runners -> New self-hosted runner` and trigger `baseline-self-hosted`.
-- Android: run COLD CAPTURE online; then enable airplane mode without closing the tab and run WARM/OFFLINE. Export the capture JSON and return it. Decode/verify those exact raw bytes and feed them into the production offline compiler path; do not reimplement normalization in the browser.
-
-## 2026-08-17 — Hosted real-data vector proof + artifact-only runtime handoff
-
-**Gjort**
-- Repository visibility was changed to public by the owner; GitHub-hosted Actions immediately resumed normal runner assignment. A full baseline then completed checkout, dependency installation, Python compiler regressions, cross-language RFC8785/JCS, runtime provenance regression, artifact-consumer regression, Cesium baseline build and migrated VEKTOR checks successfully.
-- Decoded the supplied Android mobile-capture JSON and verified source byte sizes and SHA-256 values before using its metadata as proof input. Raw bytes remain outside Git; only a small verified manifest is committed.
-- First hosted cold compiler attempt exposed NVDB `HTTP 400`. Root cause: server-side NVDB API Les V4 requires `X-Client`; `nwe_compiler.acquisition` now sends `X-Client: NorgeWorldEngine-Compiler` only to the NVDB host, reports response body/request-id on HTTP failure, and has regression coverage for the header boundary.
-- Added `vector-realdata-proof.yml`: cold live acquisition/compile, warm network-free compile, cold/warm determinism checks, mobile-capture comparison, runtime bundle verification, attribution and short-retention compiled proof artifact upload with raw cache excluded.
-- Added `docs/proofs/2026-08-17-nannestad-vector-realdata.md` with exact execution evidence.
-- Generated a one-file Android Forsøk 15 artifact-only viewer from the successful Actions proof package. It embeds the verified road/building artifacts, browser-SHA-verifies the exact bytes, hard-blocks NVDB/OSM/Overpass networking, renders source-debug information and keeps unresolved building heights visually distinct from source-backed heights. Terrain remains explicitly historical reference data pending DTM1.
-
-**Bevist**
-- Mobile capture: NVDB 722,013 B / 471 objects / SHA `789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30`; OSM 1,053,121 B / 5,704 elements / 141 candidates. Android NVDB bytes are exactly identical to later runner acquisition.
-- Hosted real-data roads: `471 raw -> 407 normalized -> 246 compiled paths`; artifact 171,732 B, SHA `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a`. Cold total 2168.958 ms; warm/offline 148.363 ms.
-- Hosted real-data buildings: `5,704 raw / 141 candidates -> 135 validated+compiled footprints`; artifact 80,846 B, SHA `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`. Cold total 1145.537 ms; warm/offline 63.811 ms.
-- Cold and warm runs yield identical per-source raw/artifact hashes and counts; warm reports raw-cache hits.
-- `runtime_verifier.mjs` returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS` for both exact compiled artifact byte streams.
-- OSM runner response had the same byte size and 5,704/141 counts as the earlier Android capture but a different raw SHA. The pipeline correctly represents it as a distinct SourceSnapshot instead of silently equating source revisions.
-
-**Endret**
-- PR #4 remains draft/unmerged and now contains the live proof workflow, NVDB request fix, mobile-capture manifest, proof documentation and updated P0 queue.
-- `INFRA-CI-01` is resolved; hosted runners are no longer a blocker.
-- `P0-VECTOR-ARTIFACT-01` has real cold/warm + runtime verification evidence rather than fixture-only evidence.
-
-**Neste**
-- Android: test Forsøk 15 and record artifact SHA PASS, raw source request counter = 0, visual alignment, draw calls and source-debug behavior.
-- Engine: execute `P0-REALDATA-01` DTM1 authoritative terrain vertical; this is now the highest unresolved world-foundation gate.
-- Then package the same terrain+vector inputs for custom viewer and Cesium baseline and compare measured runtime behavior before any renderer/format decision.
-
-## 2026-08-17 — Authoritative DTM1 terrain vertical
-
-**Gjort**
-- Continued from merged `main` on `agent/dtm1-terrain-vertical`; corrected `vector-realdata-proof.yml` so future vector real-data proof follows `main` rather than the historical adapter branch.
-- Probed the live official Kartverket/Geonorge DTM1 Atom service instead of relying on the old source assumptions. Updated production DTM1 parsing to model the live contract: source entries are EPSG:25833; the GeoTIFF file is exposed as `rel=section`, `type=application/geotiff`; actual GeoRSS polygon geometry is authoritative.
-- Added streamed DTM1 acquisition/cache so the ~1.1 GB raw GeoTIFF is SHA-256-bound while streaming to ignored content-addressed storage rather than being loaded into RAM for provenance. Offline reuse rechecks raw size/SHA and raster metadata and performs zero source requests.
-- Kept the existing pixel-aligned/no-resampling DTM normalizer strict. Added a separate explicit Rasterio/GDAL warp from EPSG:25833 to a fixed 1000 × 1000, 1 m EPSG:25832 Nannestad grid with NN2000 preserved and bilinear resampling recorded in the transform contract.
-- Added deterministic `nwe.terrain-height-grid-artifact/0.1`: canonical header + 1,000,000 little-endian float32 elevations, engine-independent and persisted with RuntimeVerificationBundle.
-- Added live DTM1 real-data workflow, source/warp/cache/artifact regressions, proof document, and a parallel viewer-performance Issue #5 that is intentionally isolated from compiler/terrain semantics.
-
-**Bevist**
-- Live official DTM1 dataset feed contained 2033 polygon entries; exactly one declared polygon covers the Nannestad target: `33-125-117.tif`.
-- Raw source: 1,096,856,487 B, EPSG:25833, 1 m float32, 15010 × 15010, nodata -32767, SHA `f1c0f18378cc438d7e4b8f8a2114c4e5aa000216a4fd42965518df9a0bb97708`.
-- Normalized fixed-grid terrain: 1000 × 1000, 1 m EPSG:25832 + NN2000, 1,000,000 valid samples / 0 nodata, min 168.9711 m, max 197.6241 m, mean 189.7122 m, SHA `95c8fcf6f93c8fbb0533d6a82d68416b773f9a146970e1ae85676d3ba41c2adf`.
-- Compiled terrain artifact: 4,000,382 B, SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96`.
-- Cold and offline runs produce identical raw, normalized and compiled artifact hashes; offline source requests = 0.
-- Exact compiled terrain bytes pass `runtime_verifier.mjs`: `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.
-- Hosted baseline on the same terrain branch is PASS.
-
-**Endret**
-- Added `terrain_acquisition.py`, `terrain_artifacts.py`, explicit terrain warp support and focused regressions.
-- Added D-007 for the proven Prototype-0 DTM1 transform/runtime artifact; final whole-Norway terrain/LOD format remains explicitly open.
-- Added `docs/proofs/2026-08-17-nannestad-dtm1-realdata.md` and updated the P0 queue to close the source/index/terrain artifact gates.
-
-**Neste**
-- Feed the exact verified terrain artifact into the artifact-only Android/world-viewer together with the 246 road paths + 135 building footprints, use the DTM for ground Z, and measure terrain decode/mesh/upload/first-visible/frame-time/draw calls. In parallel, another agent can work Issue #5 on viewer batching/performance without touching compiler/geodata contracts.
-
-## 2026-08-17 — Forsøk 16 Android terrain-integrated runtime
-
-**Gjort**
-- User executed Forsøk 16 on Android and supplied an oblique device screenshot of the exact terrain + road + building artifact harness.
-- Inspected the harness implementation to separate displayed proof from inference: 1 m / 1000×1000 DTM1 remains world truth, the mobile GPU terrain is sampled to 129×129, roads preserve valid NVDB NN2000 centerline Z with DTM1 fallback, and unresolved building heights remain explicit 5 m debug geometry.
-- Added `docs/proofs/2026-08-17-forsok16-android-runtime.md` and posted the measured device baseline to parallel viewer-performance Issue #5.
-- Updated the P0 queue so terrain integration is no longer marked open; viewer measurement/batching and streaming behavior are now the immediate runtime gates.
-
-**Bevist**
-- Device HUD: road/building/terrain artifact PASS; 246 roads / 14.89 km; 135 footprints; 15 source-backed building heights / 120 debug heights; 1,000,000 DTM samples; DTM range 168.97–197.62 m; runtime `READY ×3`; raw source network `BLOKKERT · 0 KALL`.
-- Captured performance: 1.3 ms terrain decode, 19.4 ms terrain mesh build, 220 ms boot, 224 draw calls, 16.7 ms / 60 FPS, 382 geometries / 2 textures at the captured camera.
-- The screenshot rejects a gross CRS/origin/Z integration failure: terrain relief, imagery, road network and footprints occupy the same world area.
-- The 224-call number is not accepted as a batching improvement because Forsøk 15's ~391 count used a different view and Forsøk 16 still creates separate geometries. The 382-geometry counter confirms per-object pressure remains.
-- The 19.4 ms synchronous terrain mesh build exceeds one 60 Hz frame budget, so repeating it on the main thread during tile streaming is a concrete hitch risk.
-
-**Endret**
-- No new architecture decision was accepted; D-007 remains unchanged. This session adds device evidence and narrows the next experiments rather than selecting a renderer/format.
-- Issue #5 now has the Forsøk 16 device metrics and same-camera comparison requirement.
-
-**Neste**
-- Build the repo-side fixed-camera benchmark required by Issue #5 and compare current per-object rendering against batching while preserving source-debug identity.
-- Instrument first-visible separately and capture p50/p95/p99 frame time rather than one rolling average.
-- Test terrain mesh generation in a worker or incrementally before moving to dynamic multi-tile load/unload/LOD.
-
-## 2026-08-17 — Renderer-independent world tile scheduler
-
-**Gjort**
-- Continued from the DTM1 branch on `agent/world-streaming-scheduler`, intentionally isolated from viewer batching Issue #5.
-- Added `engine/streaming/tile_scheduler.mjs` with deterministic camera-distance priority, active/retain radii, bounded concurrency, resident↔cache lifecycle, failure retry, load aborts, stale-completion rejection and renderer-injected activate/deactivate/dispose boundaries.
-- Added six adversarial lifecycle regressions and a synthetic 3×3 Nannestad descriptor benchmark. The benchmark uses opaque synthetic payloads only and does not claim neighbouring geodata exists.
-- During self-review found and fixed an abort/microtask race by capturing each AbortController locally before asynchronous load execution.
-- Added `docs/proofs/2026-08-17-streaming-scheduler-synthetic.md` and opened stacked draft PR #7 against `agent/dtm1-terrain-vertical`.
-
-**Bevist**
-- Hosted baseline passes scheduler regressions and the full repo baseline.
-- Synthetic camera path `center -> east -> north-east -> center-return`: 9/9 loads complete, peak concurrency 2, 2 cache hits, 4 evictions, final 5 resident / 0 cached, queue/active 0/0 and final retained bytes 22,282,240 B.
-- `maxCacheBytes` is proven to be an inactive-cache budget rather than a hard resident/GPU limit; peak retained bytes reached 26,738,688 B while desired tiles remained resident. This distinction is now explicit instead of hidden.
-
-**Endret**
-- Added P0-STREAMING-01 to the task queue. No final tile-addressing, LOD or renderer decision was made.
-- `engine/streaming/README.md` now defines scheduler ownership and non-decisions.
-
-**Neste**
-- Move terrain mesh work behind a worker/incremental boundary, then materialize real neighbouring terrain artifacts and drive them through the scheduler with device metrics.
-
-## 2026-08-17 — Terrain mesh Dedicated Worker boundary
-
-**Gjort**
-- Continued on `agent/terrain-mesh-worker`, stacked on scheduler PR #7.
-- Added deterministic renderer-independent height-grid → position/normal/UV/index buffer generation with Forsøk-16-compatible pixel-center bilinear sampling and topology.
-- Added versioned Dedicated Worker protocol, worker script and browser client with AbortSignal cancellation.
-- Height-grid input and generated buffers use transferable ArrayBuffer ownership; the original elevation buffer is returned with the mesh result so verified DTM remains available to runtime sampling.
-- Added seven worker/mesh regressions, updated streaming documentation, added `docs/proofs/2026-08-17-terrain-mesh-worker-structural.md`, and opened stacked draft PR #9.
-- Generated the one-file Android Forsøk 17 worker harness for the device gate.
-
-**Bevist**
-- Full hosted baseline passes, including all seven terrain-worker regressions.
-- Real-scale structural job produces 16,641 vertices, 32,768 triangles, 98,304 uint16 indices and 729,120 B of mesh buffers from a 1000×1000 source grid.
-- Hosted Node synthetic CPU time was 50.593 ms; this is structural evidence only and is explicitly not treated as Android performance evidence.
-- Worker ownership/error/cancellation boundaries are deterministic and tested without changing terrain artifact identity, CRS or NN2000 world truth.
-
-**Endret**
-- Added P0-STREAMING-02 to the task queue with status `STRUCTURAL DEDICATED-WORKER PASS / ANDROID DEVICE GATE OPEN`.
-- No worker-pool policy was selected; one worker per job remains an experiment until device startup/transfer cost is measured.
-
-**Neste**
-- Run Forsøk 17 on Android and compare worker CPU, dispatch→result RTT, main-thread geometry apply and largest rAF gap against Forsøk 16's 19.4 ms synchronous mesh build.
-- If the device gate passes, integrate worker preparation behind `TileStreamingScheduler.loadTile()` and move to real 2×2/3×3 terrain artifacts. If worker startup/transfer cost is material, compare a persistent worker/pool first.
-
-## 2026-08-18 — PR consolidation + verified terrain runtime pipeline
-
-**Gjort**
-- Collapsed the accumulated stacked/parallel PR queue instead of carrying historical branch chains forward. PRs #6, #11, #7, #12, #9, #10, #14, #13 and #8 were rebased/flattened as needed, revalidated on current `main` and merged. Open PR count ended at **0**.
-- Corrected an earlier overclaim during multi-tile work: the real DTM1 3×3 terrain pass is **not** complete. The multi-tile foundation is merged, but the 10 m overlap between `33-125-116.tif` and `33-125-117.tif` remains fail-closed because the two valid surfaces differ and no authoritative Kartverket overlap-priority rule has been found.
-- Added strict provenance JSON Schemas, the terrain Dedicated Worker boundary, Float32/local-origin precision evidence, render-origin temporal invariants and the fixed-camera vector batching harness to `main`.
-- Added `terrain_tile_loader.mjs`, composing full RuntimeVerificationBundle verification, strict NWEHGT01 semantic decode, terrain mesh worker output and `TileStreamingScheduler` lifecycle without selecting a renderer or hidden origin policy.
-- Reused the existing DTM1 real-data workflow after PR #14 merge so the exact accepted terrain artifact was exercised through the new loader/worker/scheduler path without adding a second ~1.1 GB acquisition workflow.
-
-**Bevist**
-- Exact main real-data run `32134507528` on commit `909cf5d0cdf7489feff7f44ba12983a051e5affe` is PASS. Artifact `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` remains 4,000,382 B and returns `READY_FOR_RUNTIME / RUNTIME_VERIFICATION_PASS`.
-- The same real artifact produces 1,000,000 retained elevation samples and a 129×129 renderer-neutral mesh with 16,641 vertices, 32,768 triangles and 729,120 B; scheduler retained bytes are exactly 4,729,120 B, with one completed load and zero failures/budget overcommit.
-- Hosted runtime-path timing for this exact artifact: ~4.0 ms full provenance verification, ~29.8 ms strict decode/validation, ~44.7 ms worker-client/protocol path, ~82.3 ms total. This is hosted/in-process-worker-shim evidence, not Android/browser thread/GPU timing.
-- Final viewer batching run `32135092313` on the clean #8 composition is PASS: 246 roads + 135 footprints = 381 logical objects, **381 -> 2 draw calls**, frame p95 **50.0 -> 16.7 ms**, render-sync p95 **0.4 -> 0.2 ms**, raw-source runtime calls 0. This remains headless-hosted comparative evidence.
-- Final origin-shift run `32134861850` is PASS: 2,048 entities, 3,600 ticks, 29 shifts, identical authoritative Float64 world state, max local reconstruction error 0.244141 mm and max origin-compensated temporal displacement error 0.04883 mm.
-
-**Endret**
-- `docs/06-task-queue.md` now separates the proven single-tile runtime pipeline from the still-open real multi-source seam gate and tracks browser provenance parity/device movement as the next streaming gates.
-- `docs/proofs/2026-08-18-terrain-runtime-pipeline.md` now records both the synthetic adversarial regression and exact accepted real-artifact proof.
-- Historical 17 August stacked-branch notes above are intentionally retained as history; their PR/status statements are superseded by this handoff.
-
-**Neste**
-- Highest value runtime task: remove the Node-only `crypto` dependency from the full graph-reconstructing provenance path by introducing a browser-compatible RFC 8785/JCS + WebCrypto verifier with parity regressions against the existing Node verifier.
-- Then exercise the accepted terrain artifact through a real browser Dedicated Worker and instrument transfer/startup, GPU apply/upload, rAF gaps and camera movement on Android.
-- In parallel, keep `P0-MULTITILE-TERRAIN-01` fail-closed until an evidence-backed DTM1 overlap transform is documented; do not infer a whole-Norway seam rule from file order, timestamp, averaging or tolerance.
-
-## 2026-08-18 — Browser provenance parity
-
-**Gjort**
-- Split runtime provenance verification into a crypto-agnostic semantic core plus thin Node and WebCrypto SHA-256 adapters instead of maintaining two verifier implementations.
-- Kept all source/transform/normalized graph closure, singular/plural source references, compiler config, lineage, immutable ArtifactRef, raw-source transport, promotion-gate and byte-integrity rules in `runtime_verifier_core.mjs`.
-- Added `runtime_verifier_web.mjs` using the same pinned RFC 8785/JCS `canonicalize@3.0.0`, `TextEncoder` and WebCrypto.
-- Upgraded the actual browser `artifact_consumer` from byte-size/SHA-only verification to full RuntimeVerificationBundle reconstruction before JSON decode while retaining the pre-fetch raw-source transport block.
-- Extended the localhost real-data viewer harness to serve only repo verifier modules plus the locally installed pinned canonicalizer through an import map; no CDN/runtime external verifier dependency was added.
-
-**Bevist**
-- Initial parity baseline `32136500278` is PASS: all 11 existing happy/adversarial bundles produce identical Node/WebCrypto decision, code and reconstructed hashes; missing WebCrypto fails explicitly.
-- Final full baseline `32136951635` is PASS.
-- Real-data Chrome run `32136951610` is PASS on the exact road/building artifacts. Browser regression proves valid graph load, raw-source rejection before second request, forged-lineage rejection and tampered-byte rejection; raw-source runtime calls remain 0.
-- The real browser benchmark remains 381 logical vector objects → 2 draw calls with frame p95 50.0 → 16.7 ms and render-sync p95 0.4 → 0.2 ms on hosted headless Chrome.
-- Full graph verification introduces a material hosted first-load measurement question: separate runs moved road/building `verify_decode_ms` from ~112.9/~89.8 ms to ~201.7/~173.4 ms and boot-to-first-visible from ~788.5 to ~993.5 ms. Because other phases also varied, this is not accepted as an exact crypto-only delta.
-
-**Endret**
-- `docs/proofs/2026-08-18-browser-provenance-parity.md` records architecture, parity, real Chrome evidence and the new performance question.
-- `docs/06-task-queue.md` closes browser full-provenance parity as an implementation blocker and promotes real browser terrain worker/movement + Android timing as the next streaming/runtime gate.
-- No `docs/04-decisions.md` entry was added; verification correctness is an implementation contract, while worker/caching/performance policy remains open.
-
-**Neste**
-- Exercise the accepted terrain artifact through `verifyRuntimeBundleWeb -> terrain_tile_loader -> actual module DedicatedWorker -> TileStreamingScheduler` in a real browser harness and instrument verification/decode, worker transfer/startup, apply/GPU upload and rAF gaps.
-- Reuse the harness on Android Chrome before selecting worker pooling, provenance-cache policy, hard GPU/resident budgets or LOD.
-- Keep the real multi-source DTM1 seam fail-closed in parallel; do not use runtime progress as justification for inventing an overlap rule.
-
-## 2026-08-18 — World Viewer Forsøk 18 terrain browser worker
-
-**Gjort**
-- Turned the previously detached/stale browser terrain branch into one visible, deployable World Viewer experiment instead of another one-off HTML prototype.
-- Added a shared compiled terrain runtime-input boundary, a browser-safe synthetic 1000×1000 terrain fixture, and one shared terrain experiment core used by both CI and the Vite app.
-- World Viewer now exposes `Kjør Forsøk 18` in its main viewport and reports provenance, module DedicatedWorker, first-visible, rAF gap, GPU apply, scheduler cache hit and retained bytes.
-- The same app path can accept an explicit hosted `terrainBundle` + tile id/center parameters for later exact-real terrain testing while keeping raw Kartverket/NVDB/OSM acquisition outside the browser.
-- Added a focused Chrome gate to `world-viewer-vite` and corrected two harness bugs without changing engine semantics: relative bundle URL resolution and a camera probe that had incorrectly tested eviction rather than the active→cached retain band.
-
-**Bevist**
-- Exact-head run `32144204222` on `7a371c0359511b111e5d1933d75c3dc4fb22a8fc` is PASS in Chrome 151. The Vite build emits the terrain worker as its own asset and the browser uses the default module `TerrainMeshWorkerClient` path.
-- Full `RUNTIME_VERIFICATION_PASS`, strict NWEHGT01 decode, actual DedicatedWorker mesh generation, scheduler activation/deactivation/cache return and WebGL2 measurement upload/draw compose successfully.
-- Runtime shape: 1000×1000 source grid -> 129×129 mesh, 16,641 vertices, 32,768 triangles, 729,120 B mesh, **4,729,120 B** retained; scheduler reports 1 load completed / 0 failed, 1 cache hit, 0 evictions and only 1 terrain resolver call.
-- Hosted structural timing: ~20.1 ms full provenance, ~137.5 ms strict decode, ~72.2 ms worker RTT / ~49 ms worker CPU, ~290.6 ms input→first-visible, GPU apply p95 ~4.8 ms and **116.7 ms** largest rAF gap during initial load.
-- Full repo baseline and the existing real-vector browser benchmark also passed on the same pre-documentation code head.
-
-**Endret**
-- `docs/proofs/2026-08-18-world-viewer-terrain-worker.md` records the exact browser proof and limitations.
-- `docs/06-task-queue.md` now distinguishes actual module-worker structural PASS from the still-open exact-real Nannestad browser and Android gates.
-- `apps/world-viewer/README.md` documents Forsøk 18 and the real-bundle handoff. No renderer/worker-pool/LOD/cache decision was added to `docs/04-decisions.md`.
-
-**Neste**
-- Drive the accepted Nannestad terrain SHA `780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96` through the same Forsøk 18 browser path.
-- Repeat Forsøk 18 on Android Chrome and use verification/decode/worker/GPU/rAF evidence to decide whether decode/provenance work should move off main thread or be cached.
-- Keep real neighboring terrain fail-closed until the DTM1 overlap/seam contract is evidence-backed.
-
-## 2026-08-18 — Agent v2 roles and project-specific skills
-
-**Gjort**
-- Replaced the old implicit sequential-agent model with five explicit parallel ownership roles under `.agents/roles/`: LUMEN (renderer/web/Vercel), STRØM (streaming/runtime), FORGE (compiler/data), ATLAS (world/coordinates) and SENTINEL (integration/QA).
-- Upgraded all seven existing repo-local Agent Skills to the current project evidence instead of early-P0 assumptions.
-- Added three missing skills: `nwe-renderer-platform`, `nwe-runtime-streaming` and `nwe-world-model`.
-- Updated `AGENTS.md` and `README.md` so role selection, branch isolation, artifact-only runtime, evidence classes and current P0 boundaries are explicit.
-- LUMEN now has a concrete deployment contract: production build + exact-branch Vercel Preview/smoke check when deployment access exists, with no production promotion unless explicitly requested.
-
-**Bevist**
-- The current task queue decomposes cleanly across the five ownership areas without requiring renderer code to own source acquisition or compiler code to own GPU behavior.
-- Renderer/WebGPU work can proceed in parallel with terrain-seam research because both meet at verified compiled-artifact/runtime contracts rather than shared raw data.
-- Vercel deployability is explicitly classified as deployment evidence, not world-truth or Android performance evidence.
-
-**Endret**
-- Branch: `agent/agent-system-v2`; `main` remains untouched.
-- `.agents/skills/*`, `.agents/roles/*`, `AGENTS.md`, `README.md`, worklog and task queue now describe Agent v2.
-- No engine/runtime/renderer architecture decision was added to `docs/04-decisions.md`.
-
-**Neste**
-- Validate all 10 skill frontmatters and branch diff, open a draft PR, then assign the next implementation work by role: FORGE on `P0-MULTITILE-TERRAIN-01`, LUMEN/STRØM on exact-real browser + Android movement/performance, ATLAS on the explicit world↔render origin contract and SENTINEL across their acceptance boundaries.
-
-## 2026-08-18 — LUMEN device-evidence comparability hardening
-
-**Gjort**
-- Started from current `main` and created the persistent LUMEN branch `agent/lumen-hourly`; prior LUMEN PR #27 was already merged, so no duplicate LUMEN PR was retained.
-- Audited the merged Android/device evidence exporter and found a benchmark-validity hole: its prose required same camera/device context, but the JSON did not persist first-frame camera or actual render-surface/backing-buffer dimensions.
-- Added first-frame yaw/pitch/distance, canvas CSS/backing pixel dimensions and effective renderer pixel ratio to `nwe.world-viewer-device-evidence/0.1` output.
-- Added `compareDeviceEvidenceContext()` so renderer timing may only be compared when tile/artifact hashes, verification state, graphics profile, camera, render surface and device metadata match.
-- Kept raw-source blocking and full RuntimeVerificationBundle verification unchanged.
-- Opened one draft PR, #30, from the persistent LUMEN branch; no merge requested.
-
-**Bevist**
-- Focused Node regression passed before publication: same-context WebGL2/WebGPU evidence is accepted, while changed camera and changed backing-buffer dimensions are rejected as non-comparable.
-- This improves evidence validity only; it does not constitute Android performance evidence or select WebGPU/WebGL2/Cesium.
-
-**Endret**
-- `apps/world-viewer/src/deviceEvidence.mjs`
-- `apps/world-viewer/src/deviceEvidenceEntry.mjs`
-- `apps/world-viewer/test_device_evidence.mjs`
-- `docs/06-task-queue.md`
-- This worklog. `docs/04-decisions.md` remains unchanged because no renderer architecture decision is proven.
-
-**Neste**
-- Require exact-head CI/Vite PASS and verify the Vercel Preview commit identity.
-- Then capture WebGL2 and WebGPU on the same physical Android Chrome device and reject timing interpretation unless `compareDeviceEvidenceContext()` reports `comparable=true`.
-
-## 2026-08-18 — LUMEN capture-session evidence boundary
-
-**Gjort**
-- Synced persistent `agent/lumen-hourly` with current `main` `1be0671e82aa55c4f969a184d413a373220bb3ac` through non-force two-parent merge `9cb7fc03c638815d26527679fa4802583980c70a`; the incoming FORGE-only files did not overlap LUMEN-owned paths.
-- Audited the prior “same device” comparison and found that equal browser metadata cannot attest physical handset identity; two identical phones may expose the same UA, screen, DPR, memory and concurrency values.
-- Added a URL-persisted capture-session UUID, `target=android-chrome` browser-signal validation and explicit `physical_device_attested: false` evidence semantics.
-- `compareDeviceEvidenceContext()` now requires the same non-empty capture session in addition to exact build SHA, accepted artifact hashes, full provenance status, graphics workload, camera, render surface, measurement window and exposed browser/device context.
-- Hardened the Android Chrome classifier so Client Hints with brands require an explicit `Google Chrome` brand rather than accepting generic `Chromium`; UA fallback remains conservative when brand data is absent.
-- Kept raw-source blocking and full RuntimeVerificationBundle reconstruction unchanged.
-
-**Bevist**
-- Focused Node regression PASS: same-session WebGL2/WebGPU context passes; changed or missing session fails; desktop signals under the Android-Chrome target fail closed; Edge-on-Android-like UA and Client-Hints brand sets do not classify as Chrome; prior camera/surface/build/window/raw-source/provenance negatives remain green.
-- Browser/session metadata now provides stronger capture continuity but still does not prove physical device identity. Actual Android performance remains an external device-run gate.
-- This is evidence-hardening only; no WebGPU/WebGL2/Cesium decision is justified.
-
-**Endret**
-- `apps/world-viewer/src/deviceEvidence.mjs`
-- `apps/world-viewer/src/deviceEvidenceEntry.mjs`
-- `apps/world-viewer/test_device_evidence.mjs`
-- `docs/proofs/2026-08-18-lumen-device-capture-session-boundary.md`
-- `docs/06-task-queue.md`
-- This worklog. `docs/04-decisions.md` remains unchanged.
-
-**Neste**
-- Require exact-head CI/Vite PASS and an exact-commit Vercel Preview smoke check.
-- Then run forced WebGL2 and WebGPU, where supported, on one operator-controlled physical Android Chrome handset with the same `session` value. Interpret timing only when `compareDeviceEvidenceContext()` returns `comparable=true`; physical-device identity remains device-lab/operator evidence rather than a browser attestation claim.
-
-## 2026-08-19 — SENTINEL clean restack of PR #37/#41 runtime/viewer lifecycle
-
-**Gjort**
-- Started from current `main` `7b286ae3328e66104f3c30c533805dd0a508e96c` on isolated branch `agent/sentinel-restore-device-lifecycle` rather than reopening the diverged #37/#41 stacks.
-- Selectively restored the exact-real device-evidence entry/browser smoke and WebGL2/WebGPU terrain resource adapters from #37/#41 while preserving the newer `main` device comparator that rejects fallback and same-active-backend A/B captures.
-- Connected the Preview scheduler lifecycle adapters through merged STRØM `observeStreamingLifecycleAdapters`, records those observations in the streaming trace, and requires `validateRendererLifecycleMovementCapture` to accept exact scheduler-event ↔ lifecycle-observation correlation before movement device evidence can PASS.
-- Added focused negative lifecycle-evidence regressions and extended `world-viewer-vite` with exact-real movement/cache/resource smoke evidence.
-- Reconciled `docs/06-task-queue.md` and added `docs/proofs/2026-08-19-sentinel-device-lifecycle-restack.md`. `docs/04-decisions.md` remains unchanged because no renderer, budget, LOD, worker-pool or whole-Norway policy was selected.
-
-**Bevist**
-- PR #44 `world-viewer-vite` run `32202573843` PASS on the pull-request composition. Existing device comparator regressions, new lifecycle/correlation regressions, Vite build, accepted-artifact renderer run, exact-real device-evidence smoke and synthetic module DedicatedWorker gate all passed.
-- Exact-real hosted Chrome used the accepted Nannestad terrain/road/building SHA identities with full `RUNTIME_VERIFICATION_PASS` and 0 raw-source runtime calls.
-- Movement path center -> 1000 m east -> center produced `resolver_calls 1 -> 1`, `loads_started_delta=0`, `cache_hits_delta=1` and renderer terrain resource state active -> inactive -> active. Buffer count changed `3 -> 0 -> 3`; create/destroy counters changed `1/0 -> 1/1 -> 2/1`; trace retained 12 entries with 0 dropped.
-- The evidence explicitly keeps `physical_vram_release_observed=false`. Hosted WebGPU was unavailable in the runner, so no WebGPU/WebGL2 hosted performance comparison is claimed.
-- `baseline` run `32202573821` and `viewer-benchmark` run `32202573844` also passed for the same PR head before the documentation-only follow-up commits.
-
-**Endret**
-- Clean integration PR: #44.
-- Viewer runtime now composes provenance -> DedicatedWorker -> scheduler/cache -> lifecycle observer -> renderer terrain resource deactivate/reactivate -> strict trace validation -> device evidence.
-- Historical #37/#41 remain closed as provenance/reference; their diverged ancestry was not reintroduced.
-
-**Neste**
-- Complete final PR-head CI after documentation reconciliation, then integrate #44 if the current `main` composition remains mergeable and green.
-- Next runtime/device gate is physical Android Chrome with forced WebGL2 and genuine WebGPU captures under the same session/build/artifact/camera/surface/measurement-window/streaming contract; do not interpret timing if either backend falls back.
-- Keep multi-tile DTM1 seam/source-overlap authority independent and fail-closed.
-
-## 2026-08-19 — Manual physical-device testing becomes milestone-based
-
-**Gjort**
-- Added `docs/07-testing-policy.md` as the project-wide validation cadence: automated regressions, hosted CI and exact-artifact browser evidence are the normal development path; physical handset tests are scarce milestone checks.
-- Updated `AGENTS.md`, `nwe-project-start`, `nwe-quality-gates`, `nwe-renderer-platform`, `nwe-runtime-streaming` and the LUMEN/STRØM/SENTINEL role charters so agents do not automatically ask the user to test Android after ordinary changes.
-- Updated README, roadmap and `docs/06-task-queue.md` so the active next work is larger-world/multi-tile terrain, streaming/resource budgets, LOD and automated browser/WebGPU experiments rather than repeated manual device runs.
-- Historical worklog entries above are retained as history. Any old `Neste` that requests Android/device testing is superseded by the current task queue and `docs/07-testing-policy.md`.
-
-**Bevist**
-- The policy is represented in the startup contract loaded by every agent and in the domain skills most likely to request device evidence.
-- Physical-device evidence remains available for claims specifically about mobile/device behavior or performance, but absence of a fresh handset run no longer blocks platform-neutral engine progress.
-- Repo-local Agent Skill validation passes on the policy branch before integration.
-
-**Endret**
-- No architecture or renderer decision changed; `docs/04-decisions.md` remains unchanged.
-- Manual user effort is now explicitly treated as a scarce project resource and device questions must be batched into meaningful milestone runs.
-
-**Neste**
-- Resume the highest-value engine work from `docs/06-task-queue.md`; do not schedule a physical Android run unless a genuinely device-specific blocker or accumulated milestone justifies it.
-
-## 2026-08-19 — Revidert motorkjede og skaleringsplan
-
-**Gjort**
-- Added `docs/08-revised-engine-chain.md` as an explicit post-3×3 dependency/prioritization plan.
-- Defined the eight-step sequence: movement-driven residency/budgets → terrain LOD → multi-tile roads/buildings → geometry enrichment → materials/vegetation → imagery → procedural detail → 10×10/25×25 scaling.
-- Kept FORGE/SENTINEL Atom DTM1 ↔ WCS canonical-terrain-source reconciliation as a parallel fail-closed gate rather than allowing it to block renderer/runtime experiments or become silently selected world truth.
-- Updated roadmap/task queue so material/vegetation can intentionally precede full imagery while P0 movement/budget/LOD and multi-tile vector work retain priority.
-
-**Bevist**
-- The plan is consistent with current evidence: STRØM PR #62 already targets phase 1 resource-pressure/movement observability; terrain LOD remains unselected; current 3×3 candidate still does not extend roads/buildings beyond the center tile; production imagery source/license remains open.
-- No architecture decision was proven by this planning pass, so `docs/04-decisions.md` remains unchanged.
-
-**Endret**
-- `docs/08-revised-engine-chain.md`
-- `docs/03-roadmap.md`
-- `docs/06-task-queue.md`
-- This worklog.
-
-**Neste**
-- SENTINEL/STRØM: finish and falsify the multi-tile resource-pressure/movement harness on latest `main`, then reuse that evidence surface for the first terrain-LOD benchmark while FORGE begins vector compilation/indexing for all nine runtime tiles in parallel.
+# 05 — Active agent worklog
+
+This is the **current handoff log** from the ground-level plan reset onward. The previous long-form worklog is preserved in Git history and archived in Google Drive; do not copy historical status back into this file.
+
+The goal is to let the next agent understand what changed in under a minute.
+
+## Required entry format
+
+Every completed work session appends exactly one entry using this structure:
+
+```markdown
+## YYYY-MM-DD HH:MM TZ — AGENT — TASK-ID
+
+**What**
+- What was actually implemented, changed or investigated.
+
+**Why**
+- Why this was the highest-value work for the active milestone.
+
+**Result / evidence**
+- Concrete result: build/test/browser output, artifact, metric or decision boundary.
+- State FACT vs ASSUMPTION vs EXPERIMENT when relevant.
+
+**Changed**
+- Files, PR/branch, schemas, artifacts or Drive docs changed.
+
+**Next**
+- Exactly one highest-value follow-up task, with task ID when available.
+```
+
+## Logging rules
+
+- Always record **date, local time/timezone, agent and task ID** in the heading.
+- `What` says what changed, not what the agent intended to do.
+- `Why` ties the work to the active queue in `docs/06-task-queue.md`.
+- `Result / evidence` is concise. Link proof files rather than pasting full logs.
+- `Next` is one concrete action, not a new backlog.
+- Do not append repeated test attempts that produced no new information; summarize the final relevant evidence once.
+- Do not mark a visual fallback as authoritative world truth.
+- Historical Android/manual-device next steps are not automatically current; follow `docs/07-testing-policy.md`.
+
+---
+
+## 2026-08-19 18:28 CEST — SENTINEL — PLAN-RESET-GROUND-01
+
+**What**
+- Replaced the prior `3×3 residency → LOD → visual quality` execution order with a ground-level playable Nannestad milestone.
+- Made Three.js/WebGPU-first the working graphics direction while preserving renderer-neutral world/compiler/runtime boundaries and a future Unreal adapter path.
+- Rebuilt the active task queue around terrain, road meshes, building meshes, materials/shaders, a licensed humanoid asset, locomotion and one integrated browser acceptance gate.
+- Added explicit anti-loop rules so multi-tile/source research and repeated test harnesses do not displace the playable slice.
+
+**Why**
+- The accepted single-tile Nannestad terrain/road/building foundation is already sufficient to build the first user-visible world. The project now needs proof that it works as a human-scale 3D place, not another round of broad infrastructure before gameplay exists.
+
+**Result / evidence**
+- FACT: canonical `main` already proves real single-tile terrain, roads/buildings, provenance verification, browser worker path and basic runtime resource lifecycle.
+- PRODUCT DIRECTION: near-ground walking/driving and high graphics quality are the current renderer design center.
+- ARCHITECTURE GUARDRAIL: Three.js is presentation; compiler/world/simulation contracts remain engine-neutral for later Unreal use.
+
+**Changed**
+- Draft PR #68 branch `agent/sentinel-revised-engine-chain`.
+- `docs/03-roadmap.md`.
+- `docs/05-worklog.md`.
+- `docs/06-task-queue.md`.
+- `docs/08-revised-engine-chain.md`.
+- Drive active plan/log and archive migration are part of the same planning reset.
+
+**Next**
+- `P0-GROUND-01`: LUMEN implements the Three.js ground-level renderer adapter in `apps/world-viewer` without changing compiler/provenance semantics.
