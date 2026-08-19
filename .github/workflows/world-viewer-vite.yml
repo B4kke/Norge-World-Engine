@@ -34,20 +34,25 @@ jobs:
           node apps/world-viewer/test_benchmark_geometry.mjs
           node apps/world-viewer/test_benchmark_params.mjs
 
-      - name: Preview camera, graphics and observability regressions
+      - name: Preview camera, graphics, device evidence and observability regressions
         run: |
           node --check apps/world-viewer/src/previewCameraControls.mjs
           node --check apps/world-viewer/src/graphicsProfiles.mjs
           node --check apps/world-viewer/src/rendererObservability.mjs
+          node --check apps/world-viewer/src/deviceEvidence.mjs
+          node --check apps/world-viewer/src/deviceEvidenceEntry.mjs
           node --check apps/world-viewer/src/preview1SceneGeometry.mjs
           node --check apps/world-viewer/src/preview1WebGl2Renderer.mjs
           node --check apps/world-viewer/src/preview1WebGpuRenderer.mjs
           node --check apps/world-viewer/src/preview1Renderer.mjs
           node --check apps/world-viewer/run_preview1_renderer_benchmark.mjs
+          node --check apps/world-viewer/run_device_evidence_browser_smoke.mjs
           node apps/world-viewer/test_preview_camera_controls.mjs
           node apps/world-viewer/test_graphics_profiles.mjs
           node apps/world-viewer/test_renderer_observability.mjs
           node apps/world-viewer/test_webgpu_upload_alignment.mjs
+          node apps/world-viewer/test_device_evidence.mjs
+          node apps/world-viewer/test_device_evidence_lifecycle.mjs
 
       - name: Terrain experiment syntax boundary
         run: |
@@ -63,6 +68,7 @@ jobs:
       - name: Assert static deployment output
         run: |
           test -f apps/world-viewer/dist/index.html
+          test -f apps/world-viewer/dist/device-evidence.html
           test -d apps/world-viewer/dist/assets
           find apps/world-viewer/dist -maxdepth 2 -type f -print
 
@@ -82,6 +88,21 @@ jobs:
         with:
           name: world-viewer-renderer-benchmark-${{ github.sha }}
           path: /tmp/nwe-preview1-renderer-benchmark.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Exact-real device-evidence movement/cache + renderer-resource smoke
+        run: |
+          node apps/world-viewer/run_device_evidence_browser_smoke.mjs \
+            --output /tmp/nwe-device-evidence-browser-smoke.json \
+            --timeout-ms 90000 \
+            --frames 10
+          cat /tmp/nwe-device-evidence-browser-smoke.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-viewer-device-evidence-smoke-${{ github.sha }}
+          path: /tmp/nwe-device-evidence-browser-smoke.json
           if-no-files-found: error
           retention-days: 7
 
