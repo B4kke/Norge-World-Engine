@@ -1,6 +1,6 @@
 # Visual world source audit — imagery and vegetation
 
-Status: **candidate source audit, not an architecture decision**.  
+Status: **candidate source audit + source-admission evidence, not a runtime architecture decision**.  
 Date checked: 2026-08-20.
 
 The goal is to add visible world quality without weakening the compiler/runtime boundary. Browser runtime must consume derived, provenance-bound world artifacts rather than treating external map services as authoritative runtime dependencies.
@@ -37,45 +37,90 @@ The goal is to add visible world quality without weakening the compiler/runtime 
 5. verify alignment against the accepted DTM1/road/building tile and measure browser upload/memory/first-visible cost;
 6. keep source TIFF outside Git and publish only a provenance-bound derived preview artifact if redistribution remains compliant.
 
-## Vegetation source stack — FORGE recommendation
+## Vegetation source stack — current FORGE evidence
 
-This section records a **source candidate stack**, not a selected runtime schema, density policy or renderer implementation.
+This section records the **best currently proven public preprocessing path**, not a selected vegetation runtime schema, density policy or renderer implementation.
 
-### Tier A — primary open forest driver: NIBIO SR16R
+### Tier A — proven public forest source path: NIBIO SR16V
 
 **Provider:** Norsk institutt for bioøkonomi (NIBIO).  
-**Dataset family:** `SR16 - Skogressurskart 16x16 meter`; NIBIO publishes raster `SR16R` and vector `SR16V`. The vector metadata UUID currently used by the Geonorge/data.norge catalog is `27206b9e-4830-4f71-810d-d04c0dc32b59`.  
-**Coverage:** all forest areas in Norway.  
-**Raster resolution / positional accuracy:** 16 × 16 m cells; NIBIO's 30 January 2026 product sheet states approximate positional accuracy of ±1 pixel (16 m) and explicitly warns that automatically generated forest-resource values are estimates rather than field observations.  
-**CRS / delivery:** SR16R GeoTIFF; SR16V SHAPE/GML/SOSI; UTM 32/33/35 EUREF89 and geographic EUREF89 are documented. WMS 1.3.0 exists for visualization/QA.  
-**Relevant source-backed attributes:** dominant species (`SRTRESLAG`: spruce/pine/deciduous in SR16R), site index, volume, biomass, mean height (`SRMHOYDE`), overheight, mean diameter, basal area, tree count per hectare at >=5/8/10/16 cm breast-height diameter (`SRTREANTALL*`), LAI, canopy cover (`SRKRONEDEK`), 3D remote-sensing acquisition year (`SR3DFAAR`) and quantitative uncertainty intervals.  
-**Freshness semantics:** the raster is updated with satellite-detected harvesting by zeroing affected resource values and updating the remote-sensing timestamp. The January 2026 product sheet states that equivalent harvesting updates for SR16V segments are not yet implemented.  
-**Access / license:** current Geonorge/data.norge distributions expose download/API and Atom paths under NLOD 1.0/open-license metadata. NIBIO's generic download terms also state that datasets downloadable without a password are NLOD 1.0 with attribution `Kilde: NIBIO`. Exact distribution/license metadata must still be captured in each SourceSnapshot.  
+**Dataset:** `SR16 - Skogressurskart 16x16 meter - Vektor`.  
+**Metadata UUID:** `27206b9e-4830-4f71-810d-d04c0dc32b59`.  
+**Coverage:** all forest areas in Norway. SR16V contains generalized homogeneous forest polygons derived from the SR16 model family; it must not be interpreted as surveyed individual-tree geometry.  
+**Current access/license evidence:** live Geonorge metadata on 2026-08-20 reports `Åpne data`, no public-access limitation and an NLOD link (`http://data.norge.no/nlod/no/1.0`). The tested NIBIO Atom distribution is publicly reachable without credentials. Attribution remains `Kilde: NIBIO`.  
+**Advertised formats:** FGDB/GML/SOSI through download metadata and GDB/RASTER/GML/SOSI through Atom metadata. The actual Nannestad Atom entry tested today is SOSI, not GML.  
 **Official references:**
 - https://www.nibio.no/tema/skog/kart-over-skogressurser/skogressurskart-sr16
-- https://www.nibio.no/tema/skog/kart-over-skogressurser/skogressurskart-sr16/_/attachment/inline/b1351797-d448-4a67-b099-961efaa6bf80%3A639c0369780bbb68533c91302042cca246ed9081/SR16_produktark_v30jan2026.pdf
 - https://data.norge.no/en/datasets/0bbd8017-f34b-4fd1-a82e-4493b0eb5bd6/sr16-skogressurskart-16x16-meter-vektor
 - https://www.nibio.no/tjenester/nedlasting-av-kartdata
 
-**FORGE assessment:** **SR16R is the preferred source candidate for forest structure.** The raster is closer to the measured/modelled source resolution than generalized SR16V, exposes the attributes needed for deterministic vegetation derivation, and currently has the stronger harvesting-update semantics.
+#### Real Nannestad source evidence — PASS
 
-**Semantic honesty rule:** SR16 does **not** provide authoritative individual-tree positions. Generated NWE tree positions, species variation inside a dominant-species cell, height variation around a mean, rotation/scale and asset choice remain deterministic procedural detail. Provenance must distinguish those generated values from source-backed cell attributes.
+The bounded source-admission gate used the official Atom entry `Skogressurskart SR16-kommune-Nannestad-EUREF89 UTM sone 32, 2d-sosi`, municipality `3238`, updated `2026-08-17T17:05:15Z`.
 
-### Tier A — primary open non-forest mask: NIBIO AR50
+- acquisition: NIBIO Atom -> direct ZIP, no provider order and no credentials;
+- source CRS: EUREF89 / UTM zone 32 (`EPSG:25832`);
+- SOSI header: `SOSI-VERSJON 5.0`, `TEGNSETT UTF-8`, `VERT-DATUM NN2000`, `ENHET 0.010000`;
+- ZIP bytes: `15,017,777`;
+- ZIP SHA-256: `536d3e436dd4af7200788f353cc72b29954f35449d67e5ca6acf077726080001`;
+- extracted provider SOSI bytes: `125,418,971`;
+- provider SOSI SHA-256: `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`;
+- exact 1 km NWE test tile: `611000,6677000 -> 612000,6678000` in EPSG:25832;
+- normalized/clipped SR16V polygons in that tile: `124`;
+- source IDs resolve from `prod_lokalid`;
+- normalized source geometry is polygonal; no individual-tree coordinates are created by this gate.
+
+The real sample exposes the forest semantics required for later deterministic derivation, including spruce/pine/deciduous percentages, mean/overheight, canopy cover, LAI, tree-count fields and diameter thresholds, volume, biomass, basal area, diameter, site/forest attributes, acquisition/update fields and uncertainty variants.
+
+#### SOSI decoder compatibility boundary
+
+The provider source remains immutable UTF-8 world-source truth. Ubuntu 24.04's hosted GDAL 3.8.4 / FYBA 4.1.1 could not open the valid UTF-8 SOSI before GDAL had a chance to process the declared encoding. FORGE therefore added a **decoder-only compatibility copy**:
+
+- strict UTF-8 decode of the original provider bytes;
+- exactly one `..TEGNSETT UTF-8` declaration must be present;
+- preserve the provider CRLF line ending;
+- strict transcode to ISO8859-10 with declaration changed only in the temporary copy;
+- strict reverse decode must reproduce the compatibility text exactly;
+- any unrepresentable character fails the compiler gate rather than being replaced;
+- original provider bytes/hash remain the source binding in the normalized artifact.
+
+Hosted evidence reports compatibility-copy SHA-256 `951a41bd139adef103f5b1fdf7d46808bc7eb1d54117bb04ff3759907cd286b4` and `strict_roundtrip: true`. This is a tooling adapter, **not a mutation of source truth**.
+
+**FORGE assessment:** **SR16V is the currently proven public/reproducible SR16 preprocessing path for NWE.** It is admitted as a source candidate for later vegetation compilation, not yet as a runtime vegetation artifact.
+
+**Semantic honesty rule:** SR16 does **not** provide authoritative individual-tree positions. Generated NWE tree positions, species variation inside a source polygon/cell, height variation around source statistics, rotation/scale and asset choice remain deterministic procedural detail. Provenance must distinguish generated values from source-backed attributes.
+
+### Tier A — proven public coarse mask: NIBIO AR50
 
 **Provider:** NIBIO.  
-**Dataset:** `AR50`. The current Geonorge product register marks version `20260619` valid; the narrative NIBIO overview page still contains older prose referring to a March 2025 production, so acquisition must bind the actual downloadable snapshot/metadata rather than trusting that prose date.  
+**Dataset:** `AR50`.  
+**Metadata UUID:** `a7949917-033c-4e78-8c0f-e30323ce353a`.  
 **Coverage:** nationwide overview land-resource map.  
 **Scale / geometry limits:** 1:50 000 product intended roughly for 1:20 000–1:100 000 use. Areas smaller than 15 dekar are not retained as separate figures and are merged into neighboring classes.  
-**Relevant classes:** built-up/transport, agriculture, forest, open natural land, bog, glacier, freshwater, sea and unmapped; additional themes include forest site index, coarse tree-species class, agriculture and open-land vegetation classes.  
-**Acquisition / license evidence:** AR50 is documented in NIBIO's public download documentation. NIBIO states that datasets downloadable without password are NLOD 1.0; unlike FKB-AR5, AR50 is not listed among the Geovekst/Norge digitalt restricted exceptions. The real sample gate must still capture exact distribution license, CRS, format and snapshot identity.  
+**Acquisition:** official public NIBIO WFS `AR50`, WFS 2.0.0, bounded in EPSG:25832 for the real sample.  
+**License:** NIBIO public-download/NLOD terms; no credential gate was encountered in the tested WFS path. Exact source identity and attribution remain part of each SourceSnapshot.  
 **Official references:**
 - https://www.nibio.no/tema/jord/arealressurser/ar50
 - https://www.nibio.no/tjenester/nedlasting-av-kartdata/dokumentasjon/ar50
 - https://register.geonorge.no/register/versjoner/produktark/norsk-institutt-for-bio%C3%B8konomi/ar50
 - https://www.nibio.no/tjenester/nedlasting-av-kartdata
 
-**FORGE assessment:** **AR50 is suitable as a national coarse exclusion/classification layer, not as precise vegetation-edge truth.** It can tell the compiler that a cell/area is agriculture, bog, open land, water or built-up at overview scale. Existing higher-quality NWE roads/buildings and future water/parcel layers should override/suppress generated vegetation locally. The 15-dekar generalization means AR50 must not be used to claim exact yard, roadside or field-edge boundaries.
+#### Real Nannestad source evidence — PASS
+
+The same 1 km tile returned `15` valid polygon/multipolygon features with attributes including area type, agriculture, forest site index, coarse tree-species class and vegetation cover. Two independent WFS acquisitions had different raw SHA-256 hashes because request-time `kopidato` changes. After excluding **only that proven volatile field**, both normalize to the same semantic content. The heavy source gate therefore proves both raw-source binding and stable semantic normalization rather than pretending request envelopes are immutable.
+
+**FORGE assessment:** **AR50 is suitable as a national coarse exclusion/classification layer, not precise vegetation-edge truth.** Existing accepted NWE roads/buildings and later higher-detail water/area sources must override/suppress generated vegetation locally. The 15-dekar generalization means AR50 must not be used to claim exact yard, roadside or field-edge boundaries.
+
+### Tier A research candidate — SR16R raster, not yet admitted
+
+SR16R remains technically attractive because the documented 16 × 16 m raster representation is closer to the native model grid and the January 2026 product sheet documents stronger harvesting-update semantics than SR16V. It is **not** the currently admitted public baseline for NWE because current distribution evidence is inconsistent:
+
+- split-raster metadata UUID `5de45872-f534-4e97-840e-3cfd8db04398` is reachable through NIBIO capabilities but mixes `Åpne data` with `Norge digitalt-lisens` wording;
+- its current Nannestad area codelist reports `sosi` despite GeoTIFF being advertised elsewhere in metadata;
+- legacy/open raster candidate UUID `7df9ef08-faf2-4ad3-9ae2-49905f5ea808` currently exposes NLOD 2.0/GeoTIFF metadata, but all tested NIBIO capabilities paths for that UUID return HTTP 404;
+- no immutable Nannestad raster bytes have yet passed the same cache/offline normalization gate.
+
+**FORGE assessment:** keep SR16R as a higher-fidelity **research/enrichment candidate**. Do not make it a mandatory public compiler dependency until one exact distributable raster lineage has unambiguous license/access plus real-byte reproducibility evidence.
 
 ### Tier B — licensed high-detail enrichment: FKB-AR5
 
@@ -91,7 +136,7 @@ This section records a **source candidate stack**, not a selected runtime schema
 ### Tier B — Nasjonalt grunnkart for arealanalyse
 
 **Providers:** collaboration between NIBIO, SSB, Kartverket and Miljødirektoratet.  
-**Coverage / semantics:** nationwide harmonized land-cover/use/ ecosystem dataset; 2025 annual version includes classes such as built land, transport, agriculture, open land, wetlands and multiple forest/tree classes. It combines existing public-sector source layers rather than being new field mapping.  
+**Coverage / semantics:** nationwide harmonized land-cover/use/ecosystem dataset; 2025 annual version includes classes such as built land, transport, agriculture, open land, wetlands and multiple forest/tree classes. It combines existing public-sector source layers rather than being new field mapping.  
 **Access constraint:** current data.norge distributions/API are associated with the Norge digitalt license and the WMS catalog marks access as restricted.  
 **Official references:**
 - https://www.nibio.no/tema/jord/arealressurser/andre-kart/grunnkart-for-arealregnskap
@@ -112,31 +157,39 @@ This section records a **source candidate stack**, not a selected runtime schema
 
 The minimal source-backed vegetation contract should preserve the difference between **observed/modelled source attributes** and **procedurally generated render instances**:
 
-1. Acquire and hash immutable SR16R + AR50 source snapshots outside browser runtime.
-2. Normalize/clip them to the NWE world tile with explicit CRS transforms; do not make provider tiling the runtime tile identity.
-3. Preserve SR16 source values, acquisition/prediction time and available uncertainty as source-backed normalized attributes.
-4. Build a deterministic exclusion mask from AR50 plus already accepted NWE road/building geometry; later water/high-detail area layers may refine it.
-5. Derive tree instances from a versioned vegetation compiler configuration. A stable seed should include tile identity, source snapshot identities and vegetation-config identity so identical inputs reproduce identical placements.
-6. Tree count can be driven by a documented SR16 tree-count-per-hectare field and 16×16 m cell area with deterministic rounding/sampling. Dominant species and mean height may constrain generation, but any within-cell species mixture or height distribution not present in the source is explicitly procedural configuration.
+1. Acquire and hash immutable SR16V + AR50 source snapshots outside browser runtime.
+2. Normalize/clip them to the NWE world tile with explicit CRS transforms; provider municipality/WFS tiling is never runtime tile identity.
+3. Preserve relevant SR16 source values, temporal fields and uncertainty separately from future generated instance properties.
+4. Build a deterministic exclusion/classification layer from AR50 plus already accepted NWE road/building geometry; later water/high-detail area layers may refine it.
+5. Derive tree instances only from a versioned vegetation compiler configuration. A stable seed should include tile identity, source snapshot identities and vegetation-config identity so identical inputs reproduce identical placements.
+6. Tree count can later be driven by documented SR16 tree-count fields and source geometry area with deterministic rounding/sampling. Species percentages and height statistics may constrain generation, but distributions/positions not encoded in the source remain explicitly procedural configuration.
 7. Compile renderer-neutral instance/cluster data. LUMEN chooses Three.js/WebGPU instancing, asset meshes, impostors and visual LOD without writing presentation choices back into source truth.
 8. Runtime verifies and streams the compiled vegetation artifact; it never calls NIBIO/Geonorge/WMS/Atom directly.
 
 No exact instance schema, tree-density cap, species-mix heuristic, asset set, LOD distance or GPU representation is selected by this audit.
 
-## Required real-sample gate before source admission
+## `P1-VEGETATION-01-SAMPLE` — PASS
 
-`P1-VEGETATION-01` source work is not complete until FORGE performs one bounded Nannestad acquisition experiment:
+The bounded real-source gate is now proven on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`:
 
-1. acquire one current SR16R sample through an official download/API/Atom path and one AR50 sample through the documented public download path;
-2. record exact source URL/metadata identity, license/attribution, byte size/hash, CRS, bounds, pixel/feature structure, nodata and update/prediction/acquisition timestamps where present;
-3. verify that the Nannestad tile is actually covered and inventory the real SR16 fields/rasters delivered today rather than relying only on documentation;
-4. compile a tiny deterministic normalized sample or source-inventory proof, with raw/bulk files excluded from Git;
-5. run the same acquisition from cache/source-network-free input to prove the next pipeline can be made reproducible before designing the runtime vegetation artifact.
+- `baseline` run `32312909195`: PASS;
+- `visual-source-probe` heavy admission run `32312909181`: PASS;
+- evidence artifact ID `9387116220` (14-day CI retention);
+- same-cache normalization A1/A2: byte-identical;
+- independent AR50 acquisition B: semantically identical after excluding only proven volatile `kopidato`;
+- normalized candidate sample size: `378,569` bytes;
+- normalized SHA-256: `c275ddedaf06d6b509c90bf41fb54404d36cbc3457681a092eddcec77d44929c`;
+- semantic SHA-256: `76536346c39a5a731352ca00d86231d901e025f9a1a4b4b2097700a694534ec1`;
+- normalizer requires no provider network access after cache materialization;
+- raw/bulk provider files were neither committed nor uploaded as CI artifacts;
+- truth boundary remains source polygons/attributes only — **no tree placement or runtime vegetation artifact was promoted**.
 
-WMS is a visualization/QA sensor, not the normal authoritative acquisition path when downloadable source data is available.
+The heavyweight materialize/decode/replay gate lives in `.github/workflows/vegetation-source-sample.yml` as an explicit `workflow_dispatch` gate. Ordinary PR source checks stay in the lighter `visual-source-probe` workflow.
 
 ## Implementation order relative to the active queue
 
-Vegetation remains `P1-VEGETATION-01`. This source audit must not displace active `P0-GROUND-07` / milestone acceptance work. When P1 vegetation becomes active, the next FORGE action is the bounded Nannestad SR16R + AR50 real-sample gate above; only after that proof should LUMEN receive a vegetation artifact for GPU-instancing/LOD experiments.
+Vegetation remains `P1-VEGETATION-01` and must not displace active `P0-GROUND-07` / milestone acceptance work. The source-admission uncertainty is now substantially reduced: when vegetation becomes active, FORGE can start from the proven SR16V + AR50 normalized source boundary rather than repeating source archaeology.
+
+The next vegetation implementation gate should define a tiny **renderer-neutral deterministic vegetation artifact candidate** over this accepted source boundary, still without claiming individual-tree truth. LUMEN asset/instancing/LOD work comes only after that compiler contract exists.
 
 No renderer, texture encoding, tree asset set, tree density policy or imagery CDN/object-store architecture is selected by this audit.
