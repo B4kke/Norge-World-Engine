@@ -93,10 +93,13 @@ def current_nannestad_seam_matrix() -> dict:
                     "raster_width_px",
                     "raster_height_px",
                     "pixel_size_m",
+                    "provider_generation_distribution_contract_sha256",
                 ),
                 blocker=(
-                    "15 km + 15010 px geometry yields a unique symmetric 5 px core candidate, "
-                    "but provider documentation has not authorized discarding the excess border"
+                    "provider evidence now binds NHM project/grid generation to the downloadable DTM1 "
+                    "15 km source family, and 15010 px geometry yields a unique symmetric 5 px core; "
+                    "the unresolved fact is whether the observed 10 m excess is disposable per-side "
+                    "buffer/overscan or otherwise participates in authoritative samples"
                 ),
             ),
             SeamCandidateEvidence(
@@ -121,7 +124,7 @@ def current_nannestad_seam_matrix() -> dict:
                 blocker=(
                     "provider metadata documents newest-project semantics for hoydedata_orig/original-LAZ "
                     "and documents that the DTM WMS displays the latest project based on projects that "
-                    "update NHM; neither statement is bound to downloadable national DTM1 GeoTIFF overlap"
+                    "update NHM; neither statement authorizes packaged DTM1 border handling"
                 ),
             ),
             SeamCandidateEvidence(
