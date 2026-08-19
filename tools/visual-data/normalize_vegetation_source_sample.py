@@ -49,9 +49,9 @@ SOURCE_CONFIG = {
         "attribution": "Kilde: NIBIO",
         "preferred_layer_tokens": ("ar50", "arealressurs"),
         "source_id_fields": ("lokalid", "identifikasjon"),
-        # WFS copies expose request-time copy metadata. These fields are not vegetation
-        # semantics and are intentionally excluded from the semantic normalization.
-        "volatile_fields": frozenset({"kopidato", "kopidata"}),
+        # The two-read source probe proved that request-time kopidato is volatile.
+        # Preserve all other provider fields, including kopidata, until evidence says otherwise.
+        "volatile_fields": frozenset({"kopidato"}),
     },
 }
 
