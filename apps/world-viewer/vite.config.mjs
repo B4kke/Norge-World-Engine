@@ -19,6 +19,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         'device-evidence': resolve(import.meta.dirname, 'device-evidence.html'),
+        'webgpu-timestamp-probe': resolve(import.meta.dirname, 'webgpu-timestamp-probe.html'),
       },
     },
   },
