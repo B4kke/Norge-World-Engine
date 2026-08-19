@@ -1,0 +1,48 @@
+name: dtm1-nhm-generation-distribution-bridge
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_nhm_generation_distribution_bridge.py'
+      - 'engine/compiler/src/nwe_compiler/dtm1_seam_evidence_matrix.py'
+      - 'engine/compiler/tests/test_dtm1_nhm_generation_distribution_bridge.py'
+      - 'engine/compiler/tests/test_dtm1_seam_evidence_matrix.py'
+      - 'engine/compiler/tools/probe_dtm1_nhm_generation_distribution_bridge.py'
+      - '.github/workflows/dtm1-nhm-generation-distribution-bridge.yml'
+      - 'docs/proofs/2026-08-19-dtm1-nhm-generation-distribution-bridge.md'
+  workflow_dispatch:
+
+jobs:
+  provider-generation-distribution-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install compiler test dependencies
+        run: |
+          python -m pip install -e engine/compiler
+          python -m pip install pytest
+      - name: Generation/distribution regressions
+        run: |
+          pytest -q \
+            engine/compiler/tests/test_dtm1_nhm_generation_distribution_bridge.py \
+            engine/compiler/tests/test_dtm1_seam_evidence_matrix.py
+      - name: Live provider generation/distribution proof
+        run: |
+          python engine/compiler/tools/probe_dtm1_nhm_generation_distribution_bridge.py \
+            | tee /tmp/nwe-dtm1-nhm-generation-distribution.json
+          python -m json.tool /tmp/nwe-dtm1-nhm-generation-distribution.json > /dev/null
+      - name: Raw geodata exclusion
+        run: |
+          if find . -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) -print -quit | grep -q .; then
+            echo 'raw geodata found in checkout' >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-nhm-generation-distribution-evidence
+          path: /tmp/nwe-dtm1-nhm-generation-distribution.json
+          retention-days: 7

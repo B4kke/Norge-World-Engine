@@ -1,0 +1,264 @@
+name: nhm-wcs-3x3-promotion-proof
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/nhm_wcs_acquisition.py'
+      - 'engine/compiler/src/nwe_compiler/nhm_wcs_terrain_artifacts.py'
+      - 'engine/compiler/tests/test_nhm_wcs_production_path.py'
+      - '.github/workflows/nhm-wcs-3x3-promotion-proof.yml'
+  workflow_dispatch:
+
+jobs:
+  provenance-bearing-wcs-3x3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: WCS production-path regressions
+        run: pytest -q engine/compiler/tests/test_nhm_wcs_production_path.py
+
+      - name: Cold live 3x3 acquire, compile, persist and offline repeat
+        run: |
+          mkdir -p /tmp/nwe-wcs-promote-data /tmp/nwe-wcs-promote-proof/artifacts
+          python - <<'PY'
+          import json
+          import shutil
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          from nwe_compiler.nhm_wcs_acquisition import acquire_nhm_wcs
+          from nwe_compiler.nhm_wcs_terrain_artifacts import (
+              compile_nhm_wcs_terrain_artifact,
+              persist_nhm_wcs_terrain_artifact,
+          )
+          from nwe_compiler.tiles import NANNESTAD_TILE, square_tile_grid
+
+          CACHE = Path('/tmp/nwe-wcs-promote-data')
+          PROOF = Path('/tmp/nwe-wcs-promote-proof')
+          ARTIFACTS = PROOF / 'artifacts'
+          USER_AGENT = 'NorgeWorldEngine-FORGE/0.1 (+nhm-wcs-promotion-proof)'
+          tiles = square_tile_grid(NANNESTAD_TILE, radius=1)
+          if len(tiles) != 9:
+              raise SystemExit(f'expected 9 tiles, got {len(tiles)}')
+
+          response_cache = {}
+          network_calls = []
+          def shared_fetcher(url, timeout, accept):
+              # GetCapabilities/DescribeCoverage are service metadata and are shared
+              # across all nine SourceSnapshots in one controlled cold run.
+              if ('GetCapabilities' in url or 'DescribeCoverage' in url) and url in response_cache:
+                  return response_cache[url]
+              request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept': accept})
+              with urllib.request.urlopen(request, timeout=timeout) as response:
+                  if response.status != 200:
+                      raise RuntimeError(f'provider HTTP {response.status}: {url}')
+                  result = (response.headers.get('Content-Type'), response.read())
+              network_calls.append(url)
+              if 'GetCapabilities' in url or 'DescribeCoverage' in url:
+                  response_cache[url] = result
+              return result
+
+          cold = {}
+          t0 = time.perf_counter()
+          for tile in tiles:
+              acquired = acquire_nhm_wcs(
+                  CACHE,
+                  tile=tile,
+                  refresh=True,
+                  timeout=180,
+                  fetcher=shared_fetcher,
+              )
+              compiled = compile_nhm_wcs_terrain_artifact(acquired, tile=tile)
+              persisted = persist_nhm_wcs_terrain_artifact(compiled, CACHE, tile=tile)
+              artifact_copy = ARTIFACTS / f'{tile.tile_id}.nwehgt'
+              bundle_copy = ARTIFACTS / f'{tile.tile_id}.bundle.json'
+              shutil.copyfile(persisted.artifact_path, artifact_copy)
+              shutil.copyfile(persisted.bundle_path, bundle_copy)
+              cold[tile.tile_id] = {
+                  'source_sha256': acquired.raw_sha256,
+                  'source_byte_size': acquired.raw_byte_size,
+                  'capabilities_sha256': acquired.capabilities_sha256,
+                  'describe_coverage_sha256': acquired.describe_coverage_sha256,
+                  'normalized_sha256': compiled.normalized_sha256,
+                  'normalized_byte_size': len(compiled.normalized_bytes),
+                  'artifact_sha256': compiled.artifact_sha256,
+                  'artifact_byte_size': len(compiled.artifact_bytes),
+                  'sample_count': compiled.sample_count,
+                  'source_snapshot_hash': compiled.bundle['source_snapshot_hashes'][0],
+                  'transform_contract_hash': compiled.bundle['transform_contract_hashes'][0],
+                  'normalized_snapshot_hash': compiled.bundle['normalized_snapshot_hashes'][0],
+                  'lineage_hash': compiled.bundle['lineage_hash'],
+                  'artifact_ref_hash': compiled.bundle['artifact_ref_hash'],
+                  'promotion_record_hash': compiled.bundle['promotion_record_hash'],
+                  'artifact_file': artifact_copy.name,
+                  'bundle_file': bundle_copy.name,
+                  'cache_hit': acquired.cache_hit,
+              }
+          t1 = time.perf_counter()
+
+          expected_network_calls = 2 + len(tiles)
+          if len(network_calls) != expected_network_calls:
+              raise SystemExit(
+                  f'expected {expected_network_calls} cold provider requests (2 service + 9 coverage), got {len(network_calls)}'
+              )
+
+          def forbidden_fetcher(_url, _timeout, _accept):
+              raise AssertionError('offline WCS replay performed a source request')
+
+          offline = {}
+          for tile in tiles:
+              acquired = acquire_nhm_wcs(
+                  CACHE,
+                  tile=tile,
+                  offline=True,
+                  fetcher=forbidden_fetcher,
+              )
+              if not acquired.cache_hit:
+                  raise SystemExit(f'{tile.tile_id}: offline acquisition did not use cache')
+              compiled = compile_nhm_wcs_terrain_artifact(acquired, tile=tile)
+              first = cold[tile.tile_id]
+              checks = {
+                  'source_sha_equal': acquired.raw_sha256 == first['source_sha256'],
+                  'normalized_sha_equal': compiled.normalized_sha256 == first['normalized_sha256'],
+                  'artifact_sha_equal': compiled.artifact_sha256 == first['artifact_sha256'],
+                  'bundle_equal': compiled.bundle['promotion_record_hash'] == first['promotion_record_hash'],
+              }
+              if not all(checks.values()):
+                  raise SystemExit(f'{tile.tile_id}: cold/offline identity mismatch: {checks}')
+              offline[tile.tile_id] = {
+                  **checks,
+                  'source_requests': 0,
+                  'cache_hit': acquired.cache_hit,
+                  'artifact_sha256': compiled.artifact_sha256,
+              }
+          t2 = time.perf_counter()
+
+          center = NANNESTAD_TILE.tile_id
+          result = {
+              'schema': 'nwe.nhm-wcs-3x3-promotion-proof/0.1',
+              'status': 'COMPILER_AND_PROVENANCE_READY_FOR_SENTINEL_REVIEW',
+              'source_path': 'kartverket:nhm-dtm-25832-wcs',
+              'tile_count': len(tiles),
+              'tile_ids': [tile.tile_id for tile in tiles],
+              'cold': cold,
+              'offline': offline,
+              'cold_offline_all_source_sha_equal': all(v['source_sha_equal'] for v in offline.values()),
+              'cold_offline_all_normalized_sha_equal': all(v['normalized_sha_equal'] for v in offline.values()),
+              'cold_offline_all_artifact_sha_equal': all(v['artifact_sha_equal'] for v in offline.values()),
+              'cold_offline_all_bundle_identity_equal': all(v['bundle_equal'] for v in offline.values()),
+              'network': {
+                  'cold_provider_requests': len(network_calls),
+                  'expected_cold_provider_requests': expected_network_calls,
+                  'offline_provider_requests': 0,
+                  'shared_service_metadata_requests': 2,
+                  'coverage_requests': len(tiles),
+              },
+              'center_transition': {
+                  'accepted_atom_artifact_sha256': '780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96',
+                  'wcs_artifact_sha256': cold[center]['artifact_sha256'],
+                  'byte_identical': cold[center]['artifact_sha256'] == '780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96',
+                  'requires_explicit_source_path_decision': True,
+              },
+              'timings_ms': {
+                  'cold_acquire_compile_persist_9_tiles': round((t1 - t0) * 1000, 3),
+                  'offline_verify_compile_9_tiles': round((t2 - t1) * 1000, 3),
+              },
+              'data_hygiene': {
+                  'raw_wcs_tiffs_in_git': False,
+                  'raw_wcs_tiffs_in_evidence_upload': False,
+                  'compiled_artifacts_and_bundles_only': True,
+              },
+          }
+          (PROOF / 'nhm-wcs-3x3-promotion-proof.json').write_text(
+              json.dumps(result, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          print(json.dumps(result, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install runtime + World Viewer dependencies
+        run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
+
+      - name: Verify all nine exact artifacts with runtime verifier
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const proofDir = '/tmp/nwe-wcs-promote-proof';
+          const reportPath = path.join(proofDir, 'nhm-wcs-3x3-promotion-proof.json');
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const results = [];
+          for (const tileId of report.tile_ids) {
+            const info = report.cold[tileId];
+            const bundle = JSON.parse(fs.readFileSync(path.join(proofDir, 'artifacts', info.bundle_file), 'utf8'));
+            const artifact = new Uint8Array(fs.readFileSync(path.join(proofDir, 'artifacts', info.artifact_file)));
+            const verification = verifyRuntimeBundle(bundle, artifact);
+            if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') {
+              throw new Error(`${tileId}: ${verification.code}: ${verification.detail}`);
+            }
+            if (verification.code !== 'RUNTIME_VERIFICATION_PASS') {
+              throw new Error(`${tileId}: unexpected verification code ${verification.code}`);
+            }
+            results.push({ tile_id: tileId, artifact_sha256: info.artifact_sha256, verification });
+          }
+          if (results.length !== 9) throw new Error(`expected 9 runtime results, got ${results.length}`);
+          const output = {
+            schema: 'nwe.nhm-wcs-3x3-runtime-verification/0.1',
+            status: 'PASS',
+            ready_for_runtime_count: results.length,
+            results,
+          };
+          fs.writeFileSync(path.join(proofDir, 'runtime-verification.json'), JSON.stringify(output, null, 2) + '\n');
+          console.log(JSON.stringify(output, null, 2));
+          NODE
+
+      - name: Remove raw and normalized source material before evidence upload
+        run: |
+          rm -rf /tmp/nwe-wcs-promote-data
+          if find /tmp/nwe-wcs-promote-proof -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' -o -iname '*.f32le' \) -print -quit | grep -q .; then
+            echo 'source/normalized geodata unexpectedly remains in proof directory' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          proof = Path('/tmp/nwe-wcs-promote-proof/nhm-wcs-3x3-promotion-proof.json')
+          data = json.loads(proof.read_text(encoding='utf-8'))
+          runtime = json.loads(Path('/tmp/nwe-wcs-promote-proof/runtime-verification.json').read_text(encoding='utf-8'))
+          if not data['cold_offline_all_artifact_sha_equal']:
+              raise SystemExit('cold/offline artifact identity failed')
+          if runtime['ready_for_runtime_count'] != 9:
+              raise SystemExit('not all nine artifacts are READY_FOR_RUNTIME')
+          print(json.dumps({
+              'status': data['status'],
+              'tile_count': data['tile_count'],
+              'cold_offline_artifact_sha_equal': data['cold_offline_all_artifact_sha_equal'],
+              'ready_for_runtime_count': runtime['ready_for_runtime_count'],
+              'center_transition': data['center_transition'],
+              'network': data['network'],
+              'timings_ms': data['timings_ms'],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nhm-wcs-3x3-promotion-proof-${{ github.sha }}
+          path: /tmp/nwe-wcs-promote-proof
+          if-no-files-found: error
+          retention-days: 7
