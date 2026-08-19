@@ -30,6 +30,16 @@ function composeMatrix(matrix, position, quaternion, scale, x, y, z, yaw, sx, sy
   return matrix;
 }
 
+function geometryPayloadBytes(geometry) {
+  let bytes = geometry.index?.array?.byteLength ?? 0;
+  for (const attribute of Object.values(geometry.attributes ?? {})) bytes += attribute?.array?.byteLength ?? 0;
+  return bytes;
+}
+
+function geometryBufferCount(geometry) {
+  return Object.keys(geometry.attributes ?? {}).length + (geometry.index ? 1 : 0);
+}
+
 function disposeInstancedMesh(mesh) {
   mesh.geometry.dispose();
   mesh.material.dispose();
@@ -79,14 +89,14 @@ export function createThreeVegetationLayer({ scene, placement } = {}) {
       const crownHeight = height * 0.78;
       const crownRadius = height * 0.20;
       conifers.setMatrixAt(coniferIndex, composeMatrix(matrix, position, quaternion, scale, x, groundY + height * 0.60, z, yaw, crownRadius * 2, crownHeight, crownRadius * 2));
-      color.setHSL(0.34 + ((index % 7) - 3) * 0.003, 0.31, 0.29 + (index % 5) * 0.012, THREE.SRGBColorSpace);
+      color.setHSL(0.34 + ((index % 7) - 3) * 0.003, 0.31, 0.29 + (index % 5) * 0.012);
       conifers.setColorAt(coniferIndex, color);
       coniferIndex += 1;
     } else {
       const crownWidth = height * 0.44;
       const crownHeight = height * 0.34;
       broadleaves.setMatrixAt(broadleafIndex, composeMatrix(matrix, position, quaternion, scale, x, groundY + height * 0.73, z, yaw, crownWidth, crownHeight, crownWidth));
-      color.setHSL(0.28 + ((index % 9) - 4) * 0.004, 0.36, 0.34 + (index % 6) * 0.012, THREE.SRGBColorSpace);
+      color.setHSL(0.28 + ((index % 9) - 4) * 0.004, 0.36, 0.34 + (index % 6) * 0.012);
       broadleaves.setColorAt(broadleafIndex, color);
       broadleafIndex += 1;
     }
@@ -99,8 +109,13 @@ export function createThreeVegetationLayer({ scene, placement } = {}) {
   }
   scene.add(trunks, conifers, broadleaves);
 
-  const drawCalls = [trunks, conifers, broadleaves].filter((mesh) => mesh.count > 0).length;
+  const meshes = [trunks, conifers, broadleaves];
+  const drawCalls = meshes.filter((mesh) => mesh.count > 0).length;
   const matrixPayloadBytes = (count + coniferCount + broadleafCount) * 16 * Float32Array.BYTES_PER_ELEMENT;
+  const colorPayloadBytes = (coniferCount + broadleafCount) * 3 * Float32Array.BYTES_PER_ELEMENT;
+  const sharedGeometryPayloadBytes = geometryPayloadBytes(trunkGeometry) + geometryPayloadBytes(coniferGeometry) + geometryPayloadBytes(broadleafGeometry);
+  const gpuBufferPayloadBytes = matrixPayloadBytes + colorPayloadBytes + sharedGeometryPayloadBytes;
+  const gpuBufferCount = meshes.reduce((sum, mesh) => sum + geometryBufferCount(mesh.geometry) + 1 + (mesh.instanceColor ? 1 : 0), 0);
   const snapshot = () => ({
     schema: VEGETATION_RENDER_SCHEMA,
     authority: placement.metadata.authority,
@@ -110,7 +125,11 @@ export function createThreeVegetationLayer({ scene, placement } = {}) {
     broadleaf_count: broadleafCount,
     draw_calls: drawCalls,
     mesh_count: 3,
+    gpu_buffer_count: gpuBufferCount,
+    gpu_buffer_payload_bytes: gpuBufferPayloadBytes,
     instance_matrix_payload_bytes: matrixPayloadBytes,
+    instance_color_payload_bytes: colorPayloadBytes,
+    shared_geometry_payload_bytes: sharedGeometryPayloadBytes,
     geometry_strategy: 'three-instancedmesh-shared-lowpoly-primitives',
     material_strategy: 'three-shared-pbr-flat-shaded',
     source_asset: null,
@@ -119,7 +138,7 @@ export function createThreeVegetationLayer({ scene, placement } = {}) {
   });
 
   return {
-    meshes: [trunks, conifers, broadleaves],
+    meshes,
     snapshot,
     dispose() {
       scene.remove(trunks, conifers, broadleaves);
