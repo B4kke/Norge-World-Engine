@@ -5,6 +5,7 @@ import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 
 const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
+const ROAD_MINIMUM_POINT_SPACING_M = 1.25;
 const BUILDING_FALLBACK_HEIGHT_M = 5;
 const BUILDING_GROUND_LIFT_M = 0.08;
 
@@ -141,6 +142,7 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
   const roads = buildRoadSurfaceGeometry(roadsArtifact, {
     projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
     widthMeters: ROAD_VISUAL_WIDTH_M,
+    minimumPointSpacingMeters: ROAD_MINIMUM_POINT_SPACING_M,
   });
   const buildingProjectPoint = (point) => footprintPointToLocal(point, origin, sampleHeight);
   const buildingsResolved = buildBuildingSurfaceGeometry(buildingsArtifact, {
@@ -169,6 +171,11 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       road_surface_segments: roads.metadata.segment_count,
       road_surface_triangles: roads.metadata.triangle_count,
       road_width_semantics: roads.metadata.width_semantics,
+      road_renderer_sampling_semantics: roads.metadata.point_spacing_semantics,
+      road_renderer_minimum_point_spacing_m: roads.metadata.minimum_point_spacing_m,
+      road_source_point_count: roads.metadata.source_point_count,
+      road_sampled_point_count: roads.metadata.sampled_point_count,
+      road_removed_sample_count: roads.metadata.removed_sample_count,
       road_surface_lift_m: ROAD_SURFACE_LIFT_M,
       building_footprints: buildingsArtifact?.features?.length ?? 0,
       source_backed_building_heights: buildingsResolved.count,
