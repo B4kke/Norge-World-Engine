@@ -129,16 +129,22 @@ Multipolygon/relation ingestion, DOM-DTM/FKB capability-gated height enrichment 
 Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
 
 ## P1-VEGETATION-01 — Norwegian vegetation layer
-**Status:** SOURCE BASIS AUDITED / IMPLEMENTATION DEFERRED UNTIL P0 MILESTONE ACCEPTANCE / REAL-SAMPLE ADMISSION GATE OPEN  
+**Status:** REAL-SOURCE ADMISSION SAMPLE PASS / IMPLEMENTATION DEFERRED UNTIL P0 MILESTONE ACCEPTANCE  
 **Owner:** FORGE source/compiler + LUMEN presentation
 
-**Candidate open baseline:** NIBIO `SR16R` for 16×16 m forest structure + NIBIO `AR50` for coarse nationwide non-forest classification/exclusion + already accepted NWE road/building geometry for local suppression. Preserve SR16 source attributes and uncertainty separately from generated tree instances.
+**Proven public preprocessing baseline candidate:** NIBIO `SR16V` forest polygons + NIBIO `AR50` coarse nationwide area classification/exclusion + already accepted NWE road/building geometry for local suppression. Preserve source attributes/uncertainty separately from generated tree instances.
+
+**Source admission evidence:** `P1-VEGETATION-01-SAMPLE` passed on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`: `baseline` run `32312909195` PASS and heavy `visual-source-probe` run `32312909181` PASS. The 1 km EPSG:25832 tile normalized 124 SR16V polygons + 15 AR50 polygons, same-cache A1/A2 was byte-identical, independent AR50 acquisitions were semantically identical after excluding only proven volatile `kopidato`, and no provider network was required during normalization.
+
+**SR16V source binding:** official Nannestad municipality `3238` Atom/SOSI snapshot, source SHA-256 `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`. Provider UTF-8 bytes remain authoritative; a strict round-trip ISO8859-10 compatibility copy exists only because hosted GDAL/FYBA cannot open the valid UTF-8 SOSI directly.
+
+**SR16R status:** technically attractive higher-fidelity candidate, but **not admitted as the required public baseline**. Current split-raster metadata mixes open-data and Norge digitalt license signals, while the tested legacy/open raster UUID exposes NLOD metadata but no working NIBIO capabilities endpoint. Re-evaluate only with a concrete unambiguous raster lineage + real-byte gate.
 
 **Licensed enrichments, not baseline:** FKB-AR5 and Nasjonalt grunnkart for arealanalyse currently require Geovekst/Norge digitalt rights under the verified access model. NIBIO regional vegetation maps may enrich covered areas but are not nationwide.
 
-**Truth guard:** SR16 does not provide authoritative individual-tree positions. Tree placement, within-cell species/height variation, asset choice and rotations/scales are deterministic procedural detail unless a future source explicitly proves otherwise.
+**Truth guard:** SR16 does not provide authoritative individual-tree positions. Tree placement, within-source-area species/height distributions not explicitly encoded by the source, asset choice and rotations/scales remain deterministic procedural detail unless a future source proves otherwise.
 
-**Next source gate — `P1-VEGETATION-01-SAMPLE`:** after P0 milestone acceptance, FORGE acquires one real Nannestad SR16R + AR50 sample through official download paths; records exact license/source identity, hashes, CRS/bounds/schema/raster metadata and temporal fields; then proves a tiny cached/offline deterministic normalization before any vegetation runtime artifact is selected.
+**Next implementation gate — `P1-VEGETATION-01-ARTIFACT`:** only when P0 milestone acceptance allows P1 work, FORGE defines a tiny renderer-neutral deterministic vegetation artifact candidate over the proven normalized SR16V + AR50 boundary. The artifact must bind source snapshots + compiler-config identity/seed, retain source-vs-generated semantics and remain reproducible from cache. It must not select Three/WebGPU asset or LOD implementation.
 
 **Later renderer goal:** small licensed asset set, deterministic/source-backed placement, GPU instancing and distance LOD/impostors.
 
