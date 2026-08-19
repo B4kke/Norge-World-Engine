@@ -21,7 +21,8 @@ The next task must advance the walkable Nannestad milestone in `docs/08-revised-
 - connected renderer-side road surfaces over 246 accepted compiled NVDB paths: PASS / merged PR #73;
 - polygon-safe batched building walls/roofs over 135 accepted footprints: PASS / merged PR #74;
 - licensed animated KayKit Knight humanoid with fail-closed idle/walk state: PASS / merged PR #75;
-- renderer-neutral character world-transform contract: PASS / merged ATLAS PR #72.
+- renderer-neutral character world-transform contract: PASS / merged ATLAS PR #72;
+- ATLAS-backed character movement, accepted-DTM grounding, renderer pose binding, keyboard/touch controls and third-person follow camera: PASS / merged PR #77.
 
 ### Renderer-asset network boundary
 
@@ -79,40 +80,39 @@ The next task must advance the walkable Nannestad milestone in `docs/08-revised-
 **Truth guard:** model pose/spawn is renderer state. ATLAS/world state remains authoritative for position/heading.
 
 ## P0-GROUND-06 — Character movement + terrain grounding + camera
-**Priority:** 1 — ACTIVE  
+**Priority:** COMPLETED  
 **Owner:** LUMEN + ATLAS  
-**Status:** ATLAS CONTRACT MERGED PR #72 / LUMEN INTEGRATION ACTIVE IN DRAFT PR #77
+**Status:** MERGED PR #77 / ALL FIVE HOSTED WORKFLOWS PASS ON EXACT HEAD
 
-**Already implemented in the active LUMEN slice:**
+**Implemented:**
 - Preview 1 EPSG:25832 / NN2000 character world frame;
 - ATLAS `WorldPosition` / character-transform authority rather than Three-owned world coordinates;
 - accepted-DTM height grounding after authoritative planar movement;
 - explicit ATLAS `[east,north,up]` -> Three `[east,up,-north]` adapter;
 - canonical positive zero in derived renderer coordinates;
 - render-origin-shift regression requiring unchanged authoritative character state;
-- renderer-only humanoid pose sink with explicit KayKit forward-axis calibration;
-- renderer-neutral runtime composition that maps world commands to pose + walk/idle adapter calls.
+- one-way renderer pose sink into the KayKit Knight with explicit 0.02 m presentation-only ground lift;
+- renderer-neutral runtime composition mapping authoritative movement to pose + walk/idle state;
+- W/S + A/D and arrow keyboard controls, plus separate non-conflicting touch overlay controls;
+- 3.2 m/s movement budget, 1.9 rad/s turn budget and 50 ms input-delta clamp;
+- third-person follow-orbit camera with 6.5 m initial distance and +1.2 m follow target height;
+- exact Chrome 1.00 m movement probe validating authoritative distance, DTM grounding, walk -> idle, renderer pose agreement and camera follow.
 
-**Still required before task completion:**
-- bind the runtime composition into normal Preview 1 lifecycle;
-- expose keyboard movement and practical non-conflicting touch movement controls;
-- bind derived pose to the live Knight in the normal browser path;
-- third-person follow camera;
-- automated browser movement acceptance including terrain grounding and animation state.
+**Acceptance evidence:** exact implementation head `4fd753767106e3d56957ff555d7069f0c4d7e5b4` passed `baseline` run 32302005719, `world-viewer-vite` run 32302005703, `viewer-benchmark` run 32302005752, `preview1-realdata-publish` run 32302005712 and `preview3-realdata-publish` run 32302005733; merged as `8971dff662f4743be8b48302c1b4f1b286ead858`.
 
-**Acceptance:** character walks over normal Nannestad terrain without floating/sinking; world state is independent from render-origin shifts; renderer pose and animation follow derived state rather than owning it.
+**Truth guard:** Three/GLTF state remains presentation-only. Authoritative position/heading stays in ATLAS Float64 world state; the 0.02 m character lift and follow-camera parameters are renderer-only.
 
 ## P0-GROUND-07 — First graphics/shader pass
-**Priority:** 2  
+**Priority:** 1 — ACTIVE  
 **Owner:** LUMEN  
-**Status:** OPEN
+**Status:** OPEN / START HERE
 
 **Implement:** bounded near-player shadows, sun/directional light, sky/fog, tone mapping, material roughness/normal variation and conservative shader detail. Prefer batching/instancing and shared materials over unique draws/textures.
 
 **Acceptance:** screenshot/video-level output is visibly beyond debug geometry while automated sample metrics show no obvious navigation-breaking regression.
 
 ## P0-GROUND-08 — Integrated acceptance + Preview
-**Priority:** 3 — only after 01–07 integrate  
+**Priority:** 2 — only after 01–07 integrate  
 **Owner:** SENTINEL  
 **Status:** WAITING
 
