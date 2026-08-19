@@ -16,9 +16,7 @@ The next task must advance the walkable Nannestad milestone in `docs/08-revised-
 - module DedicatedWorker terrain mesh path: PASS;
 - scheduler/cache/resource lifecycle roundtrip for the accepted terrain tile: PASS;
 - high-precision world state + render-local coordinate/origin invariants: PASS;
-- Three.js ground renderer adapter over accepted renderer-neutral buffers: PASS in hosted Chrome/WebGL2; hosted WebGPU capability remains unavailable and is not claimed as performance evidence;
-- walking-distance renderer-only terrain PBR/detail layer over unchanged accepted DTM geometry: PASS;
-- connected renderer-side road-surface strips over the accepted compiled NVDB paths: PASS on PR #73 code head; 3.2 m width remains explicit renderer-only fallback.
+- Three.js ground renderer adapter over accepted renderer-neutral buffers: PASS in hosted Chrome/WebGL2; hosted WebGPU capability remains unavailable and is not claimed as performance evidence.
 
 If a new change does not alter one of those claims, do not create another test loop for it.
 
@@ -45,39 +43,29 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance evidence:** hosted Chrome/WebGL2 rendered the accepted tile with 16,641 terrain vertices / 32,768 triangles, 246 compiled road paths and 135 building footprints at 4 draw calls; runtime request count 7; raw-source runtime calls 0. Production Vite build and existing renderer/resource/browser regressions pass. Hosted WebGPU probe was unavailable, so no WebGPU performance comparison is claimed.
 
 ## P0-GROUND-02 — Terrain mesh + walking-distance material
-**Priority:** COMPLETED  
+**Priority:** 1 — START HERE  
 **Owner:** LUMEN  
-**Status:** IMPLEMENTED / MERGED PR #70 / HOSTED CI + REALDATA PUBLISH PASS  
-**Input:** accepted DTM1 artifact/worker mesh and the proven Three.js adapter.
+**Status:** OPEN  
+**Input:** already accepted DTM1 artifact/worker mesh and the now-proven Three.js adapter.
 
-**Implemented:**
-- worker-provided normals and normalized UVs consumed directly by Three `BufferGeometry`;
-- deterministic renderer-only macro variation via vertex colors;
-- two tiny source-safe generated `DataTexture` detail maps with explicit 5 m repeat period;
-- `MeshStandardMaterial` color/roughness/bump response with no displacement of accepted DTM positions;
-- terrain resource lifecycle preserved and scene retained one terrain mesh / four total draw calls.
+**Implement:** normals, sane UV/detail coordinates, PBR-compatible terrain material, directional lighting response and procedural/source-safe micro/macro variation.
 
-**Acceptance evidence:** implementation head `980cac3f3f531733aca699a425dd0b8efe1bb588` passed `baseline`, `world-viewer-vite`, `viewer-benchmark`, `preview1-realdata-publish` and `preview3-realdata-publish`; merged as `b08d57461fecc93cc8d349d8dc79c5998321ba9a`. Vercel build-rate-limit/plan failure is not counted as renderer failure or Preview evidence.
+**Acceptance:** terrain looks like ground from approximately 1.7 m eye height and remains geometrically tied to accepted DTM heights.
 
 ## P0-GROUND-03 — Road-surface meshes
-**Priority:** COMPLETED  
+**Priority:** 2  
 **Owner:** LUMEN  
-**Status:** IMPLEMENTED / DRAFT PR #73 / ALL FIVE HOSTED WORKFLOWS PASS ON CODE HEAD  
+**Status:** OPEN  
 **Input:** accepted compiled NVDB paths.
 
-**Implemented:**
-- one connected strip per compiled road path rather than independent per-segment quads;
-- shared corner edge pairs, duplicate-point removal and capped miter joins;
-- explicit 3.2 m `renderer-only-fallback` visual width and 0.06 m renderer-only surface lift;
-- meter-based UVs and road-surface path/segment/triangle/width-semantics observability;
-- targeted geometry + scene-contract regressions wired into the normal viewer build.
+**Implement:** batched ribbon/surface meshes, asphalt material, conservative visual width fallback and optional cheap edge/marking treatment.
 
-**Truth guard:** visual width is **not authoritative road width** until NVDB physical-width semantics are compiled. Surface lift is presentation-only and is not world elevation.
+**Truth guard:** current visual width is **not authoritative road width** until NVDB physical-width semantics are compiled.
 
-**Acceptance evidence:** PR #73 code head `f91000d78a11113267dfcd83d5974a9658c87d28` passes `baseline` #1891, `world-viewer-vite` #313, `viewer-benchmark` #261, `preview1-realdata-publish` #397 and `preview3-realdata-publish` #23. The exact accepted road artifact `34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a` contains 246 compiled paths; normal runtime still makes zero raw-source calls.
+**Acceptance:** the principal road network reads as connected road surfaces at ground level without re-fetching NVDB.
 
 ## P0-GROUND-04 — Building meshes + roofs
-**Priority:** 1 — START HERE  
+**Priority:** 3  
 **Owner:** LUMEN  
 **Status:** OPEN  
 **Input:** 135 accepted compiled building footprints.
@@ -86,10 +74,10 @@ If a new change does not alter one of those claims, do not create another test l
 
 **Truth guard:** unresolved building height remains unresolved in world data.
 
-**Acceptance:** the street-level scene visibly contains the accepted building set and no roof geometry escapes its footprint due to naive bounding-box/fan caps.
+**Acceptance:** the street-level scene visibly contains the accepted building set and no roof geometry escapes its footprint due to naive bounding-box caps.
 
 ## P0-GROUND-05 — Licensed humanoid glTF/GLB + animation
-**Priority:** 2  
+**Priority:** 4  
 **Owner:** LUMEN  
 **Status:** OPEN  
 
@@ -98,16 +86,18 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** a human model spawns in Nannestad and animation state changes between idle and movement. No unverified model ripped from a demo/site is admitted.
 
 ## P0-GROUND-06 — Character movement + terrain grounding + camera
-**Priority:** 3  
+**Priority:** 5  
 **Owner:** LUMEN + ATLAS  
-**Status:** OPEN / ATLAS CHARACTER WORLD-TRANSFORM CONTRACT IN DRAFT PR #72  
+**Status:** OPEN / ATLAS WORLD-TRANSFORM SUB-BOUNDARY IMPLEMENTED + HOT-PATH OPTIMIZED IN DRAFT PR #72; LUMEN INTEGRATION PENDING  
+
+**ATLAS boundary:** `nwe.character-world-transform/0.1-candidate` defines stable entity identity, authoritative Float64 `WorldPosition`, canonical renderer-neutral heading, projected-world planar movement, world-height updates for grounding consumers and origin-epoch-scoped render-local derivation. No-op updates reuse existing immutable state and changed heading reuses the existing immutable world position. It deliberately contains no `THREE.*`, asset, animation, input, terrain sampling, camera or physics-engine state.
 
 **Implement:** renderer-neutral character world transform, keyboard movement, practical touch input, terrain height/raycast grounding, simple radius/capsule abstraction and third-person follow camera. Avoid choosing a full physics engine unless simple grounding proves insufficient.
 
 **Acceptance:** the character can walk over normal Nannestad terrain without floating/sinking and world state remains independent from render origin shifts.
 
 ## P0-GROUND-07 — First graphics/shader pass
-**Priority:** 4  
+**Priority:** 6  
 **Owner:** LUMEN  
 **Status:** OPEN  
 
@@ -116,7 +106,7 @@ If a new change does not alter one of those claims, do not create another test l
 **Acceptance:** screenshot/video-level output is visibly beyond debug geometry while automated sample metrics show no obvious regression that makes navigation unusable.
 
 ## P0-GROUND-08 — Integrated acceptance + Preview
-**Priority:** 5 — only after 01–07 integrate  
+**Priority:** 7 — only after 01–07 integrate  
 **Owner:** SENTINEL  
 **Status:** WAITING  
 
