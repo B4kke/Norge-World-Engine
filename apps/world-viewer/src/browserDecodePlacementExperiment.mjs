@@ -72,8 +72,8 @@ function requestWorkerDecode(worker, bytes, id, now) {
 async function measureMainThread({ bytes, iterations, now, requestFrame, cancelFrame }) {
   const frameMonitor = createFrameGapMonitor({ requestFrame, cancelFrame });
   const operationSamples = [];
-  await nextFrame(requestFrame);
   frameMonitor.start();
+  await nextFrame(requestFrame);
   const startedAt = now();
   for (let index = 0; index < iterations; index += 1) {
     const operationStartedAt = now();
@@ -99,8 +99,8 @@ async function measureWorker({ bytes, iterations, now, requestFrame, cancelFrame
   const roundtripSamples = [];
   const workerDecodeSamples = [];
   try {
-    await nextFrame(requestFrame);
     frameMonitor.start();
+    await nextFrame(requestFrame);
     const startedAt = now();
     for (let index = 0; index < iterations; index += 1) {
       const roundtripStartedAt = now();
@@ -150,6 +150,6 @@ export async function runBrowserDecodePlacementExperiment({
     iterations: count,
     main_thread: mainThread,
     worker_roundtrip: worker,
-    note: 'Directional browser scheduling experiment only. Main-thread decode/JSON.parse is compared with a module Worker using a copied ArrayBuffer and structured-cloned parsed object return. Worker roundtrip therefore includes byte-copy/transfer setup, worker decode+parse, message scheduling and parsed-object clone back to the main thread. The experiment intentionally does not re-run or cache provenance verification and cannot select runtime worker policy by itself; compare end-to-end rAF gaps and roundtrip cost before any STRØM/SENTINEL policy change.',
+    note: 'Directional browser scheduling experiment only. Main-thread decode/JSON.parse is compared with a module Worker using a copied ArrayBuffer and structured-cloned parsed object return. Worker roundtrip therefore includes byte-copy/transfer setup, worker decode+parse, message scheduling and parsed-object clone back to the main thread. The rAF monitor is primed for one baseline frame before each workload so the first post-workload callback can measure blocking rather than losing the comparison timestamp. The experiment intentionally does not re-run or cache provenance verification and cannot select runtime worker policy by itself; compare end-to-end rAF gaps and roundtrip cost before any STRØM/SENTINEL policy change.',
   };
 }
