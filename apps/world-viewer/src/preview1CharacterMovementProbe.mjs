@@ -1,3 +1,5 @@
+const FOLLOW_TARGET_HEIGHT_M = 1.2;
+
 function finitePosition(transform, label) {
   const position = transform?.position;
   for (const key of ['easting', 'northing', 'height']) {
@@ -8,7 +10,7 @@ function finitePosition(transform, label) {
 
 export async function runPreview1CharacterMovementProbe({ runtime, renderer, animationFrame = () => new Promise((resolve) => requestAnimationFrame(resolve)) } = {}) {
   if (!runtime?.snapshot || !runtime?.move || !runtime?.stop) throw new TypeError('character runtime is required');
-  if (!renderer?.getCharacterState) throw new TypeError('character renderer state is required');
+  if (!renderer?.getCharacterState || !renderer?.getCameraState) throw new TypeError('character renderer state/camera is required');
   if (typeof animationFrame !== 'function') throw new TypeError('animationFrame is required');
 
   runtime.stop();
@@ -21,6 +23,7 @@ export async function runPreview1CharacterMovementProbe({ runtime, renderer, ani
   const moved = runtime.snapshot();
   const movedPosition = finitePosition(moved.character?.worldTransform, 'moved');
   const walkRenderer = renderer.getCharacterState();
+  const followCamera = renderer.getCameraState();
   if (moved.moving !== true || walkRenderer?.state !== 'walk') {
     throw new Error(`CHARACTER_MOVEMENT_WALK_STATE_FAILED: ${JSON.stringify({ moving: moved.moving, rendererState: walkRenderer?.state })}`);
   }
@@ -55,6 +58,14 @@ export async function runPreview1CharacterMovementProbe({ runtime, renderer, ani
     throw new Error(`CHARACTER_MOVEMENT_RENDER_POSE_DIVERGED: ${JSON.stringify({ derived: derivedPose.position, rendered: renderedPose.position })}`);
   }
 
+  const cameraTarget = followCamera?.target;
+  if (!Array.isArray(cameraTarget) || cameraTarget.length !== 3
+    || Math.abs(Number(cameraTarget[0]) - Number(derivedPose.position[0])) > 1e-5
+    || Math.abs(Number(cameraTarget[1]) - (Number(derivedPose.position[1]) + FOLLOW_TARGET_HEIGHT_M)) > 1e-5
+    || Math.abs(Number(cameraTarget[2]) - Number(derivedPose.position[2])) > 1e-5) {
+    throw new Error(`CHARACTER_MOVEMENT_CAMERA_FOLLOW_FAILED: ${JSON.stringify({ cameraTarget, derived: [...derivedPose.position] })}`);
+  }
+
   return Object.freeze({
     schema: 'nwe.preview1-character-movement-probe/0.1',
     status: 'PASS',
@@ -66,5 +77,6 @@ export async function runPreview1CharacterMovementProbe({ runtime, renderer, ani
     idle_state_observed_after_stop: idleRenderer.state,
     renderer_pose_matches_derived: true,
     presentation_ground_lift_m: 0.02,
+    camera_follow: Object.freeze({ status: 'PASS', target: Object.freeze([...cameraTarget]), target_height_m: FOLLOW_TARGET_HEIGHT_M }),
   });
 }
