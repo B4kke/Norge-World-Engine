@@ -63,6 +63,7 @@ Physical handset/device testing is a **scarce milestone check**, not a default v
 - Before requesting user action, exhaust available automated/browser evidence and state exactly which unresolved claim requires physical hardware.
 - Android/mobile evidence is required only for claims specifically about Android/mobile behavior or performance. It is **not** required to accept platform-neutral compiler, world-model, provenance, scheduler or browser-runtime progress.
 - Keep harnesses ready so a future milestone device run is cheap and repeatable, but do not turn harness availability into a requirement to use it continuously.
+- Historical `docs/05-worklog.md` entries that say the next step is an Android/device run are historical handoffs and are superseded by the current `docs/06-task-queue.md` plus this policy.
 
 See `docs/07-testing-policy.md` for the project-wide validation hierarchy and manual-device cadence.
 
