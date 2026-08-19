@@ -7,6 +7,12 @@ export const THREE_GROUND_CAMERA_LIMITS = Object.freeze({
   maxPitch: 1.25,
 });
 
+export const THREE_CHARACTER_FOLLOW_DEFAULTS = Object.freeze({
+  targetHeightM: 1.2,
+  distanceM: 6.5,
+  pitchRadians: 0.22,
+});
+
 function finiteVector3(value, label) {
   if (!Array.isArray(value) || value.length !== 3 || value.some((item) => !Number.isFinite(item))) {
     throw new TypeError(`${label} must be a finite [x,y,z] vector`);
@@ -65,6 +71,18 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
   return {
     state,
     sync,
+    followTarget(position, { headingRadians = 0, initialize = false } = {}) {
+      const character = finiteVector3(position, 'character position');
+      if (!Number.isFinite(headingRadians)) throw new TypeError('headingRadians must be finite');
+      state.target.splice(0, 3, character[0], character[1] + THREE_CHARACTER_FOLLOW_DEFAULTS.targetHeightM, character[2]);
+      if (initialize) {
+        state.yaw = -headingRadians;
+        state.pitch = THREE_CHARACTER_FOLLOW_DEFAULTS.pitchRadians;
+        state.distance = THREE_CHARACTER_FOLLOW_DEFAULTS.distanceM;
+      }
+      sync();
+      return this.snapshot();
+    },
     dispose() {
       remove();
       if (canvas.style) canvas.style.touchAction = previousTouchAction;
