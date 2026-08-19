@@ -12,18 +12,28 @@ The accepted Nannestad road/building browser path previously showed verification
 - It loads the accepted Preview manifest and only the compiled road/building RuntimeVerificationBundle + artifact transports.
 - Every production layer load still uses `loadCompiledJsonArtifact`, including pre-fetch raw-source transport guards and the full shared RuntimeVerificationBundle reconstruction before JSON use.
 - After that PASS, `profileVerifiedJsonArtifact` re-runs the same shared browser verifier on the in-memory artifact bytes and separately measures strict UTF-8 byte-to-text decoding and `JSON.parse`.
-- The profile schema is `nwe.browser-artifact-profile/0.2` because the decode phase is split into `utf8_decode_ms`, `json_parse_ms` and their backward-readable aggregate `decode_ms`.
-- The report records exact artifact SHA-256 identities, artifact byte sizes, build/deployment identity, request URLs, production-load wall time and p50/p95/p99/max for isolated verification, UTF-8 decode, JSON parse, aggregate decode and verification+decode.
+- The profile schema is `nwe.browser-artifact-profile/0.3`. The decode phase remains split into `utf8_decode_ms`, `json_parse_ms` and their aggregate `decode_ms`, and every summary now carries explicit percentile-evidence calibration.
+- The report records exact artifact SHA-256 identities, artifact byte sizes, build/deployment identity, request URLs, production-load wall time and numeric p50/p95/p99/max for isolated verification, UTF-8 decode, JSON parse, aggregate decode and verification+decode.
+- Numeric percentiles remain descriptive measurements. `percentile_evidence` separately states whether p50/p95/p99 have enough observations to be used as percentile claims: p50 requires at least 3 samples, p95 at least 20 and p99 at least 100; max is only classified as an observed sample maximum.
+- The profiler remains bounded to 1..20 iterations and defaults to 5. Because the first replay is split from steady state, the current bounded profiler can never produce acceptance-grade steady-state p95 or p99 evidence. That is intentional: the page is diagnostic instrumentation, not a tail-latency acceptance benchmark.
 - The first replay is reported separately from later steady-state samples. This prevents one-time JIT/WebCrypto/canonicalization/parser warm-up from being silently folded into repeat-cost evidence used to motivate cache/worker experiments.
-- Iteration count is bounded to 1..20 and defaults to 5. With one iteration, `steady_state` is explicitly `null` instead of manufacturing a repeat-cost claim.
-- Every measured verification/UTF-8/JSON-parse duration must be finite and non-negative. A backwards or non-finite clock now fails closed with `PROFILE_INVALID_TIMING` instead of relying on the generic percentile helper, which otherwise filters invalid samples and could leave a misleading partial PASS summary.
-- Focused Node regressions cover deterministic phase timing, first-vs-steady-state classification, single-iteration semantics, invalid iteration counts, verification rejection, invalid JSON, backwards timing and non-finite timing.
+- With one iteration, `steady_state` is explicitly `null` instead of manufacturing a repeat-cost claim.
+- Every measured verification/UTF-8/JSON-parse duration must be finite and non-negative. A backwards or non-finite clock fails closed with `PROFILE_INVALID_TIMING` instead of relying on the generic percentile helper, which otherwise filters invalid samples and could leave a misleading partial PASS summary.
+- Focused Node regressions cover deterministic phase timing, first-vs-steady-state classification, percentile evidence thresholds, single-iteration semantics, invalid iteration counts, verification rejection, invalid JSON, backwards timing and non-finite timing.
 
 ## Why the phase split matters
 
 The previous profiler grouped `TextDecoder.decode()` and `JSON.parse()` into one number. That can identify a broad decode bottleneck, but it cannot tell whether repeated cost is dominated by byte-to-text conversion or object construction/parsing. Those paths have different optimization and worker-placement implications. The profiler exposes the distinction without changing production behavior.
 
 This still does not justify a worker/cache policy. It only makes the next automated evidence more diagnostic and reduces the chance of optimizing the wrong phase.
+
+## Percentile evidence boundary
+
+The earlier profiler emitted p95/p99 for every non-empty sample set. With the default five iterations, steady state contains only four observations; presenting a p99 from four samples is a numerical interpolation/result, not strong tail-latency evidence. The same problem applies to p95 at very small N.
+
+Schema `0.3` keeps the measured percentile values for transparency but adds an explicit evidence classification based on sample count. This prevents a small diagnostic run from being silently upgraded into a tail-performance claim. The thresholds are deliberately simple minimum-observation gates rather than a statistical confidence model: they calibrate claims, they do not claim confidence intervals or population-level guarantees.
+
+The current 20-iteration cap means steady-state p95/p99 remain `INSUFFICIENT_SAMPLES`. If tail latency becomes a real acceptance gate, it should get a separate benchmark design with a larger controlled sample population, fixed browser/artifact/build context and its own regression/CI budget rather than stretching this diagnostic page into a different tool.
 
 ## Timing integrity boundary
 
@@ -52,6 +62,6 @@ No raw Kartverket, Geonorge, NVDB, OSM or Overpass endpoint is permitted through
 
 ## Validation state
 
-The persistent LUMEN branch was synchronized without force to `main` `aeaab67e6be7d3fc41e1498f66e2f06767b61e6d` through two-parent merge `7d0789840b924c915ccc616e60f26ed0c43a6ef0`. The incoming FORGE #52 commit added only compiler/workflow/proof files, so no role-boundary conflict was resolved by LUMEN.
+The persistent LUMEN branch was synchronized without force to `main` `30fca24d323c8e5eee854c9b0f3e36deb0137428` through two-parent merge `0b09b241dbec52226b9ae16a8c41fc57b45be8c0`. Incoming FORGE #53 changes are confined to compiler/proof territory and were preserved unchanged; the PR diff remained limited to the existing LUMEN profiler surface before this hardening.
 
-Exact-head CI and Vercel Preview evidence must be recorded on PR #50 before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers.
+Exact-head CI and Vercel Preview evidence must be recorded on PR #50 before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers or tail-latency acceptance.
