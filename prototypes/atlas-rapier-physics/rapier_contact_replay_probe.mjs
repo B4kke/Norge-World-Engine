@@ -53,8 +53,11 @@ function velocityDistance(a, b) {
 }
 
 function quatAngularDistance(a, b) {
-  const dot = Math.min(1, Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w));
-  return 2 * Math.acos(dot);
+  const normA = Math.hypot(a.x, a.y, a.z, a.w);
+  const normB = Math.hypot(b.x, b.y, b.z, b.w);
+  if (!(normA > 0) || !(normB > 0)) throw new Error('rotation quaternion has zero/non-finite norm');
+  const normalizedDot = Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w) / (normA * normB);
+  return 2 * Math.acos(Math.min(1, Math.max(-1, normalizedDot)));
 }
 
 function localToWorld(local, frame) {
@@ -194,15 +197,11 @@ const sleepingAtCheckpoint = sleepingCount(scene.world, scene.dynamicHandles);
 const checkpointBytes = scene.world.takeSnapshot();
 const checkpointSha256 = sha256(checkpointBytes);
 
-// Fixed continuation from the original world.
 stepContinuation(scene.world, scene.dynamicHandles, CONTINUE_STEPS);
 const fixedFinal = capture(scene.world, scene.dynamicHandles, frame0);
 const fixedFinalSnapshotSha256 = sha256(scene.world.takeSnapshot());
 scene.world.free();
 
-// Restore the exact checkpoint and run the exact same continuation. This is a measurement
-// control, not an assumption of bit-identical state: backend snapshot/restore semantics are
-// part of what this probe is trying to characterize.
 const replayControl = RAPIER.World.restoreSnapshot(checkpointBytes);
 replayControl.timestep = DT;
 stepContinuation(replayControl, scene.dynamicHandles, CONTINUE_STEPS);
@@ -211,8 +210,6 @@ const replayControlFinalSnapshotSha256 = sha256(replayControl.takeSnapshot());
 const replayControlComparison = compareStates(fixedFinal, replayControlFinal);
 replayControl.free();
 
-// Epoch/rebase candidate: restore the same checkpoint, translate the whole physics scene,
-// keep sleeping state untouched if the backend permits it, then apply the same wake input.
 const rebased = RAPIER.World.restoreSnapshot(checkpointBytes);
 rebased.timestep = DT;
 const allHandles = [scene.floorHandle, ...scene.dynamicHandles];
