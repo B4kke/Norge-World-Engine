@@ -15,6 +15,8 @@ export const KAYKIT_KNIGHT_ASSET = Object.freeze({
   license_url: 'https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/blob/672074b73ba276876a19e8816ecdc5241817ab47/LICENSE.txt',
 });
 
+const KAYKIT_MODEL_FORWARD_YAW_OFFSET = Math.PI;
+
 function normalizedClipName(value) {
   return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
 }
@@ -44,6 +46,16 @@ function disposeObject(root) {
   });
 }
 
+function assertRenderPose(pose) {
+  if (!(pose?.position instanceof Float32Array) || pose.position.length !== 3) {
+    throw new TypeError('HUMANOID_RENDER_POSE_POSITION_REQUIRED');
+  }
+  if (![...pose.position].every(Number.isFinite) || !Number.isFinite(pose.headingRadians)) {
+    throw new TypeError('HUMANOID_RENDER_POSE_NON_FINITE');
+  }
+  return pose;
+}
+
 export async function createLicensedHumanoid({
   scene,
   asset = KAYKIT_KNIGHT_ASSET,
@@ -64,7 +76,7 @@ export async function createLicensedHumanoid({
   const scale = targetHeightM / size.y;
   root.scale.multiplyScalar(scale);
   root.position.set(Number(position[0]), Number(position[1]), Number(position[2]));
-  root.rotation.y = Math.PI;
+  root.rotation.y = KAYKIT_MODEL_FORWARD_YAW_OFFSET;
 
   let renderMeshCount = 0;
   root.traverse((object) => {
@@ -81,6 +93,7 @@ export async function createLicensedHumanoid({
   };
   let state = 'idle';
   let animationStateProbe = null;
+  let lastRenderPose = null;
   actions.idle.reset().play();
   scene.add(root);
 
@@ -96,6 +109,22 @@ export async function createLicensedHumanoid({
       previous.stop();
     }
     state = nextState;
+    return snapshot();
+  }
+
+  function setRenderPose(pose) {
+    const valid = assertRenderPose(pose);
+    root.position.set(valid.position[0], valid.position[1], valid.position[2]);
+    root.rotation.y = KAYKIT_MODEL_FORWARD_YAW_OFFSET - valid.headingRadians;
+    lastRenderPose = Object.freeze({
+      entity_id: valid.entityId ?? null,
+      world_frame_id: valid.worldFrameId ?? null,
+      origin_series_id: valid.originSeriesId ?? null,
+      origin_epoch: valid.originEpoch ?? null,
+      position: Object.freeze([...valid.position]),
+      heading_radians: valid.headingRadians,
+      model_forward_yaw_offset: KAYKIT_MODEL_FORWARD_YAW_OFFSET,
+    });
     return snapshot();
   }
 
@@ -117,6 +146,7 @@ export async function createLicensedHumanoid({
       normalized_height_m: targetHeightM,
       renderer_only_spawn: true,
       animation_state_probe: animationStateProbe,
+      render_pose: lastRenderPose,
     };
   }
 
@@ -138,6 +168,7 @@ export async function createLicensedHumanoid({
       if (Number.isFinite(deltaSeconds) && deltaSeconds > 0) mixer.update(Math.min(deltaSeconds, 0.1));
     },
     setAnimationState,
+    setRenderPose,
     snapshot,
     dispose() {
       mixer.stopAllAction();
