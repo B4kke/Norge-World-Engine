@@ -56,6 +56,16 @@ const spawn = createWorldPosition(frame, {
   assert.ok(!('originSeriesId' in transform));
   assert.ok(!('renderOrigin' in transform));
   assert.equal(characterTransformContract.headingConvention, 'clockwise-radians-from-projected-grid-north');
+  assert.equal(characterTransformContract.headingRange, '[0, 2π)');
+
+  const negativeZero = createCharacterWorldTransform({
+    entityId: 'player-2',
+    worldFrame: frame,
+    position: spawn,
+    headingRadians: -0,
+  });
+  assert.equal(negativeZero.headingRadians, 0);
+  assert.equal(Object.is(negativeZero.headingRadians, -0), false, 'authoritative heading must have one canonical zero');
 }
 
 // 2. Planar locomotion uses projected-grid bearing semantics without renderer axes.
@@ -172,7 +182,7 @@ const spawn = createWorldPosition(frame, {
   assert.deepEqual(shiftedOrigin, fixedOrigin, 'render-origin schedule must not affect authoritative character state');
 }
 
-// 6. World-frame ambiguity and invalid movement fail closed before crossing into renderer/simulation consumers.
+// 6. World-frame ambiguity, malformed canonical state and invalid movement fail closed.
 {
   const otherFrame = createWorldFrame({
     id: 'other-frame',
@@ -202,13 +212,42 @@ const spawn = createWorldPosition(frame, {
     () => setCharacterWorldHeight(frame, transform, Number.NaN),
     (error) => error instanceof CharacterTransformError && error.code === 'NON_FINITE',
   );
+
+  const forgedHeading = Object.freeze({ ...transform, headingRadians: Math.PI * 2 });
+  assert.throws(
+    () => moveCharacterPlanar(frame, forgedHeading, { forwardMeters: 1 }),
+    (error) => error instanceof CharacterTransformError && error.code === 'NON_CANONICAL_HEADING',
+  );
+}
+
+// 7. Hot-path no-ops preserve object identity and changed heading reuses immutable world position.
+{
+  const transform = createCharacterWorldTransform({
+    entityId: 'player-fast-path',
+    worldFrame: frame,
+    position: spawn,
+    headingRadians: Math.PI / 4,
+  });
+
+  assert.strictEqual(moveCharacterPlanar(frame, transform), transform, 'zero movement must allocate no new transform');
+  assert.strictEqual(setCharacterHeading(frame, transform, transform.headingRadians), transform, 'unchanged heading must allocate no new transform');
+  assert.strictEqual(setCharacterHeading(frame, transform, transform.headingRadians + Math.PI * 2), transform, 'equivalent wrapped heading must allocate no new transform');
+  assert.strictEqual(setCharacterWorldHeight(frame, transform, transform.position.height), transform, 'unchanged grounding height must allocate no new transform');
+
+  const turned = setCharacterHeading(frame, transform, Math.PI / 2);
+  assert.notStrictEqual(turned, transform);
+  assert.strictEqual(turned.position, transform.position, 'heading-only update must reuse immutable authoritative position');
+
+  const moved = moveCharacterPlanar(frame, turned, { forwardMeters: 1 });
+  assert.notStrictEqual(moved.position, turned.position, 'physical movement must create a new authoritative position');
 }
 
 console.log(JSON.stringify({
   status: 'PASS',
   contract: 'nwe.character-world-transform/0.1-candidate',
-  cases: 6,
-  authoritative: 'WorldPosition Float64 + renderer-neutral heading',
+  cases: 7,
+  authoritative: 'WorldPosition Float64 + renderer-neutral canonical heading',
   renderLocal: 'derived Float32Array / origin epoch scoped',
+  hotPath: 'no-op identity reuse + no redundant WorldPosition clone on updates',
   assetAnimationInputCamera: 'LUMEN boundary / not implemented here',
 }));
