@@ -88,8 +88,8 @@ jobs:
         run: |
           node apps/world-viewer/run_browser_artifact_profile_smoke.mjs \
             --output /tmp/nwe-browser-artifact-profile.json \
-            --timeout-ms 90000 \
-            --iterations 5
+            --timeout-ms 120000 \
+            --iterations 101
           cat /tmp/nwe-browser-artifact-profile.json
 
       - uses: actions/upload-artifact@v4
