@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://norge-world-engine.invalid/schemas/static-collision-lifecycle-event-v0.1.schema.json",
+  "title": "NWE Static Collision Lifecycle Event 0.1 candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "phase",
+    "tick",
+    "action",
+    "collisionId",
+    "tileId",
+    "artifactSha256",
+    "previousArtifactSha256",
+    "worldFrameId",
+    "physicsFrame",
+    "dependentEntityIds",
+    "continuity"
+  ],
+  "properties": {
+    "schema": {"const": "nwe.static-collision-lifecycle-event/0.1-candidate"},
+    "phase": {"const": "after-frame-maintenance-before-physics-step"},
+    "tick": {"type": "integer", "minimum": 0},
+    "action": {"enum": ["ACTIVATE", "EVICT", "REPLACE", "SET_DEPENDENCIES"]},
+    "collisionId": {"type": "string", "minLength": 1},
+    "tileId": {"type": "string", "minLength": 1},
+    "artifactSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "previousArtifactSha256": {
+      "anyOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ]
+    },
+    "worldFrameId": {"type": "string", "minLength": 1},
+    "physicsFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physicsFrameId", "epoch"],
+      "properties": {
+        "physicsFrameId": {"type": "string", "minLength": 1},
+        "epoch": {"type": "integer", "minimum": 0}
+      }
+    },
+    "dependentEntityIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "continuity": {"enum": ["none", "atomic-rebind"]}
+  }
+}
