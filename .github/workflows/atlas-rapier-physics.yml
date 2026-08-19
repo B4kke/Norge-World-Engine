@@ -35,6 +35,7 @@ jobs:
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
+          node --check prototypes/atlas-rapier-physics/rapier_constrained_migration_probe.mjs
           python -m json.tool engine/world/schemas/physics-frame-maintenance-event-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-maintenance-batch-v0.1.schema.json > /dev/null
           python -m json.tool engine/world/schemas/physics-frame-membership-event-v0.1.schema.json > /dev/null
@@ -67,6 +68,11 @@ jobs:
           node prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs | tee /tmp/atlas-rapier-contact-replay.json
           python -m json.tool /tmp/atlas-rapier-contact-replay.json > /dev/null
 
+      - name: Run constrained group migration probe
+        run: |
+          node prototypes/atlas-rapier-physics/rapier_constrained_migration_probe.mjs | tee /tmp/atlas-rapier-constrained-migration.json
+          python -m json.tool /tmp/atlas-rapier-constrained-migration.json > /dev/null
+
       - name: Upload ATLAS physics evidence
         uses: actions/upload-artifact@v4
         with:
@@ -74,4 +80,5 @@ jobs:
           path: |
             /tmp/atlas-rapier-matrix.json
             /tmp/atlas-rapier-contact-replay.json
+            /tmp/atlas-rapier-constrained-migration.json
           retention-days: 7
