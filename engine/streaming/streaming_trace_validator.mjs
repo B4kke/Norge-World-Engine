@@ -18,6 +18,38 @@ function attemptKey(payload) {
   return `${payload.tileId}#${payload.attempt}`;
 }
 
+function lifecycleKey({ phase, status, tileId, reason }) {
+  if (!['activate', 'deactivate', 'dispose'].includes(phase)) return null;
+  if (!['completed', 'failed'].includes(status)) return null;
+  if (typeof tileId !== 'string' || tileId.length === 0) return null;
+  return `${phase}|${status}|${tileId}|${typeof reason === 'string' ? reason : ''}`;
+}
+
+function schedulerLifecycleKey(payload) {
+  const mapping = {
+    'tile-activated': ['activate', 'completed'],
+    'activation-failed': ['activate', 'failed'],
+    'tile-deactivated': ['deactivate', 'completed'],
+    'deactivation-failed': ['deactivate', 'failed'],
+    'tile-evicted': ['dispose', 'completed'],
+    'disposal-failed': ['dispose', 'failed'],
+  };
+  const mapped = mapping[payload?.type];
+  if (!mapped) return null;
+  return lifecycleKey({
+    phase: mapped[0],
+    status: mapped[1],
+    tileId: payload.tileId,
+    reason: payload.reason,
+  });
+}
+
+function increment(map, key, entry) {
+  const current = map.get(key) ?? [];
+  current.push(entry);
+  map.set(key, current);
+}
+
 export function validateStreamingMovementTrace(trace, {
   requireComplete = true,
   requireKinds = [],
@@ -36,15 +68,9 @@ export function validateStreamingMovementTrace(trace, {
   if (trace.schema !== TRACE_SCHEMA) {
     issues.push(issue('TRACE_SCHEMA_MISMATCH', `expected ${TRACE_SCHEMA}`, { actual: trace.schema ?? null }));
   }
-  if (!positiveInteger(trace.maxEntries)) {
-    issues.push(issue('TRACE_MAX_ENTRIES_INVALID', 'maxEntries must be a positive integer'));
-  }
-  if (!nonNegativeInteger(trace.retainedEntries)) {
-    issues.push(issue('TRACE_RETAINED_ENTRIES_INVALID', 'retainedEntries must be a non-negative integer'));
-  }
-  if (!nonNegativeInteger(trace.droppedEntries)) {
-    issues.push(issue('TRACE_DROPPED_ENTRIES_INVALID', 'droppedEntries must be a non-negative integer'));
-  }
+  if (!positiveInteger(trace.maxEntries)) issues.push(issue('TRACE_MAX_ENTRIES_INVALID', 'maxEntries must be a positive integer'));
+  if (!nonNegativeInteger(trace.retainedEntries)) issues.push(issue('TRACE_RETAINED_ENTRIES_INVALID', 'retainedEntries must be a non-negative integer'));
+  if (!nonNegativeInteger(trace.droppedEntries)) issues.push(issue('TRACE_DROPPED_ENTRIES_INVALID', 'droppedEntries must be a non-negative integer'));
 
   const entries = Array.isArray(trace.entries) ? trace.entries : [];
   if (!Array.isArray(trace.entries)) {
@@ -111,9 +137,7 @@ export function validateStreamingMovementTrace(trace, {
   }
 
   for (const kind of requireKinds) {
-    if (!kinds.has(kind)) {
-      issues.push(issue('TRACE_REQUIRED_KIND_MISSING', `required trace kind is missing: ${kind}`, { kind }));
-    }
+    if (!kinds.has(kind)) issues.push(issue('TRACE_REQUIRED_KIND_MISSING', `required trace kind is missing: ${kind}`, { kind }));
   }
 
   const ok = issues.length === 0;
@@ -129,10 +153,14 @@ export function validateStreamingMovementTrace(trace, {
   });
 }
 
-export function validateCompletedStreamingMovementCapture(trace) {
+export function validateCompletedStreamingMovementCapture(trace, {
+  requireLifecycleObservations = false,
+} = {}) {
+  const requiredKinds = ['scheduler-event', 'terrain-load-observation', 'scheduler-snapshot'];
+  if (requireLifecycleObservations) requiredKinds.push('lifecycle-observation');
   const structural = validateStreamingMovementTrace(trace, {
     requireComplete: true,
-    requireKinds: ['scheduler-event', 'terrain-load-observation', 'scheduler-snapshot'],
+    requireKinds: requiredKinds,
   });
   if (!structural.ok) return structural;
 
@@ -140,55 +168,55 @@ export function validateCompletedStreamingMovementCapture(trace) {
   const starts = new Map();
   const observations = new Map();
   const snapshots = [];
+  const schedulerLifecycle = new Map();
+  const adapterLifecycle = new Map();
 
   for (const entry of trace.entries) {
     if (entry.kind === 'scheduler-event' && entry.payload?.type === 'load-started') {
       const key = attemptKey(entry.payload);
       if (!key) {
-        issues.push(issue('TRACE_LOAD_START_INVALID', 'load-started must include tileId and positive attempt', {
-          sequence: entry.sequence,
-        }));
+        issues.push(issue('TRACE_LOAD_START_INVALID', 'load-started must include tileId and positive attempt', { sequence: entry.sequence }));
       } else if (starts.has(key)) {
-        issues.push(issue('TRACE_LOAD_START_DUPLICATE', `duplicate load-started for ${key}`, {
-          sequence: entry.sequence,
-          key,
-        }));
-      } else {
-        starts.set(key, entry);
-      }
+        issues.push(issue('TRACE_LOAD_START_DUPLICATE', `duplicate load-started for ${key}`, { sequence: entry.sequence, key }));
+      } else starts.set(key, entry);
+    } else if (entry.kind === 'scheduler-event') {
+      const key = schedulerLifecycleKey(entry.payload);
+      if (key) increment(schedulerLifecycle, key, entry);
     } else if (entry.kind === 'terrain-load-observation') {
       const key = attemptKey(entry.payload);
       if (!key) {
-        issues.push(issue('TRACE_LOAD_OBSERVATION_INVALID', 'terrain load observation must include tileId and positive attempt', {
-          sequence: entry.sequence,
-        }));
+        issues.push(issue('TRACE_LOAD_OBSERVATION_INVALID', 'terrain load observation must include tileId and positive attempt', { sequence: entry.sequence }));
       } else if (observations.has(key)) {
-        issues.push(issue('TRACE_LOAD_OBSERVATION_DUPLICATE', `duplicate terrain load observation for ${key}`, {
-          sequence: entry.sequence,
-          key,
-        }));
-      } else {
-        observations.set(key, entry);
-      }
-    } else if (entry.kind === 'scheduler-snapshot') {
-      snapshots.push(entry);
-    }
+        issues.push(issue('TRACE_LOAD_OBSERVATION_DUPLICATE', `duplicate terrain load observation for ${key}`, { sequence: entry.sequence, key }));
+      } else observations.set(key, entry);
+    } else if (entry.kind === 'lifecycle-observation') {
+      const payload = entry.payload;
+      const key = lifecycleKey(payload ?? {});
+      if (!key || !Number.isFinite(payload?.durationMs) || payload.durationMs < 0) {
+        issues.push(issue('TRACE_LIFECYCLE_OBSERVATION_INVALID', 'lifecycle observation must include valid phase/status/tileId and non-negative durationMs', { sequence: entry.sequence }));
+      } else increment(adapterLifecycle, key, entry);
+    } else if (entry.kind === 'scheduler-snapshot') snapshots.push(entry);
   }
 
   for (const [key, start] of starts) {
-    if (!observations.has(key)) {
-      issues.push(issue('TRACE_LOAD_OBSERVATION_MISSING', `load-started has no matching terrain load observation: ${key}`, {
-        sequence: start.sequence,
-        key,
-      }));
-    }
+    if (!observations.has(key)) issues.push(issue('TRACE_LOAD_OBSERVATION_MISSING', `load-started has no matching terrain load observation: ${key}`, { sequence: start.sequence, key }));
   }
   for (const [key, observation] of observations) {
-    if (!starts.has(key)) {
-      issues.push(issue('TRACE_LOAD_START_MISSING', `terrain load observation has no matching load-started event: ${key}`, {
-        sequence: observation.sequence,
-        key,
-      }));
+    if (!starts.has(key)) issues.push(issue('TRACE_LOAD_START_MISSING', `terrain load observation has no matching load-started event: ${key}`, { sequence: observation.sequence, key }));
+  }
+
+  if (requireLifecycleObservations) {
+    const allKeys = new Set([...schedulerLifecycle.keys(), ...adapterLifecycle.keys()]);
+    for (const key of allKeys) {
+      const schedulerCount = schedulerLifecycle.get(key)?.length ?? 0;
+      const adapterCount = adapterLifecycle.get(key)?.length ?? 0;
+      if (schedulerCount !== adapterCount) {
+        issues.push(issue('TRACE_LIFECYCLE_CORRELATION_MISMATCH', `scheduler and adapter lifecycle counts differ for ${key}`, {
+          key,
+          schedulerCount,
+          adapterCount,
+        }));
+      }
     }
   }
 
@@ -212,6 +240,12 @@ export function validateCompletedStreamingMovementCapture(trace) {
       loadStarts: starts.size,
       loadObservations: observations.size,
       snapshots: snapshots.length,
+      schedulerLifecycleEvents: [...schedulerLifecycle.values()].reduce((sum, items) => sum + items.length, 0),
+      lifecycleObservations: [...adapterLifecycle.values()].reduce((sum, items) => sum + items.length, 0),
     }),
   });
+}
+
+export function validateRendererLifecycleMovementCapture(trace) {
+  return validateCompletedStreamingMovementCapture(trace, { requireLifecycleObservations: true });
 }
