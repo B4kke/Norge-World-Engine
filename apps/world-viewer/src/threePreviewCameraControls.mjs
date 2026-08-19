@@ -1,0 +1,68 @@
+import { installPreviewCameraControls } from './previewCameraControls.mjs';
+
+function finiteVector3(value, label) {
+  if (!Array.isArray(value) || value.length !== 3 || value.some((item) => !Number.isFinite(item))) {
+    throw new TypeError(`${label} must be a finite [x,y,z] vector`);
+  }
+  return value.map(Number);
+}
+
+export function cameraStateFromPose(position, target) {
+  const eye = finiteVector3(position, 'position');
+  const focus = finiteVector3(target, 'target');
+  const dx = eye[0] - focus[0];
+  const dy = eye[1] - focus[1];
+  const dz = eye[2] - focus[2];
+  const distance = Math.max(0.001, Math.hypot(dx, dy, dz));
+  return {
+    yaw: Math.atan2(dx, dz),
+    pitch: Math.asin(Math.max(-1, Math.min(1, dy / distance))),
+    distance,
+    target: [...focus],
+  };
+}
+
+export function applyCameraState(camera, state) {
+  const cp = Math.cos(state.pitch);
+  camera.position.set(
+    state.target[0] + Math.sin(state.yaw) * cp * state.distance,
+    state.target[1] + Math.sin(state.pitch) * state.distance,
+    state.target[2] + Math.cos(state.yaw) * cp * state.distance,
+  );
+  camera.lookAt(state.target[0], state.target[1], state.target[2]);
+  return camera;
+}
+
+export function installThreePreviewCameraControls({ canvas, camera, target, onChange = () => {} } = {}) {
+  if (!canvas || !camera?.position || typeof camera.lookAt !== 'function') throw new TypeError('canvas and Three camera are required');
+  const initial = cameraStateFromPose([camera.position.x, camera.position.y, camera.position.z], target);
+  const state = { ...initial, target: [...initial.target] };
+
+  const sync = () => {
+    applyCameraState(camera, state);
+    onChange(state);
+  };
+
+  const remove = installPreviewCameraControls(canvas, state, sync, {
+    resetCamera: () => {
+      state.yaw = initial.yaw;
+      state.pitch = initial.pitch;
+      state.distance = initial.distance;
+      state.target.splice(0, 3, ...initial.target);
+    },
+  });
+
+  return {
+    state,
+    sync,
+    dispose: remove,
+    snapshot() {
+      return {
+        yaw: state.yaw,
+        pitch: state.pitch,
+        distance: state.distance,
+        target: [...state.target],
+      };
+    },
+  };
+}
