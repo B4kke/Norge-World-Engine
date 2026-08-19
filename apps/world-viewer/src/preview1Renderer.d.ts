@@ -62,6 +62,14 @@ export function createPreview1Renderer(options: any): Promise<{
   invalidate(): void;
   dispose(): void;
   setCharacterAnimationState(state: 'idle' | 'walk', options?: { fadeSeconds?: number }): HumanoidRenderState;
+  setCharacterRenderPose(pose: {
+    entityId?: string;
+    worldFrameId?: string;
+    originSeriesId?: string;
+    originEpoch?: number;
+    position: Float32Array;
+    headingRadians: number;
+  }): HumanoidRenderState;
   getCharacterState(): HumanoidRenderState;
 }>;
 
@@ -85,5 +93,14 @@ type HumanoidRenderState = {
     schema: 'nwe.humanoid-animation-state-probe/0.1' | string;
     status: 'PASS' | string;
     states: readonly ['idle', 'walk', 'idle'] | readonly string[];
+  } | null;
+  render_pose?: {
+    entity_id: string | null;
+    world_frame_id: string | null;
+    origin_series_id: string | null;
+    origin_epoch: number | null;
+    position: readonly number[];
+    heading_radians: number;
+    model_forward_yaw_offset: number;
   } | null;
 };
