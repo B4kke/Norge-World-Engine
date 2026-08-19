@@ -1,21 +1,28 @@
-# LUMEN browser provenance + JSON decode profile
+# LUMEN browser provenance + decode profile
 
 ## Purpose
 
 Advance the automated browser/performance part of `P0-VIEWER-01` and the open profiling follow-up under `P0-PROVENANCE-02` without weakening runtime verification or requiring a physical handset run.
 
-The accepted Nannestad road/building browser path previously showed verification/decode costs large enough to justify a more isolated measurement. The deployable profiler added here keeps the normal production load intact, then replays the same shared `verifyRuntimeBundleWeb` verifier against the already-fetched compiled bytes so verification time can be separated from strict UTF-8 JSON decode time.
+The accepted Nannestad road/building browser path previously showed verification/decode costs large enough to justify a more isolated measurement. The deployable profiler added here keeps the normal production load intact, then replays the same shared `verifyRuntimeBundleWeb` verifier against the already-fetched compiled bytes so verification time can be separated from strict UTF-8 decoding and `JSON.parse` time.
 
 ## Implemented
 
 - `apps/world-viewer/browser-artifact-profile.html` is a deployable Vite measurement page.
 - It loads the accepted Preview manifest and only the compiled road/building RuntimeVerificationBundle + artifact transports.
 - Every production layer load still uses `loadCompiledJsonArtifact`, including pre-fetch raw-source transport guards and the full shared RuntimeVerificationBundle reconstruction before JSON use.
-- After that PASS, `profileVerifiedJsonArtifact` re-runs the same shared browser verifier on the in-memory artifact bytes and separately measures strict UTF-8 JSON decode.
-- The report records exact artifact SHA-256 identities, artifact byte sizes, build/deployment identity, request URLs, production-load wall time and p50/p95/p99/max for isolated verification, decode and their sum.
-- The first replay is reported separately from later steady-state samples. This prevents one-time JIT/WebCrypto/canonicalization warm-up from being silently folded into repeat-cost evidence used to motivate cache/worker experiments.
+- After that PASS, `profileVerifiedJsonArtifact` re-runs the same shared browser verifier on the in-memory artifact bytes and separately measures strict UTF-8 byte-to-text decoding and `JSON.parse`.
+- The profile schema is `nwe.browser-artifact-profile/0.2` because the decode phase is now split into `utf8_decode_ms`, `json_parse_ms` and their backward-readable aggregate `decode_ms`.
+- The report records exact artifact SHA-256 identities, artifact byte sizes, build/deployment identity, request URLs, production-load wall time and p50/p95/p99/max for isolated verification, UTF-8 decode, JSON parse, aggregate decode and verification+decode.
+- The first replay is reported separately from later steady-state samples. This prevents one-time JIT/WebCrypto/canonicalization/parser warm-up from being silently folded into repeat-cost evidence used to motivate cache/worker experiments.
 - Iteration count is bounded to 1..20 and defaults to 5. With one iteration, `steady_state` is explicitly `null` instead of manufacturing a repeat-cost claim.
-- Focused Node regressions cover deterministic timing separation, first-vs-steady-state classification, single-iteration semantics, invalid iteration counts, verification rejection and invalid JSON.
+- Focused Node regressions cover deterministic phase timing, first-vs-steady-state classification, single-iteration semantics, invalid iteration counts, verification rejection and invalid JSON.
+
+## Why the phase split matters
+
+The previous profiler grouped `TextDecoder.decode()` and `JSON.parse()` into one number. That can identify a broad decode bottleneck, but it cannot tell whether repeated cost is dominated by byte-to-text conversion or object construction/parsing. Those paths have different optimization and worker-placement implications. The profiler now exposes the distinction without changing production behavior.
+
+This still does not justify a worker/cache policy. It only makes the next automated evidence more diagnostic and reduces the chance of optimizing the wrong phase.
 
 ## Evidence boundary
 
@@ -23,7 +30,7 @@ This profiler is measurement instrumentation, not a verification cache and not a
 
 The isolated replay excludes network fetch time and does not measure terrain worker cost, GPU upload, renderer frame time, Android behavior or WebGPU performance. Hosted results are browser/runtime evidence only and must not be promoted into device-specific claims.
 
-First-replay and steady-state numbers answer different questions. The first replay can include one-time browser/JIT/crypto setup; later samples describe repeated in-page work only. Neither is, by itself, evidence that verification should be cached or moved to a worker. Any such policy remains STRØM/SENTINEL territory and needs a separate measured experiment that preserves the mandatory verification boundary.
+First-replay and steady-state numbers answer different questions. The first replay can include one-time browser/JIT/crypto/parser setup; later samples describe repeated in-page work only. Neither is, by itself, evidence that verification should be cached or moved to a worker. Any such policy remains STRØM/SENTINEL territory and needs a separate measured experiment that preserves the mandatory verification boundary.
 
 No raw Kartverket, Geonorge, NVDB, OSM or Overpass endpoint is permitted through the profiler fetch wrapper. `raw_source_calls` can only be reported as 0 after the guarded production loads complete.
 
@@ -38,4 +45,6 @@ No raw Kartverket, Geonorge, NVDB, OSM or Overpass endpoint is permitted through
 
 ## Validation state
 
-The persistent LUMEN branch was synchronized without force to `main` `40d38f7ee22fa7051dd156204a3e6b37265a95dc` before this hardening. Exact-head CI and Vercel Preview evidence must be recorded on the PR before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers.
+The persistent LUMEN branch was synchronized without force to `main` `e1005f2684778cd2e468e9f167df2742fe5e1e7a` through two-parent merge `dd42e388b48481e6037bb90f922659f8204e2b12` before this hardening. The incoming FORGE commit added only compiler/proof files, so no role-boundary conflict was resolved by LUMEN.
+
+Exact-head CI and Vercel Preview evidence must be recorded on PR #50 before integration. Until those complete, this proof claims implementation/regression coverage only, not hosted timing numbers.
