@@ -1,11 +1,26 @@
 import assert from 'node:assert/strict';
-import { normalizeProfileIterations, profileVerifiedJsonArtifact } from './src/browserArtifactProfile.mjs';
+import {
+  classifyPercentileEvidence,
+  normalizeProfileIterations,
+  profileVerifiedJsonArtifact,
+} from './src/browserArtifactProfile.mjs';
 
 assert.equal(normalizeProfileIterations(1), 1);
 assert.equal(normalizeProfileIterations('5'), 5);
 assert.throws(() => normalizeProfileIterations(0), /iterations must be an integer/);
 assert.throws(() => normalizeProfileIterations(21), /iterations must be an integer/);
 assert.throws(() => normalizeProfileIterations(1.5), /iterations must be an integer/);
+
+assert.equal(classifyPercentileEvidence(0).p50.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(classifyPercentileEvidence(2).p50.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(classifyPercentileEvidence(3).p50.status, 'SUPPORTED');
+assert.equal(classifyPercentileEvidence(19).p95.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(classifyPercentileEvidence(20).p95.status, 'SUPPORTED');
+assert.equal(classifyPercentileEvidence(99).p99.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(classifyPercentileEvidence(100).p99.status, 'SUPPORTED');
+assert.equal(classifyPercentileEvidence(1).max.status, 'OBSERVED');
+assert.throws(() => classifyPercentileEvidence(-1), /non-negative integer/);
+assert.throws(() => classifyPercentileEvidence(1.5), /non-negative integer/);
 
 const bundle = {
   artifact_ref: {
@@ -30,12 +45,16 @@ const profile = await profileVerifiedJsonArtifact({
 });
 
 assert.equal(verifyCalls, 2);
-assert.equal(profile.schema, 'nwe.browser-artifact-profile/0.2');
+assert.equal(profile.schema, 'nwe.browser-artifact-profile/0.3');
 assert.equal(profile.status, 'PASS');
 assert.equal(profile.replay_only, true);
 assert.equal(profile.network_fetch_included, false);
 assert.equal(profile.artifact_role, 'road-network');
 assert.equal(profile.iterations, 2);
+assert.equal(profile.percentile_evidence.sample_count, 2);
+assert.equal(profile.percentile_evidence.p50.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(profile.percentile_evidence.p95.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(profile.percentile_evidence.p99.status, 'INSUFFICIENT_SAMPLES');
 assert.deepEqual(profile.samples, [
   { iteration: 1, verification_ms: 4, utf8_decode_ms: 1, json_parse_ms: 2, decode_ms: 3, total_ms: 7 },
   { iteration: 2, verification_ms: 6, utf8_decode_ms: 2, json_parse_ms: 3, decode_ms: 5, total_ms: 11 },
@@ -48,6 +67,10 @@ assert.deepEqual(profile.first_replay, {
   total_ms: 7,
 });
 assert.equal(profile.steady_state.iterations, 1);
+assert.equal(profile.steady_state.percentile_evidence.sample_count, 1);
+assert.equal(profile.steady_state.percentile_evidence.p50.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(profile.steady_state.percentile_evidence.p95.status, 'INSUFFICIENT_SAMPLES');
+assert.equal(profile.steady_state.percentile_evidence.p99.status, 'INSUFFICIENT_SAMPLES');
 assert.equal(profile.steady_state.verification_ms.p50_ms, 6);
 assert.equal(profile.steady_state.utf8_decode_ms.p50_ms, 2);
 assert.equal(profile.steady_state.json_parse_ms.p50_ms, 3);
