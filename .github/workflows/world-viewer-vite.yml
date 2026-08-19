@@ -74,8 +74,12 @@ jobs:
       - name: Assert static deployment output
         run: |
           test -f apps/world-viewer/dist/index.html
+          test -f apps/world-viewer/dist/preview1.html
+          test -f apps/world-viewer/dist/preview3.html
           test -f apps/world-viewer/dist/device-evidence.html
           test -f apps/world-viewer/dist/browser-artifact-profile.html
+          grep -q 'preview3Entry' apps/world-viewer/index.html
+          grep -q 'src/main.ts' apps/world-viewer/preview1.html
           test -d apps/world-viewer/dist/assets
           find apps/world-viewer/dist -maxdepth 2 -type f -print
 
@@ -101,7 +105,11 @@ jobs:
 
       - name: Exact Preview 1 renderer A/B on accepted compiled artifacts
         run: |
+          rm -rf /tmp/nwe-preview1-dist
+          cp -R apps/world-viewer/dist /tmp/nwe-preview1-dist
+          cp apps/world-viewer/dist/preview1.html /tmp/nwe-preview1-dist/index.html
           node apps/world-viewer/run_preview1_renderer_benchmark.mjs \
+            --dist-root /tmp/nwe-preview1-dist \
             --output /tmp/nwe-preview1-renderer-benchmark.json \
             --timeout-ms 90000 \
             --graphics balanced \
