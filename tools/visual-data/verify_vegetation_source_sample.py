@@ -26,18 +26,19 @@ def load_json(path: str) -> dict[str, Any]:
 def verify_sr16_selection(materialization: dict[str, Any]) -> bool:
     source = materialization["sources"]["sr16v"]
     selection = source["selection"]
-    areas = selection.get("areas") or []
-    projections = selection.get("projections") or []
-    formats = selection.get("formats") or []
+    cache = source["cache"]
     checks = (
         str(source.get("metadata_uuid")) == SR16_VECTOR_METADATA_UUID,
-        str(selection.get("metadataUuid")) == SR16_VECTOR_METADATA_UUID,
-        len(areas) == 1 and str(areas[0].get("code")) == "3238",
-        len(projections) == 1 and str(projections[0].get("code")) == "25832",
-        len(formats) == 1 and str(formats[0].get("name", "")).lower() == "gml",
+        str(selection.get("metadata_uuid")) == SR16_VECTOR_METADATA_UUID,
+        str(selection.get("municipality_code")) == "3238",
+        str(selection.get("projection")) == "EPSG:25832",
+        str(selection.get("format", "")).upper() == "SOSI",
+        str(source.get("delivery")) == "NIBIO Atom Feed",
+        str(cache.get("source_format", "")).upper() == "SOSI",
+        "3238_25832_sr16_sosi" in str(selection.get("href", "")).lower(),
     )
     if not all(checks):
-        raise RuntimeError(f"SR16V materialization selection drifted: {selection!r}")
+        raise RuntimeError(f"SR16V materialization selection drifted: {source!r}")
     return True
 
 
@@ -68,6 +69,7 @@ def main() -> int:
     if not semantic_equal:
         raise RuntimeError("independent AR50 acquisitions did not normalize to the same semantic hash")
 
+    sr16_cache = materialization["sources"]["sr16v"]["cache"]
     summary = {
         "schema": "nwe.vegetation-source-sample-gate/0.1",
         "status": "PASS",
@@ -81,8 +83,10 @@ def main() -> int:
         "sr16v": {
             "selection_verified": selection_verified,
             "metadata_uuid": materialization["sources"]["sr16v"]["metadata_uuid"],
-            "source_gml_sha256": materialization["sources"]["sr16v"]["cache"]["gml_sha256"],
-            "source_gml_bytes": materialization["sources"]["sr16v"]["cache"]["gml_bytes"],
+            "delivery": materialization["sources"]["sr16v"]["delivery"],
+            "source_format": sr16_cache["source_format"],
+            "source_sha256": sr16_cache["source_sha256"],
+            "source_bytes": sr16_cache["source_bytes"],
             "normalized_feature_count": a1["layers"]["sr16v"]["stats"]["normalized_feature_count"],
             "normalized_property_names": a1["layers"]["sr16v"]["stats"]["normalized_property_names"],
         },
