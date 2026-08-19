@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Materialize one bounded Nannestad vegetation source cache for offline normalization.
 
-This is a manual/source-gate tool. It creates one public NIBIO SR16V GML order for
-Nannestad and performs two bounded AR50 WFS reads for the accepted 1 km tile.
-Raw provider bytes stay in --work-dir and must never be committed or uploaded as CI artifacts.
+This is a manual/source-gate tool. It resolves the current SR16V Nannestad/EPSG:25832
+SOSI snapshot from NIBIO's Atom feed and performs two bounded AR50 WFS reads for the
+accepted 1 km tile. Raw provider bytes stay in --work-dir and must never be committed or
+uploaded as CI artifacts.
 """
 from __future__ import annotations
 
@@ -14,20 +15,24 @@ import shutil
 import sys
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from materialize_visual_source_samples import first_file, safe_extract_zip, stream_download
-from order_visual_source_samples import TARGETS, order_target
+from materialize_visual_source_samples import safe_extract_zip, stream_download
 from probe_vegetation_real_sample import (
     AR50_WFS_URL,
     BOUNDS_25832,
+    SR16_ATOM_URLS,
+    compact_text,
+    fetch,
+    local_name,
     choose_ar50_feature_type,
     parse_ar50_capabilities,
 )
 
-USER_AGENT = "NorgeWorldEngine-VegetationSourceCache/0.1 (+https://github.com/B4kke/Norge-World-Engine)"
+USER_AGENT = "NorgeWorldEngine-VegetationSourceCache/0.2 (+https://github.com/B4kke/Norge-World-Engine)"
 SR16_VECTOR_METADATA_UUID = "27206b9e-4830-4f71-810d-d04c0dc32b59"
 SR16_MAX_ARCHIVE_BYTES = 500_000_000
 AR50_MAX_BYTES = 16 * 1024 * 1024
@@ -82,56 +87,70 @@ def fetch_ar50_raw(feature_type: str, version: str, destination: Path) -> dict[s
         }
 
 
-def validate_sr16_selection(selection: dict[str, Any]) -> None:
-    if str(selection.get("metadataUuid")) != SR16_VECTOR_METADATA_UUID:
-        raise RuntimeError(f"unexpected SR16 metadata UUID in provider selection: {selection!r}")
-    areas = selection.get("areas") or []
-    projections = selection.get("projections") or []
-    formats = selection.get("formats") or []
-    if len(areas) != 1 or str(areas[0].get("code")) != "3238":
-        raise RuntimeError(f"SR16 selection is not exactly Nannestad/3238: {selection!r}")
-    if len(projections) != 1 or str(projections[0].get("code")) != "25832":
-        raise RuntimeError(f"SR16 selection is not exactly EPSG:25832: {selection!r}")
-    if len(formats) != 1 or str(formats[0].get("name", "")).lower() != "gml":
-        raise RuntimeError(f"SR16 selection is not exactly GML: {selection!r}")
+def select_sr16v_sosi_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
+    atom_url = SR16_ATOM_URLS["vector"]
+    raw, atom_http = fetch(atom_url, max_bytes=4 * 1024 * 1024)
+    root = ET.fromstring(raw)
+    matches: list[dict[str, Any]] = []
+    for entry in root.iter():
+        if local_name(entry.tag) != "entry":
+            continue
+        title = next((compact_text(child.text) for child in entry if local_name(child.tag) == "title"), None)
+        updated = next((compact_text(child.text) for child in entry if local_name(child.tag) == "updated"), None)
+        entry_text = (title or "").lower()
+        if "nannestad" not in entry_text or "sone 32" not in entry_text:
+            continue
+        for child in entry:
+            if local_name(child.tag) != "link":
+                continue
+            href = child.attrib.get("href")
+            if not href:
+                continue
+            href_lower = href.lower()
+            if "3238_25832_sr16_sosi" not in href_lower or not href_lower.endswith(".zip"):
+                continue
+            matches.append({
+                "metadata_uuid": SR16_VECTOR_METADATA_UUID,
+                "municipality_code": "3238",
+                "municipality_name": "Nannestad",
+                "projection": "EPSG:25832",
+                "format": "SOSI",
+                "entry_title": title,
+                "entry_updated": updated,
+                "href": href,
+                "rel": child.attrib.get("rel"),
+            })
+    if len(matches) != 1:
+        raise RuntimeError(f"expected exactly one SR16V Nannestad/EPSG:25832 SOSI Atom snapshot, found {len(matches)}")
+    return matches[0], atom_http
 
 
 def materialize_sr16v(root: Path) -> dict[str, Any]:
-    config = dict(TARGETS["sr16_vector"])
-    # Prefer GML for the normalization gate so generic GDAL/OGR can parse it without
-    # relying on an optional SOSI/FYBA driver in the hosted runner image.
-    config["format"] = "GML"
-    order = order_target("sr16_vector", config)
-    validate_sr16_selection(order["selection"])
-    provider_file = first_file(order["receipt"])
-
+    selection, atom_http = select_sr16v_sosi_snapshot()
     sr16_root = root / "sr16v"
     sr16_root.mkdir(parents=True, exist_ok=True)
-    archive = sr16_root / str(provider_file.get("name") or "sr16v-nannestad.zip")
-    download = stream_download(str(provider_file["downloadUrl"]), archive, SR16_MAX_ARCHIVE_BYTES)
+    archive = sr16_root / "3238_25832_sr16_sosi.zip"
+    download = stream_download(str(selection["href"]), archive, SR16_MAX_ARCHIVE_BYTES)
     extracted = sr16_root / "extracted"
     archive_info = safe_extract_zip(archive, extracted)
-    gml_files = sorted(extracted.rglob("*.gml")) + sorted(extracted.rglob("*.GML"))
-    if len(gml_files) != 1:
-        raise RuntimeError(f"expected exactly one SR16V GML source file, found {len(gml_files)}")
-    gml = gml_files[0]
+    source_files = sorted(extracted.rglob("*.sos")) + sorted(extracted.rglob("*.Sos")) + sorted(extracted.rglob("*.SOSI")) + sorted(extracted.rglob("*.sosi"))
+    if len(source_files) != 1:
+        raise RuntimeError(f"expected exactly one SR16V SOSI source file, found {len(source_files)}")
+    source = source_files[0]
     return {
         "status": "PASS",
         "metadata_uuid": SR16_VECTOR_METADATA_UUID,
-        "selection": order["selection"],
-        "provider_file": {
-            "name": provider_file.get("name"),
-            "status": provider_file.get("status"),
-            "format": provider_file.get("format"),
-            "projection": provider_file.get("projection"),
-        },
+        "delivery": "NIBIO Atom Feed",
+        "selection": selection,
+        "atom_http": atom_http,
         "download": download,
         "archive": archive_info,
         "cache": {
             "archive_relative_path": str(archive.relative_to(root)),
-            "gml_relative_path": str(gml.relative_to(root)),
-            "gml_bytes": gml.stat().st_size,
-            "gml_sha256": sha256_path(gml),
+            "source_relative_path": str(source.relative_to(root)),
+            "source_format": "SOSI",
+            "source_bytes": source.stat().st_size,
+            "source_sha256": sha256_path(source),
         },
     }
 
@@ -170,7 +189,7 @@ def main() -> int:
     root.mkdir(parents=True, exist_ok=True)
 
     report: dict[str, Any] = {
-        "schema": "nwe.vegetation-source-cache-materialization/0.1",
+        "schema": "nwe.vegetation-source-cache-materialization/0.2",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "target_tile": {
             "id": "epsg25832_611000_6677000_1000m",
@@ -181,7 +200,7 @@ def main() -> int:
             "manual_gate_only": True,
             "raw_files_committable": False,
             "raw_files_uploadable": False,
-            "sr16_order_creates_email_notification": False,
+            "provider_order_created": False,
         },
         "sources": {},
     }
