@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nwe.physics-frame-maintenance-event/0.1-candidate",
+  "title": "NWE physics frame maintenance event candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "tick",
+    "worldFrameId",
+    "physicsFrameId",
+    "fromEpoch",
+    "toEpoch",
+    "reason",
+    "fromAnchorWorld",
+    "toAnchorWorld",
+    "deltaWorld"
+  ],
+  "properties": {
+    "schema": { "const": "nwe.physics-frame-maintenance-event/0.1-candidate" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "worldFrameId": { "type": "string", "minLength": 1 },
+    "physicsFrameId": { "type": "string", "minLength": 1 },
+    "fromEpoch": { "type": "integer", "minimum": 0 },
+    "toEpoch": { "type": "integer", "minimum": 1 },
+    "reason": { "type": "string", "minLength": 1 },
+    "fromAnchorWorld": { "$ref": "#/$defs/worldAnchor" },
+    "toAnchorWorld": { "$ref": "#/$defs/worldAnchor" },
+    "deltaWorld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["east", "north", "up"],
+      "properties": {
+        "east": { "type": "number" },
+        "north": { "type": "number" },
+        "up": { "type": "number" }
+      }
+    }
+  },
+  "$defs": {
+    "worldAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["easting", "northing", "height"],
+      "properties": {
+        "easting": { "type": "number" },
+        "northing": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    }
+  }
+}
