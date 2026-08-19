@@ -1,0 +1,40 @@
+name: dtm1-nannestad-project-lineage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_nannestad_project_lineage.py'
+      - 'engine/compiler/tests/test_dtm1_nannestad_project_lineage.py'
+      - 'tools/geo/dtm1_nannestad_project_lineage_probe.py'
+      - '.github/workflows/dtm1-nannestad-project-lineage.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install compiler test dependencies
+        run: python -m pip install -e engine/compiler pytest
+      - name: Run focused regressions
+        run: pytest -q engine/compiler/tests/test_dtm1_nannestad_project_lineage.py
+      - name: Query exact Nannestad overlap project metadata
+        run: |
+          mkdir -p evidence/dtm1-nannestad-project-lineage
+          python tools/geo/dtm1_nannestad_project_lineage_probe.py \
+            --output evidence/dtm1-nannestad-project-lineage/proof.json
+      - name: Reject raw geodata from evidence
+        run: |
+          if find evidence -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'Raw geodata detected in evidence package' >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dtm1-nannestad-project-lineage
+          path: evidence/dtm1-nannestad-project-lineage/proof.json
+          retention-days: 7
