@@ -9,17 +9,19 @@ import {
 } from './src/threeGroundVisualStyle.mjs';
 
 const renderer = {
-  shadowMap: { enabled: false },
+  shadowMap: { enabled: false, type: null },
   outputColorSpace: null,
   toneMapping: null,
   toneMappingExposure: null,
 };
 const rendererStyle = configureGroundRendererVisualStyle(renderer);
 assert.equal(renderer.shadowMap.enabled, true);
+assert.equal(renderer.shadowMap.type, THREE.BasicShadowMap, 'bounded shadows must use the single-sample BasicShadowMap path');
 assert.equal(renderer.outputColorSpace, THREE.SRGBColorSpace);
 assert.equal(renderer.toneMapping, THREE.ACESFilmicToneMapping);
 assert.equal(renderer.toneMappingExposure, 1.05);
 assert.equal(rendererStyle.shadows_enabled, true);
+assert.equal(rendererStyle.shadow_filter, 'BasicShadowMap');
 
 const scene = new THREE.Scene();
 const lighting = createGroundLighting(scene);
@@ -32,6 +34,7 @@ assert.equal(lighting.sun.shadow.camera.top, 70);
 assert.equal(lighting.sun.shadow.camera.bottom, -70);
 assert.equal(lighting.sun.shadow.autoUpdate, false, 'shadow map must not regenerate on every render');
 assert.equal(lighting.snapshot().shadow.strategy, 'single-player-following-directional-frustum');
+assert.equal(lighting.snapshot().shadow.filter, 'BasicShadowMap');
 assert.equal(lighting.snapshot().shadow.update_distance_m, 8);
 assert.equal(lighting.snapshot().shadow.update_count, 1, 'initial shadow anchor must request one shadow render');
 assert.equal(scene.fog.near, GROUND_VISUAL_STYLE.fogNearM);
