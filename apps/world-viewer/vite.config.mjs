@@ -1,8 +1,13 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
-const gitCommitSha = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? null;
-const deploymentId = process.env.VERCEL_DEPLOYMENT_ID ?? null;
+const gitCommitSha = process.env.VERCEL_GIT_COMMIT_SHA
+  ?? process.env.GITHUB_SHA
+  ?? process.env.RENDER_GIT_COMMIT
+  ?? null;
+const deploymentId = process.env.VERCEL_DEPLOYMENT_ID
+  ?? process.env.RENDER_SERVICE_ID
+  ?? null;
 
 export default defineConfig({
   define: {
