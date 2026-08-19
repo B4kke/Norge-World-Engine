@@ -210,7 +210,8 @@ async function main() {
 
   try {
     const report = await Promise.race([reportPromise, timeoutPromise, exitPromise]);
-    const proof = assertReport(report, process.env.GITHUB_SHA ?? null);
+    const expectedCommit = process.env.NWE_BUILD_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? null;
+    const proof = assertReport(report, expectedCommit);
     writeFileSync(output, `${JSON.stringify(proof, null, 2)}\n`);
     console.log(JSON.stringify(proof, null, 2));
   } finally {
