@@ -16,7 +16,7 @@ jobs:
 
       - name: Install compiler and GDAL dependencies
         run: |
-          python -m pip install --disable-pip-version-check -e engine/compiler
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
           if ! command -v ogrinfo >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends gdal-bin
