@@ -39,9 +39,25 @@ assert.deepEqual(profile.samples, [
   { iteration: 1, verification_ms: 4, decode_ms: 1, total_ms: 5 },
   { iteration: 2, verification_ms: 6, decode_ms: 2, total_ms: 8 },
 ]);
+assert.deepEqual(profile.first_replay, { verification_ms: 4, decode_ms: 1, total_ms: 5 });
+assert.equal(profile.steady_state.iterations, 1);
+assert.equal(profile.steady_state.verification_ms.p50_ms, 6);
+assert.equal(profile.steady_state.decode_ms.p50_ms, 2);
+assert.equal(profile.steady_state.verification_plus_decode_ms.largest_ms, 8);
 assert.equal(profile.verification_ms.p50_ms, 5);
 assert.equal(profile.decode_ms.p50_ms, 1.5);
 assert.equal(profile.verification_plus_decode_ms.largest_ms, 8);
+
+let singleTick = 0;
+const single = await profileVerifiedJsonArtifact({
+  bundle,
+  bytes,
+  iterations: 1,
+  now: () => [0, 3, 3, 4][singleTick++],
+  verifyImpl: async () => ({ ok: true, decision: 'READY_FOR_RUNTIME', code: 'RUNTIME_VERIFICATION_PASS' }),
+});
+assert.deepEqual(single.first_replay, { verification_ms: 3, decode_ms: 1, total_ms: 4 });
+assert.equal(single.steady_state, null);
 
 await assert.rejects(
   profileVerifiedJsonArtifact({
