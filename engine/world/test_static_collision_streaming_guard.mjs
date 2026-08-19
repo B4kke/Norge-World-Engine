@@ -143,7 +143,7 @@ await check('missing simulation tick authority fails closed before disposal', as
   let downstreamCalls = 0;
   const guard = makeGuard({
     state: initialState([]),
-    simulationTick: undefined,
+    simulationTick: null,
     downstreamDispose: async () => { downstreamCalls += 1; },
   });
   await assert.rejects(guard.disposeTile(tile, payload), /simulation tick/);
