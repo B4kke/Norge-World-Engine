@@ -140,6 +140,7 @@ export class TileStreamingScheduler {
       activationFailures: 0,
       residentBudgetDeferrals: 0,
       residentBudgetPreemptions: 0,
+      residentBudgetPreemptionFailures: 0,
       deactivations: 0,
       deactivationFailures: 0,
       evictions: 0,
@@ -327,7 +328,17 @@ export class TileStreamingScheduler {
       .sort((a, b) => b.priority - a.priority || b.tile.id.localeCompare(a.tile.id));
 
     for (const incumbent of lowerPriorityResidents) {
-      await this.#deactivate(incumbent, 'resident-budget-preempted');
+      try {
+        await this.#deactivate(incumbent, 'resident-budget-preempted');
+      } catch (error) {
+        this.metrics.residentBudgetPreemptionFailures += 1;
+        this.#emit('resident-budget-preemption-failed', {
+          tileId: record.tile.id,
+          incumbentTileId: incumbent.tile.id,
+          message: String(error?.message ?? error),
+        });
+        continue;
+      }
       this.metrics.residentBudgetPreemptions += 1;
       projectedResidentBytes = this.bytesResident + this.bytesActivating + record.byteSize;
       if (projectedResidentBytes <= this.maxResidentBytes) return true;
