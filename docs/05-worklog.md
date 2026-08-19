@@ -153,3 +153,35 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-04`: replace the current naive building roof fan with polygon-safe roofs and explicit wall/roof material classes while preserving source-backed versus fallback height semantics.
+
+## 2026-08-19 22:07 CEST — LUMEN — P0-GROUND-04
+
+**What**
+- Replaced the naive first-vertex roof fan with polygon-safe 2D footprint triangulation using Three.js' bundled Earcut implementation.
+- Split building render geometry into batched wall and roof typed-array layers while retaining a combined compatibility buffer for existing renderer consumers.
+- Added four bounded Three PBR presentation layers: source-backed walls/roofs and unresolved-height walls/roofs.
+- Preserved source-backed building heights and kept the unresolved 5 m height plus 0.08 m terrain lift explicitly renderer-only.
+- Added a concave L-footprint regression that verifies roof triangles remain inside the footprint and face upward.
+
+**Why**
+- `P0-GROUND-04` was the highest-priority open renderer task. The previous fan triangulation could escape concave footprints, which would make accepted building geometry visibly wrong at street level.
+
+**Result / evidence**
+- FACT: draft PR #74 exact head `73747d7ec6df66ef7c22b14c1a9ba781fbd7c252` passes hosted `baseline` run 32296147674, `world-viewer-vite` run 32296147784 and `viewer-benchmark` run 32296147709.
+- FACT: the normal World Viewer gate passes production build, the concave-roof regression, exact accepted-artifact provenance/decode, DedicatedWorker terrain path, Preview 1 browser rendering and movement/cache/resource lifecycle smoke.
+- FACT: the browser path rendered the accepted 135-building artifact `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd` through the new roof/material path without raw OSM/source acquisition.
+- FACT: the Three renderer remains batched by semantic layer rather than per building; splitting walls/roofs is a bounded draw-call tradeoff, not a 135-building fanout.
+
+**Changed**
+- Branch `agent/lumen-ground-04`, draft PR #74.
+- `apps/world-viewer/src/buildingSurfaceGeometry.mjs`.
+- `apps/world-viewer/src/preview1SceneGeometry.mjs`.
+- `apps/world-viewer/src/threeGroundRenderer.mjs`.
+- `apps/world-viewer/src/preview1Renderer.d.ts`.
+- `apps/world-viewer/test_building_surface_geometry.mjs`.
+- `apps/world-viewer/test_three_ground_renderer.mjs`.
+- `apps/world-viewer/package.json`.
+- `docs/05-worklog.md`, `docs/06-task-queue.md` and Drive active agent log.
+
+**Next**
+- `P0-GROUND-05`: integrate one lightweight humanoid glTF/GLB from a primary source with verified permissive redistribution, and prove idle/walk animation state in the normal viewer without taking ownership of ATLAS' authoritative character transform contract.
