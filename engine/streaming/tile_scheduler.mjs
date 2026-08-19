@@ -139,6 +139,7 @@ export class TileStreamingScheduler {
       activations: 0,
       activationFailures: 0,
       residentBudgetDeferrals: 0,
+      residentBudgetPreemptions: 0,
       deactivations: 0,
       deactivationFailures: 0,
       evictions: 0,
@@ -309,13 +310,39 @@ export class TileStreamingScheduler {
     this.#emit('load-abort-requested', { tileId: record.tile.id, reason });
   }
 
+  #higherPriority(candidate, incumbent) {
+    return candidate.priority < incumbent.priority
+      || (candidate.priority === incumbent.priority && candidate.tile.id.localeCompare(incumbent.tile.id) < 0);
+  }
+
+  async #makeResidentBudgetRoom(record) {
+    if (this.maxResidentBytes == null) return true;
+    if (record.byteSize > this.maxResidentBytes) return false;
+
+    let projectedResidentBytes = this.bytesResident + this.bytesActivating + record.byteSize;
+    if (projectedResidentBytes <= this.maxResidentBytes) return true;
+
+    const lowerPriorityResidents = [...this.records.values()]
+      .filter((candidate) => candidate.state === 'resident' && this.#higherPriority(record, candidate))
+      .sort((a, b) => b.priority - a.priority || b.tile.id.localeCompare(a.tile.id));
+
+    for (const incumbent of lowerPriorityResidents) {
+      await this.#deactivate(incumbent, 'resident-budget-preempted');
+      this.metrics.residentBudgetPreemptions += 1;
+      projectedResidentBytes = this.bytesResident + this.bytesActivating + record.byteSize;
+      if (projectedResidentBytes <= this.maxResidentBytes) return true;
+    }
+    return false;
+  }
+
   async #activate(record, reason) {
     if (record.state === 'resident' || record.state === 'activating') return record.state === 'resident';
     if (record.state !== 'cached' || record.payload == null) {
       throw new Error(`cannot activate unloaded tile ${record.tile.id}`);
     }
+    const residentBudgetAvailable = await this.#makeResidentBudgetRoom(record);
     const projectedResidentBytes = this.bytesResident + this.bytesActivating + record.byteSize;
-    if (this.maxResidentBytes != null && projectedResidentBytes > this.maxResidentBytes) {
+    if (!residentBudgetAvailable) {
       this.metrics.residentBudgetDeferrals += 1;
       this.#emit('activation-deferred-budget', {
         tileId: record.tile.id,
