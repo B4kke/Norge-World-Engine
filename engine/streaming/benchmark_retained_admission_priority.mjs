@@ -59,24 +59,16 @@ const tiles = [
   { id: 'D', centerE: 2000, centerN: 0 },
 ];
 
-// Phase 1: fill the total retained budget with two committed tiles.
 await scheduler.update({ e: 0, n: 0 }, tiles);
 await scheduler.whenIdle();
 if (adapter.snapshot().budget.committedBytes !== MAX_RETAINED_BYTES) {
   throw new Error('setup failed to fill retained-byte budget');
 }
 
-// Phase 2: move one tile-width east. A/B become inactive-but-retained, while C/E
-// take both scheduler load slots and queue inside the retained-budget adapter.
 await scheduler.update({ e: 1000, n: 0 }, tiles);
 await waitUntil(() => adapter.snapshot().waitingLoads === 2, 'two retained-budget waiters');
 const waitingSnapshot = scheduler.snapshot();
 
-// Phase 3: move to D. A/B are now outside retain radius and are disposed. Their
-// released capacity is handed FIFO to the already-waiting C/E callbacks. C/E are
-// no longer desired but still lie inside retain radius, so they are not aborted.
-// They begin materializing and deliberately remain blocked, occupying both
-// scheduler load slots before newly desired D can start.
 await scheduler.update({ e: 2000, n: 0 }, tiles);
 await waitUntil(
   () => materializationStarts.includes('C') && materializationStarts.includes('E'),
@@ -95,10 +87,11 @@ if (adapter.snapshot().budget.reservedBytes !== MAX_RETAINED_BYTES) {
   throw new Error('expected released retained capacity to be reserved by stale waiters');
 }
 
-// Cleanup: release C/E, then move far enough to cancel/evict any leftover work so
-// the benchmark exits with no unresolved scheduler lifecycle.
 staleMaterializationGate.resolve();
-await scheduler.whenIdle();
+await waitUntil(
+  () => schedulerEvents.filter((event) => event.type === 'load-completed' && (event.tileId === 'C' || event.tileId === 'E')).length === 2,
+  'stale waiter completions',
+);
 await scheduler.update({ e: 4000, n: 0 }, tiles);
 await scheduler.whenIdle();
 
