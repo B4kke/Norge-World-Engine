@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'engine/world/**'
+      - 'engine/streaming/tile_scheduler.mjs'
       - 'prototypes/atlas-rapier-physics/**'
       - '.github/workflows/atlas-rapier-physics.yml'
   workflow_dispatch:
@@ -36,6 +37,8 @@ jobs:
           node --check engine/world/test_static_collision_contract.mjs
           node --check engine/world/static_collision_lifecycle_contract.mjs
           node --check engine/world/test_static_collision_lifecycle_contract.mjs
+          node --check engine/world/static_collision_streaming_guard.mjs
+          node --check engine/world/test_static_collision_streaming_guard.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_rebase_matrix_probe.mjs
           node --check prototypes/atlas-rapier-physics/rapier_contact_replay_probe.mjs
@@ -65,6 +68,9 @@ jobs:
 
       - name: Run streaming-aware static collision lifecycle regressions
         run: node engine/world/test_static_collision_lifecycle_contract.mjs
+
+      - name: Run STRØM scheduler to ATLAS collision guard regressions
+        run: node engine/world/test_static_collision_streaming_guard.mjs
 
       - name: Run fixed-vs-rebased Rapier probe
         run: |
