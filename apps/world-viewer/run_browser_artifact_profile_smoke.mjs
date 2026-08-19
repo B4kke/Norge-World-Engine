@@ -139,7 +139,7 @@ async function main() {
   const timeoutMs = Number(args['timeout-ms'] ?? '90000');
   const iterations = Number(args.iterations ?? '5');
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('--timeout-ms must be a positive integer');
-  if (!Number.isInteger(iterations) || iterations < 2 || iterations > 20) throw new Error('--iterations must be within [2, 20]');
+  if (!Number.isInteger(iterations) || iterations < 2 || iterations > 101) throw new Error('--iterations must be within [2, 101]');
 
   let resolveReport;
   let rejectReport;
