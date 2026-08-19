@@ -84,6 +84,7 @@ jobs:
           node --check engine/streaming/tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler.mjs
           node --check engine/streaming/test_tile_scheduler_retry.mjs
+          node --check engine/streaming/test_tile_scheduler_resident_priority.mjs
           node --check engine/streaming/lifecycle_observer.mjs
           node --check engine/streaming/test_lifecycle_observer.mjs
           node --check engine/streaming/streaming_trace_recorder.mjs
@@ -93,6 +94,7 @@ jobs:
           node --check engine/streaming/benchmark_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler.mjs
           node engine/streaming/test_tile_scheduler_retry.mjs
+          node engine/streaming/test_tile_scheduler_resident_priority.mjs
           node engine/streaming/test_lifecycle_observer.mjs
           node engine/streaming/test_streaming_trace_recorder.mjs
           node engine/streaming/test_streaming_trace_validator.mjs
