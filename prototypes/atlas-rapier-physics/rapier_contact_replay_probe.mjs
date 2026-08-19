@@ -180,6 +180,12 @@ function applyTranslationOnlyRebase(world, frame, handles) {
   return { frame: shifted.frame, beforeSleeping, afterSleeping };
 }
 
+function requireFiniteComparison(label, comparison) {
+  for (const [key, value] of Object.entries(comparison)) {
+    if (!Number.isFinite(value)) throw new Error(`${label}.${key} is non-finite`);
+  }
+}
+
 const frame0 = makeFrame();
 const scene = createScene(frame0);
 for (let step = 0; step < SETTLE_STEPS; step += 1) scene.world.step();
@@ -194,7 +200,9 @@ const fixedFinal = capture(scene.world, scene.dynamicHandles, frame0);
 const fixedFinalSnapshotSha256 = sha256(scene.world.takeSnapshot());
 scene.world.free();
 
-// Determinism control: restore the exact checkpoint and run the exact same continuation.
+// Restore the exact checkpoint and run the exact same continuation. This is a measurement
+// control, not an assumption of bit-identical state: backend snapshot/restore semantics are
+// part of what this probe is trying to characterize.
 const replayControl = RAPIER.World.restoreSnapshot(checkpointBytes);
 replayControl.timestep = DT;
 stepContinuation(replayControl, scene.dynamicHandles, CONTINUE_STEPS);
@@ -215,19 +223,15 @@ const rebasedFinalSnapshotSha256 = sha256(rebased.takeSnapshot());
 const rebasedComparison = compareStates(fixedFinal, rebasedFinal);
 rebased.free();
 
-if (replayControlComparison.maxPositionDriftM !== 0 || replayControlComparison.maxVelocityDriftMps !== 0 || replayControlComparison.maxRotationDriftRad !== 0 || replayControlComparison.sleepingMismatchCount !== 0) {
-  throw new Error(`snapshot replay control diverged: ${JSON.stringify(replayControlComparison)}`);
-}
-if (fixedFinalSnapshotSha256 !== replayControlFinalSnapshotSha256) {
-  throw new Error('same-schedule restored Rapier snapshot bytes are not identical');
-}
+requireFiniteComparison('sameScheduleReplay', replayControlComparison);
+requireFiniteComparison('translationOnlyEpochRebase', rebasedComparison);
 if (rebase.frame.epoch !== frame0.epoch + 1) throw new Error('physics epoch did not advance exactly once');
-for (const value of Object.values(rebasedComparison)) {
-  if (!Number.isFinite(value)) throw new Error('rebased comparison produced a non-finite value');
+if (rebase.beforeSleeping !== rebase.afterSleeping) {
+  throw new Error(`translation-only rebase changed sleeping count before stepping: ${rebase.beforeSleeping} -> ${rebase.afterSleeping}`);
 }
 
 console.log(JSON.stringify({
-  status: 'ATLAS_RAPIER_CONTACT_REPLAY_PROBE_PASS',
+  status: 'ATLAS_RAPIER_CONTACT_REPLAY_PROBE_COMPLETE',
   rapierPackage: '@dimforge/rapier3d-compat@0.19.3',
   evidenceClass: 'hosted-node-wasm-candidate',
   horizontalCrs: worldFrame.horizontalCrs,
@@ -238,6 +242,8 @@ console.log(JSON.stringify({
   sleepingAtCheckpoint,
   sameScheduleReplay: {
     ...replayControlComparison,
+    fixedFinalSnapshotSha256,
+    replayFinalSnapshotSha256: replayControlFinalSnapshotSha256,
     finalSnapshotByteIdentical: fixedFinalSnapshotSha256 === replayControlFinalSnapshotSha256,
   },
   translationOnlyEpochRebase: {
@@ -255,6 +261,7 @@ console.log(JSON.stringify({
   authority: {
     renderOriginAuthority: false,
     physicsLocalAuthority: false,
+    backendSnapshotAuthority: false,
     authoritativeWorldStateRequiresFrameAwareReconstruction: true,
   },
   policy: {
