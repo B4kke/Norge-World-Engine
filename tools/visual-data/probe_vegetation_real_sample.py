@@ -17,8 +17,11 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Any
 
-USER_AGENT = "NorgeWorldEngine-VegetationSampleProbe/0.2 (+https://github.com/B4kke/Norge-World-Engine)"
-SR16_ATOM_URL = "https://kartkatalog.nibio.no/api/atom/5de45872-f534-4e97-840e-3cfd8db04398"
+USER_AGENT = "NorgeWorldEngine-VegetationSampleProbe/0.3 (+https://github.com/B4kke/Norge-World-Engine)"
+SR16_ATOM_URLS = {
+    "raster": "https://kartkatalog.nibio.no/api/atom/5de45872-f534-4e97-840e-3cfd8db04398",
+    "vector": "https://kartkatalog.nibio.no/api/atom/27206b9e-4830-4f71-810d-d04c0dc32b59",
+}
 AR50_WFS_URL = "https://wfs.nibio.no/cgi-bin/ar50_2"
 BOUNDS_25832 = (611000.0, 6677000.0, 612000.0, 6678000.0)
 SR16_MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
@@ -68,23 +71,61 @@ def compact_text(value: str | None, limit: int = 220) -> str | None:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+def inspect_sosi_member(archive: zipfile.ZipFile, member: zipfile.ZipInfo) -> dict[str, Any]:
+    if not member.filename.lower().endswith((".sos", ".sosi")):
+        return {"status": "NOT_SOSI"}
+    keys: set[str] = set()
+    object_types: dict[str, int] = {}
+    header_lines: list[str] = []
+    scanned_lines = 0
+    with archive.open(member) as handle:
+        for raw_line in handle:
+            scanned_lines += 1
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            if len(header_lines) < 30 and (line.startswith(".HODE") or line.startswith("..")):
+                if not any(token in line.upper() for token in (".NØ", ".NORD", ".ØST", ".KOORD", ".REF")):
+                    header_lines.append(line[:240])
+            if line.startswith(".") and not line.startswith(".."):
+                token = line.split()[0]
+                object_types[token] = object_types.get(token, 0) + 1
+            elif line.startswith(".."):
+                token = line.split()[0]
+                keys.add(token)
+            if scanned_lines >= 120000:
+                break
+    return {
+        "status": "PASS",
+        "scanned_lines_capped": scanned_lines,
+        "attribute_keys": sorted(keys),
+        "object_types": dict(sorted(object_types.items())),
+        "header_lines": header_lines,
+    }
+
+
 def inspect_zip_snapshot(raw: bytes, http: dict[str, Any]) -> dict[str, Any]:
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             members = archive.infolist()
+            member_rows = [
+                {
+                    "name": member.filename,
+                    "compressed_bytes": member.compress_size,
+                    "uncompressed_bytes": member.file_size,
+                    "crc32": f"{member.CRC:08x}",
+                }
+                for member in members[:40]
+            ]
+            sosi_inventory = None
+            if members:
+                sosi_inventory = inspect_sosi_member(archive, members[0])
             return {
                 "status": "PASS",
                 "http": http,
                 "archive_member_count": len(members),
-                "archive_members": [
-                    {
-                        "name": member.filename,
-                        "compressed_bytes": member.compress_size,
-                        "uncompressed_bytes": member.file_size,
-                        "crc32": f"{member.CRC:08x}",
-                    }
-                    for member in members[:40]
-                ],
+                "archive_members": member_rows,
+                "first_member_sosi_inventory": sosi_inventory,
                 "raw_bytes_retained": False,
             }
     except zipfile.BadZipFile:
@@ -105,7 +146,6 @@ def probe_sr16_nannestad_snapshot(links: list[dict[str, Any]]) -> dict[str, Any]
     if not href:
         return {"status": "NO_HREF", "selected": selected}
 
-    head_result: dict[str, Any]
     try:
         head_result = head(href)
     except Exception as error:
@@ -140,8 +180,8 @@ def probe_sr16_nannestad_snapshot(links: list[dict[str, Any]]) -> dict[str, Any]
     return {"selected": selected, "head": head_result, **inspect_zip_snapshot(raw, http)}
 
 
-def parse_sr16_atom() -> dict[str, Any]:
-    raw, http = fetch(SR16_ATOM_URL, max_bytes=4 * 1024 * 1024)
+def parse_sr16_atom(kind: str, atom_url: str) -> dict[str, Any]:
+    raw, http = fetch(atom_url, max_bytes=4 * 1024 * 1024)
     root = ET.fromstring(raw)
     entries = []
     for entry in root.iter():
@@ -174,7 +214,7 @@ def parse_sr16_atom() -> dict[str, Any]:
             href = link.get("href")
             if not href:
                 continue
-            if link.get("rel") in ("enclosure", "alternate") or any(token in href.lower() for token in ("download", ".zip", ".tif", ".tiff", ".sos", ".shp")):
+            if link.get("rel") in ("enclosure", "alternate") or any(token in href.lower() for token in ("download", ".zip", ".tif", ".tiff", ".sos", ".shp", ".gdb")):
                 direct_links.append({"entry_title": entry.get("title"), **link})
 
     nannestad_links = []
@@ -186,6 +226,7 @@ def parse_sr16_atom() -> dict[str, Any]:
 
     snapshot = probe_sr16_nannestad_snapshot(nannestad_links)
     return {
+        "kind": kind,
         "status": "PASS",
         "http": http,
         "root": local_name(root.tag),
@@ -195,7 +236,6 @@ def parse_sr16_atom() -> dict[str, Any]:
         "nannestad_entries": nannestad_entries,
         "nannestad_data_link_count": len(nannestad_links),
         "nannestad_data_links": nannestad_links,
-        "candidate_data_links": direct_links[:30],
         "candidate_data_link_count": len(direct_links),
         "nannestad_snapshot": snapshot,
     }
@@ -293,13 +333,13 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
-    sr16_atom = parse_sr16_atom()
+    sr16_atoms = {kind: parse_sr16_atom(kind, url) for kind, url in SR16_ATOM_URLS.items()}
     ar50_capabilities, names, version = parse_ar50_capabilities()
     feature_type = choose_ar50_feature_type(names)
     ar50_sample = parse_ar50_sample(feature_type, version)
 
     report = {
-        "schema": "nwe.vegetation-real-source-probe/0.2",
+        "schema": "nwe.vegetation-real-source-probe/0.3",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "tile": {
             "id": "epsg25832_611000_6677000_1000m",
@@ -312,11 +352,11 @@ def main() -> int:
             "commits_raw_geodata": False,
             "uploads_raw_geodata": False,
         },
-        "sr16_atom": sr16_atom,
+        "sr16_atoms": sr16_atoms,
         "ar50_capabilities": ar50_capabilities,
         "ar50_sample": ar50_sample,
     }
-    report["status"] = "PASS" if sr16_atom["status"] == "PASS" and ar50_capabilities["status"] == "PASS" and ar50_sample["status"] == "PASS" else "INCOMPLETE"
+    report["status"] = "PASS" if all(item["status"] == "PASS" for item in sr16_atoms.values()) and ar50_capabilities["status"] == "PASS" and ar50_sample["status"] == "PASS" else "INCOMPLETE"
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(report, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
