@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const renderer = readFileSync(new URL('./src/threeGroundRenderer.mjs', import.meta.url), 'utf8');
+const environment = readFileSync(new URL('./src/threeEnvironment.mjs', import.meta.url), 'utf8');
 const adapter = readFileSync(new URL('./src/preview1Renderer.mjs', import.meta.url), 'utf8');
 const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -22,12 +23,19 @@ assert.match(renderer, /bumpMap:\s*terrainSurfaceTexture/, 'terrain must carry l
 assert.match(renderer, /vertexColors:\s*true/, 'terrain material must consume renderer-only macro variation');
 assert.match(renderer, /geometry_displacement:\s*false/, 'terrain styling must explicitly preserve accepted DTM geometry');
 assert.doesNotMatch(renderer, /displacementMap\s*:/, 'renderer must not visually displace accepted DTM geometry');
-assert.match(renderer, /draw_calls_per_frame:\s*4/, 'terrain material pass must not add draw calls');
+assert.match(renderer, /draw_calls_per_frame:\s*5/, 'environment pass must account for the sky drawable explicitly');
 assert.match(renderer, /camera\.position\.set\(0, centerGround \+ 1\.7, 14\)/, 'camera must start at human eye height over sampled ground');
 assert.match(renderer, /renderer_adapter:\s*'three-ground\/0\.1'/, 'runtime stats must identify the Three renderer adapter');
 assert.match(renderer, /terrain_material:\s*\{/, 'runtime stats must expose terrain material evidence');
 assert.match(renderer, /getTerrainResourceLifecycle/, 'adapter must preserve terrain resource lifecycle integration');
+assert.match(renderer, /createThreeEnvironment/, 'ground renderer must consume the renderer-side environment adapter');
+assert.match(environment, /new SkyMesh\(\)/, 'WebGPURenderer path must use the official Three SkyMesh');
+assert.match(environment, /cloudCoverage\.value/, 'weather cloud fraction must drive sky cloud coverage');
+assert.match(environment, /THREE\.AgXToneMapping/, 'environment must enable explicit filmic tone mapping');
+assert.match(environment, /shadowMap\.enabled\s*=\s*true/, 'environment must enable bounded shadow rendering');
+assert.match(environment, /sun\.castShadow\s*=\s*true/, 'directional sun must cast shadows');
+assert.match(adapter, /loadPreviewEnvironment/, 'Preview 1 renderer boundary must resolve environment outside Three.js');
 assert.match(adapter, /createThreeGroundRenderer/, 'Preview 1 renderer boundary must route through Three.js');
-assert.doesNotMatch(renderer, /kartverket|nvdb|overpass|openstreetmap/i, 'renderer must not gain raw-source knowledge');
+assert.doesNotMatch(renderer, /kartverket|nvdb|overpass|openstreetmap|api\.met\.no/i, 'renderer must not gain raw-source knowledge');
 
 console.log('THREE_GROUND_RENDERER_STRUCTURE_PASS');
