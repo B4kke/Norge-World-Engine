@@ -9,6 +9,7 @@ class Dtm1NannestadProjectLineageError(RuntimeError):
 
 
 _REQUIRED_FIELDS = (
+    "NAME",
     "LAS_PROJECT_ID",
     "LAS_PROJECT_NAME",
     "PRIORITET",
@@ -23,8 +24,9 @@ _REQUIRED_FIELDS = (
 
 @dataclass(frozen=True)
 class ProjectRecord:
-    las_project_id: int
-    las_project_name: str
+    catalog_name: str
+    las_project_id: int | None
+    las_project_name: str | None
     prioritet: int | None
     aarstall: int | None
     sisteflydato: int | None
@@ -63,13 +65,7 @@ def _optional_float(value: Any) -> float | None:
 
 
 def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...]:
-    """Normalize provider DTM project-catalog metadata deterministically.
-
-    This validates only provider-returned project metadata. It intentionally does
-    not interpret PRIORITET, BEST, or BEST_OPEN as DTM1 source-winner semantics.
-    BEST fields are optional because they exist on the project-coverage surface,
-    not on every provider DTM mosaic catalog surface.
-    """
+    """Normalize provider DTM catalog metadata without inventing missing lineage."""
     if not isinstance(payload, dict):
         raise Dtm1NannestadProjectLineageError("project query payload must be an object")
     if payload.get("error") is not None:
@@ -79,7 +75,7 @@ def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...
         raise Dtm1NannestadProjectLineageError("provider project query returned no features")
 
     records: list[ProjectRecord] = []
-    seen: set[int] = set()
+    seen_catalog_names: set[str] = set()
     for feature in features:
         if not isinstance(feature, dict) or not isinstance(feature.get("attributes"), dict):
             raise Dtm1NannestadProjectLineageError("provider feature lacks attributes")
@@ -89,19 +85,18 @@ def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...
             raise Dtm1NannestadProjectLineageError(
                 "provider project feature missing fields: " + ", ".join(missing)
             )
-        project_id = attrs["LAS_PROJECT_ID"]
-        if isinstance(project_id, bool) or not isinstance(project_id, int):
-            raise Dtm1NannestadProjectLineageError("LAS_PROJECT_ID must be an integer")
-        name = attrs["LAS_PROJECT_NAME"]
-        if not isinstance(name, str) or not name.strip():
-            raise Dtm1NannestadProjectLineageError("LAS_PROJECT_NAME must be non-empty")
-        if project_id in seen:
-            raise Dtm1NannestadProjectLineageError("duplicate LAS_PROJECT_ID in provider response")
-        seen.add(project_id)
+        catalog_name = attrs["NAME"]
+        if not isinstance(catalog_name, str) or not catalog_name.strip():
+            raise Dtm1NannestadProjectLineageError("NAME must be non-empty")
+        catalog_name = catalog_name.strip()
+        if catalog_name in seen_catalog_names:
+            raise Dtm1NannestadProjectLineageError("duplicate NAME in provider response")
+        seen_catalog_names.add(catalog_name)
         records.append(
             ProjectRecord(
-                las_project_id=project_id,
-                las_project_name=name.strip(),
+                catalog_name=catalog_name,
+                las_project_id=_optional_int(attrs["LAS_PROJECT_ID"]),
+                las_project_name=_optional_str(attrs["LAS_PROJECT_NAME"]),
                 prioritet=_optional_int(attrs["PRIORITET"]),
                 aarstall=_optional_int(attrs["AARSTALL"]),
                 sisteflydato=_optional_int(attrs["SISTEFLYDATO"]),
@@ -114,50 +109,50 @@ def normalize_project_query(payload: dict[str, Any]) -> tuple[ProjectRecord, ...
                 best_open=_optional_int(attrs.get("BEST_OPEN")),
             )
         )
-    return tuple(sorted(records, key=lambda record: (record.las_project_id, record.las_project_name)))
+    return tuple(sorted(records, key=lambda record: record.catalog_name))
 
 
 def assess_overlap_project_lineage(
-    *,
-    sample_records: dict[str, tuple[ProjectRecord, ...]],
+    *, sample_records: dict[str, tuple[ProjectRecord, ...]]
 ) -> dict[str, Any]:
-    if not sample_records:
-        raise Dtm1NannestadProjectLineageError("at least one overlap sample is required")
-    if any(not isinstance(name, str) or not name for name in sample_records):
-        raise Dtm1NannestadProjectLineageError("sample names must be non-empty strings")
-    if any(not records for records in sample_records.values()):
-        raise Dtm1NannestadProjectLineageError("every overlap sample must resolve project metadata")
+    if not sample_records or any(not records for records in sample_records.values()):
+        raise Dtm1NannestadProjectLineageError("every overlap sample must resolve catalog metadata")
 
-    normalized_sets = {
-        sample: tuple(record.las_project_id for record in records)
+    sample_catalog_names = {
+        sample: [record.catalog_name for record in records]
         for sample, records in sorted(sample_records.items())
     }
-    unique_sets = {project_ids for project_ids in normalized_sets.values()}
-    stable = len(unique_sets) == 1
+    sample_project_ids = {
+        sample: sorted({record.las_project_id for record in records if record.las_project_id is not None})
+        for sample, records in sorted(sample_records.items())
+    }
+    unique_project_sets = {tuple(ids) for ids in sample_project_ids.values()}
     all_records = {
-        record.las_project_id: record
+        record.catalog_name: record
         for records in sample_records.values()
         for record in records
     }
-    projects = [asdict(all_records[key]) for key in sorted(all_records)]
+    records = [asdict(all_records[key]) for key in sorted(all_records)]
+    mapped = [record for record in records if record["las_project_id"] is not None]
 
     return {
         "schema": "nwe.dtm1-nannestad-project-lineage/0.1",
-        "sample_project_ids": {key: list(value) for key, value in normalized_sets.items()},
-        "project_set_stable_across_overlap": stable,
-        "projects": projects,
-        "priority_metadata_present": any(project["prioritet"] is not None for project in projects),
-        "best_metadata_present": any(
-            project["best"] is not None or project["best_open"] is not None for project in projects
-        ),
+        "sample_catalog_names": sample_catalog_names,
+        "sample_project_ids": sample_project_ids,
+        "project_set_stable_across_overlap": len(unique_project_sets) == 1,
+        "catalog_entry_count": len(records),
+        "mapped_project_entry_count": len(mapped),
+        "unmapped_project_entry_count": len(records) - len(mapped),
+        "records": records,
+        "priority_metadata_present": any(record["prioritet"] is not None for record in records),
         "authorizes_overlap_winner": False,
         "production_seam_authority": False,
         "authority_status": "UNPROVEN",
         "claim_calibration": {
-            "fact": "provider DTM project-catalog metadata is bound to exact points inside the DTM1 overlap",
-            "inference": "stable project membership can strengthen provenance for the overlap area",
+            "fact": "provider DTM catalog entries are bound to exact points inside the DTM1 overlap",
+            "inference": "non-null project metadata may strengthen provenance only where the provider supplies it",
             "not_proven": (
-                "PRIORITET/BEST/BEST_OPEN meaning for national DTM1 generation, source-sample winner, "
+                "missing project IDs, PRIORITET semantics for national DTM1 generation, source-sample winner, "
                 "or authorization to discard the measured five-pixel border"
             ),
         },
