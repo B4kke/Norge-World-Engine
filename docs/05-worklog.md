@@ -154,3 +154,32 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-06`: LUMEN consumes the optimized ATLAS transform boundary; ATLAS changes it again only if integration exposes a concrete world-state mismatch.
+
+## 2026-08-19 22:24 CEST — LUMEN — AGENT-SKILLS-GPU-01
+
+**What**
+- Adapted all ten conceptual areas from `CloudAI-X/threejs-skills` into NWE-owned `nwe-gpu-*` skills instead of importing a Three.js-only bundle verbatim.
+- Rewrote shader/material/post-processing guidance for WebGPU-first operation while preserving WebGL2 fallback and explicit WGSL-vs-GLSL truth.
+- Made geometry, textures, animation, asset loading and interaction renderer-neutral first, with Three.js documented only as the current web adapter.
+- Added source/license mapping and routed LUMEN/renderer instructions through the new skills without changing runtime code or the active P0 order.
+- Rebased the skill-only branch onto current `main` after ATLAS PR #72 merged, preserving the newer character world-transform worklog/queue state.
+
+**Why**
+- The requested Three.js skill knowledge is useful, but a verbatim import would teach WebGL/Three implementation details as if they were NWE engine architecture and would undermine D-008 renderer replaceability.
+
+**Result / evidence**
+- FACT: the upstream bundle exposes ten source skill areas and declares MIT licensing; its draft WebGPU/TSL update targets Three r185 and corrects stale WebGPU/post-processing assumptions.
+- FACT: native WebGPU and WebGL2 shader languages remain different; TSL is treated only as a Three-adapter bridge that can target both backends.
+- ARCHITECTURE: no compiler/world/provenance/streaming/simulation contract or executable viewer path changed; Three/TSL/WebGPU objects remain presentation-only.
+- FACT: GitHub Actions baseline run `32298564154` completed `Validate repo-local Agent Skills` successfully on skill-bearing head `be52402d4193a574574244c10513488f7c78d1d1`; the broader baseline was still running at handoff and is not claimed PASS here.
+
+**Changed**
+- Branch `agent/lumen-gpu-skills`, draft PR #76.
+- Ten new `.agents/skills/nwe-gpu-*/SKILL.md` files plus `.agents/skills/UPSTREAM-THREEJS-SKILLS.md`.
+- `.agents/skills/nwe-renderer-platform/SKILL.md`.
+- `.agents/roles/lumen-renderer.md`.
+- `AGENTS.md`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- Continue the active playable slice; when `P0-GROUND-05` is the next integrated LUMEN task, use `nwe-gpu-assets` + `nwe-gpu-animation` for the licensed humanoid integration.

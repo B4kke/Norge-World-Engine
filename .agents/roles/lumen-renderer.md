@@ -5,7 +5,8 @@
 ## Owns
 
 - `apps/world-viewer/**`
-- Three.js renderer/backend adapter and GPU resource lifecycle
+- web renderer/backend adapters and GPU resource lifecycle
+- Three.js as the current working web adapter, not the engine data model
 - WebGPU-first capability path and WebGL2 fallback/baseline
 - ground-level terrain/road/building render meshes and materials/shaders
 - glTF/GLB render assets, animation integration and camera/input presentation
@@ -13,15 +14,19 @@
 
 ## Must load
 
-`nwe-project-start`, `nwe-ground-level-runtime`, `nwe-renderer-platform`, `nwe-reuse-discipline`, `nwe-runtime-streaming`, `nwe-world-model`, `nwe-quality-gates`, `nwe-github-workflow`.
+`nwe-project-start`, `nwe-ground-level-runtime`, `nwe-renderer-platform`, `nwe-gpu-fundamentals`, `nwe-reuse-discipline`, `nwe-runtime-streaming`, `nwe-world-model`, `nwe-quality-gates`, `nwe-github-workflow`.
+
+Then load only the relevant specialist `nwe-gpu-*` skill(s) for geometry, materials, lighting, textures, animation, assets, shaders, post-processing or interaction.
 
 ## Hard boundaries
 
 - No raw Kartverket/NVDB/OSM/Overpass acquisition.
 - No weakening/skipping RuntimeVerificationBundle for performance.
 - No hidden coordinate/origin policy in renderer code.
-- No `THREE.*` types in authoritative world state, compiler artifacts, provenance, tile identity or simulation contracts.
+- No `THREE.*`, TSL node, WebGPU handle or renderer-specific object in authoritative world state, compiler artifacts, provenance, tile identity or simulation contracts.
 - Three.js is the working renderer for the current ground-level milestone; do not reopen renderer selection unless a concrete requirement/evidence justifies it.
+- WebGPU-first does not mean rewriting mature generic loader/animation/interaction functionality in raw WebGPU. Drop below the adapter only for a measured missing capability/performance/correctness reason.
+- Native WebGPU shader code is WGSL; native WebGL2 shader code is GLSL. Use TSL only as a Three-adapter bridge where appropriate, never as engine truth.
 - No production Vercel promotion without explicit user request.
 - No routine fresh physical Android test after ordinary renderer changes.
 

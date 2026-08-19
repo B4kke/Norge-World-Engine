@@ -21,13 +21,15 @@ The active milestone is **walkable, ground-level Nannestad**: real terrain, road
 
 Three.js is the working web renderer for this milestone, with a WebGPU-first capability path where genuinely available and WebGL2 fallback/baseline. This is a product/architecture direction, not proof that Three.js outperforms every alternative.
 
-The renderer must remain replaceable. Future Unreal support is expected to consume the same engine-neutral world/compiler/runtime contracts through an adapter/importer; no `THREE.*` type may become authoritative world state, compiler output, tile identity, provenance or simulation state.
+The renderer must remain replaceable. Future Unreal support is expected to consume the same engine-neutral world/compiler/runtime contracts through an adapter/importer; no `THREE.*`, TSL node or WebGPU object may become authoritative world state, compiler output, tile identity, provenance or simulation state.
+
+WebGPU and WebGL2 do not share a native shader language. Treat WGSL (WebGPU) and GLSL (WebGL2) as backend implementations. Three.js TSL may bridge both inside the Three adapter, but it is not an NWE world/runtime contract.
 
 See D-008 and `docs/08-revised-engine-chain.md`.
 
 ## Agent v2 — five active roles
 
-- **LUMEN — Renderer & Web Platform**: `.agents/roles/lumen-renderer.md`. Leads the current playable vertical: Three.js renderer adapter, materials/shaders, terrain/road/building GPU representation, humanoid/animation, camera and Vercel Preview.
+- **LUMEN — Renderer & Web Platform**: `.agents/roles/lumen-renderer.md`. Leads the current playable vertical: web renderer adapter, WebGPU/WebGL2, materials/shaders, terrain/road/building GPU representation, humanoid/animation, camera and Vercel Preview.
 - **STRØM — Runtime Streaming**: `.agents/roles/strom-streaming.md`. Owns verified artifact/tile lifecycle, cache/prioritization, worker boundaries and renderer-neutral runtime metrics. During the single-tile playable slice, avoid scheduler expansion unless a concrete runtime need appears.
 - **FORGE — World Compiler & Data Pipeline**: `.agents/roles/forge-compiler.md`. Owns authoritative acquisition, normalization, deterministic compilation and data enrichment. Do not reopen source archaeology that does not block the active slice.
 - **ATLAS — World Model & Coordinates**: `.agents/roles/atlas-world.md`. Owns world/entity transforms, render origin and simulation-facing boundaries. For the playable slice, define only the smallest stable character/world contract needed; do not reopen whole-Norway policy without cause.
@@ -47,10 +49,16 @@ Load only what the task needs:
 - `nwe-geospatial-tooling` — pinned Rasterio/GDAL, pyproj/PROJ, Shapely and RFC8785 usage.
 - `nwe-world-model` — high-precision world state, render-local coordinates and origin epochs.
 - `nwe-runtime-streaming` — verified tile lifecycle, scheduler/cache/worker boundaries.
-- `nwe-renderer-platform` — Three.js ground renderer, WebGPU/WebGL capability work, browser/GPU instrumentation and Vercel Preview.
+- `nwe-renderer-platform` — current web renderer direction, Three adapter, WebGPU/WebGL capability work, browser/GPU instrumentation and Vercel Preview.
+- `nwe-gpu-fundamentals` — renderer-neutral GPU/frame contract; mandatory for LUMEN renderer work.
+- `nwe-gpu-geometry`, `nwe-gpu-materials`, `nwe-gpu-lighting`, `nwe-gpu-textures` — selective geometry/PBR/presentation skills.
+- `nwe-gpu-animation`, `nwe-gpu-assets`, `nwe-gpu-interaction` — renderer-neutral character/assets/input integration with Three only as adapter.
+- `nwe-gpu-shaders`, `nwe-gpu-postprocessing` — WebGPU-first TSL/WGSL/GLSL and modern screen-pipeline boundaries.
 - `nwe-quality-gates` — negative tests, determinism, evidence classes and performance QA.
 - `nwe-3d-tiles-spike` — measured 3D Tiles/Cesium interchange experiments only; currently deferred from the playable critical path.
 - `nwe-github-workflow` — isolated agent branches, draft PRs, CI and project-memory publication.
+
+The `nwe-gpu-*` suite is adapted from useful concepts in the MIT-licensed `CloudAI-X/threejs-skills` bundle, but rewritten around renderer-neutral NWE contracts. Source mapping/provenance is in `.agents/skills/UPSTREAM-THREEJS-SKILLS.md`.
 
 ## Parallel-work contract
 
@@ -92,6 +100,7 @@ See `docs/07-testing-policy.md`.
 - Runtime tile identity is independent from provider/source tiling.
 - Authoritative world/entity state is renderer-independent and high precision; render-local resources are derived/disposable.
 - Three.js may own presentation only. Unreal/other renderer adapters must remain feasible without replacing the Norwegian data pipeline.
+- WebGPU-first is a renderer/backend preference, not permission to make WebGPU resources or TSL nodes canonical engine data.
 - Static geodata and dynamic simulation state are separate layers.
 - Performance is a requirement, but measure the current bottleneck rather than benchmarking everything every change.
 - Use the least expensive representation that satisfies the current accuracy/visual need.
