@@ -99,11 +99,6 @@ export async function createThreeVegetationLayer({
     throw new Error('VEGETATION_ASSET_PROVIDER_MUST_BE_POLY_HAVEN_CC0');
   }
 
-  const coniferBudget = Math.min(MAX_CONIFER_INSTANCES, maxRenderedInstances);
-  const broadleafBudget = Math.min(MAX_BROADLEAF_INSTANCES, Math.max(0, maxRenderedInstances - coniferBudget));
-  const coniferIndices = nearestPlacementIndices(placement, 0, coniferBudget);
-  const broadleafIndices = nearestPlacementIndices(placement, 1, broadleafBudget);
-  const selectedByClass = new Map([[0, coniferIndices], [1, broadleafIndices]]);
   const templatesByClass = new Map();
   for (const template of loadedTemplates) {
     const classId = Number(template.asset.class_id);
@@ -111,11 +106,11 @@ export async function createThreeVegetationLayer({
     list.push(template);
     templatesByClass.set(classId, list);
   }
-  for (const classId of [0, 1]) {
-    if ((selectedByClass.get(classId)?.length ?? 0) > 0 && !(templatesByClass.get(classId)?.length > 0)) {
-      throw new Error(`POLY_HAVEN_VEGETATION_CLASS_TEMPLATE_MISSING: ${classId}`);
-    }
-  }
+  const coniferBudget = templatesByClass.has(0) ? Math.min(MAX_CONIFER_INSTANCES, maxRenderedInstances) : 0;
+  const broadleafBudget = templatesByClass.has(1) ? Math.min(MAX_BROADLEAF_INSTANCES, Math.max(0, maxRenderedInstances - coniferBudget)) : 0;
+  const coniferIndices = nearestPlacementIndices(placement, 0, coniferBudget);
+  const broadleafIndices = nearestPlacementIndices(placement, 1, broadleafBudget);
+  const selectedByClass = new Map([[0, coniferIndices], [1, broadleafIndices]]);
 
   const meshes = [];
   const matrix = new THREE.Matrix4();
@@ -192,6 +187,7 @@ export async function createThreeVegetationLayer({
     placement_schema: placement.schema,
     instance_count: count,
     rendered_instance_count: renderedInstanceCount,
+    unrendered_placement_count: Math.max(0, count - renderedInstanceCount),
     presentation_instance_cap: maxRenderedInstances,
     conifer_count: placement.metadata.conifer_count ?? Array.from(placement.species).filter((kind) => kind === 0).length,
     broadleaf_count: placement.metadata.broadleaf_count ?? Array.from(placement.species).filter((kind) => kind === 1).length,
@@ -208,7 +204,7 @@ export async function createThreeVegetationLayer({
     estimated_rendered_triangles: estimatedRenderedTriangles,
     geometry_strategy: 'polyhaven-gltf-instanced-selected-lod',
     material_strategy: 'polyhaven-original-gltf-pbr-materials',
-    source_asset_status: 'polyhaven-cc0-direct-1k-gltf; optimized-vendoring-pending',
+    source_asset_status: 'polyhaven-cc0-direct-1k-gltf; unmatched-synthetic-classes-deferred; optimized-vendoring-pending',
     runtime_asset_dependency: 'external-cc0-renderer-assets',
     source_assets: assetSnapshots,
     placement: placement.metadata,
