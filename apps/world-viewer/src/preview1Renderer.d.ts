@@ -61,24 +61,48 @@ export function createPreview1Renderer(options: any): Promise<{
   getVisualStyle(): GroundVisualStyleState;
 }>;
 
+type PolyHavenVegetationAssetState = {
+  id: string;
+  provider: 'Poly Haven';
+  license: 'CC0-1.0';
+  source_page: string;
+  source_request_url: string;
+  runtime_resolution: '1k' | string;
+  lod_policy: string;
+  selected_lod: number | null;
+  available_lods: number[];
+  source_triangle_count: number;
+  selected_triangle_count: number;
+  selected_mesh_count: number;
+  rendered_instances: number;
+  normalized_native_height_m: number;
+};
+
 type VegetationRenderState = {
-  schema: 'nwe.vegetation-render-layer/0.1' | string;
+  schema: 'nwe.vegetation-render-layer/0.2' | string;
   authority: 'renderer-only-synthetic';
   placement_schema: 'nwe.synthetic-vegetation-placement/0.1' | string;
   instance_count: number;
+  rendered_instance_count: number;
+  presentation_instance_cap: number;
   conifer_count: number;
   broadleaf_count: number;
+  rendered_conifer_count: number;
+  rendered_broadleaf_count: number;
   draw_calls: number;
   mesh_count: number;
   gpu_buffer_count: number;
   gpu_buffer_payload_bytes: number;
   instance_matrix_payload_bytes: number;
-  instance_color_payload_bytes: number;
+  instance_color_payload_bytes: 0;
   shared_geometry_payload_bytes: number;
-  geometry_strategy: string;
-  material_strategy: string;
-  source_asset: string | null;
+  selected_template_triangles: number;
+  estimated_rendered_triangles: number;
+  geometry_strategy: 'polyhaven-gltf-instanced-selected-lod' | string;
+  material_strategy: 'polyhaven-original-gltf-pbr-materials' | string;
   source_asset_status: string;
+  runtime_asset_dependency: 'external-cc0-renderer-assets' | string;
+  source_assets: PolyHavenVegetationAssetState[];
   placement: {
     authority: 'renderer-only-synthetic';
     placement_source: string;
