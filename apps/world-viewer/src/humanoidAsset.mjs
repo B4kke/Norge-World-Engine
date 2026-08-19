@@ -80,6 +80,7 @@ export async function createLicensedHumanoid({
     walk: mixer.clipAction(clips.walk),
   };
   let state = 'idle';
+  let animationStateProbe = null;
   actions.idle.reset().play();
   scene.add(root);
 
@@ -106,14 +107,30 @@ export async function createLicensedHumanoid({
       source_git_blob_sha1: asset.source_git_blob_sha1,
       source_byte_size: asset.source_byte_size,
       license: asset.license,
+      source_request_url: asset.url,
+      source_request_origin: new URL(asset.url).origin,
+      runtime_dependency: 'commit-pinned-renderer-asset',
       state,
       idle_clip: clips.idle.name,
       walk_clip: clips.walk.name,
       render_mesh_count: renderMeshCount,
       normalized_height_m: targetHeightM,
       renderer_only_spawn: true,
+      animation_state_probe: animationStateProbe,
     };
   }
+
+  const initialState = state;
+  const walkState = setAnimationState('walk', { fadeSeconds: 0 }).state;
+  const returnedIdleState = setAnimationState('idle', { fadeSeconds: 0 }).state;
+  if (initialState !== 'idle' || walkState !== 'walk' || returnedIdleState !== 'idle') {
+    throw new Error(`HUMANOID_ANIMATION_STATE_PROBE_FAILED: ${initialState}->${walkState}->${returnedIdleState}`);
+  }
+  animationStateProbe = Object.freeze({
+    schema: 'nwe.humanoid-animation-state-probe/0.1',
+    status: 'PASS',
+    states: Object.freeze([initialState, walkState, returnedIdleState]),
+  });
 
   return {
     root,
