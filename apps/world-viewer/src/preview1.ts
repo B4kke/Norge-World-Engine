@@ -186,6 +186,10 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
     const loadsStartedBefore = latestSnapshot.metrics.loadsStarted;
     const outsideCamera = { e: center.e + STREAMING_MOVEMENT_OFFSET_M, n: center.n };
     const initialRenderer = lifecycleCheckpoint('initial-resident', rendererLifecycle.getTerrainResourceLifecycle());
+    const initialBufferCount = initialRenderer.current_buffer_count;
+    if (!Number.isInteger(initialBufferCount) || initialBufferCount <= 0 || !(initialRenderer.current_payload_bytes > 0)) {
+      throw new Error(`PREVIEW_TERRAIN_RESOURCE_INITIAL_BUFFERS_INVALID: ${JSON.stringify(initialRenderer)}`);
+    }
 
     await scheduler.update(outsideCamera, [descriptor]);
     const outsideSnapshot = await scheduler.whenIdle();
@@ -208,7 +212,7 @@ async function loadTerrain(manifest: any, manifestUrl: string, onPhase: (phase: 
       throw new Error(`PREVIEW_STREAMING_MOVEMENT_RETURN_STATE: ${returnRecord?.state ?? 'missing'}`);
     }
     const returnedRenderer = lifecycleCheckpoint('returned-center', rendererLifecycle.getTerrainResourceLifecycle());
-    if (!returnedRenderer.active || returnedRenderer.current_buffer_count !== 3 || returnedRenderer.current_payload_bytes <= 0) {
+    if (!returnedRenderer.active || returnedRenderer.current_buffer_count !== initialBufferCount || returnedRenderer.current_payload_bytes <= 0) {
       throw new Error(`PREVIEW_TERRAIN_RESOURCE_NOT_RECREATED: ${JSON.stringify(returnedRenderer)}`);
     }
     await animationFrame();
