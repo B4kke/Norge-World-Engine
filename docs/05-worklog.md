@@ -445,3 +445,24 @@ Append concise implementation handoffs here. Historical detailed agent logs rema
 
 **Neste**
 - Resume the highest-value engine work from `docs/06-task-queue.md`; do not schedule a physical Android run unless a genuinely device-specific blocker or accumulated milestone justifies it.
+
+## 2026-08-19 — Revidert motorkjede og skaleringsplan
+
+**Gjort**
+- Added `docs/08-revised-engine-chain.md` as an explicit post-3×3 dependency/prioritization plan.
+- Defined the eight-step sequence: movement-driven residency/budgets → terrain LOD → multi-tile roads/buildings → geometry enrichment → materials/vegetation → imagery → procedural detail → 10×10/25×25 scaling.
+- Kept FORGE/SENTINEL Atom DTM1 ↔ WCS canonical-terrain-source reconciliation as a parallel fail-closed gate rather than allowing it to block renderer/runtime experiments or become silently selected world truth.
+- Updated roadmap/task queue so material/vegetation can intentionally precede full imagery while P0 movement/budget/LOD and multi-tile vector work retain priority.
+
+**Bevist**
+- The plan is consistent with current evidence: STRØM PR #62 already targets phase 1 resource-pressure/movement observability; terrain LOD remains unselected; current 3×3 candidate still does not extend roads/buildings beyond the center tile; production imagery source/license remains open.
+- No architecture decision was proven by this planning pass, so `docs/04-decisions.md` remains unchanged.
+
+**Endret**
+- `docs/08-revised-engine-chain.md`
+- `docs/03-roadmap.md`
+- `docs/06-task-queue.md`
+- This worklog.
+
+**Neste**
+- SENTINEL/STRØM: finish and falsify the multi-tile resource-pressure/movement harness on latest `main`, then reuse that evidence surface for the first terrain-LOD benchmark while FORGE begins vector compilation/indexing for all nine runtime tiles in parallel.
