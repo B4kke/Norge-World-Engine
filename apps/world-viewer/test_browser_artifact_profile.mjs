@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   classifyPercentileEvidence,
+  classifyProfileBuildIdentity,
   normalizeProfileIterations,
   profileVerifiedJsonArtifact,
 } from './src/browserArtifactProfile.mjs';
@@ -21,6 +22,19 @@ assert.equal(classifyPercentileEvidence(100).p99.status, 'SUPPORTED');
 assert.equal(classifyPercentileEvidence(1).max.status, 'OBSERVED');
 assert.throws(() => classifyPercentileEvidence(-1), /non-negative integer/);
 assert.throws(() => classifyPercentileEvidence(1.5), /non-negative integer/);
+
+const exactSha = 'A'.repeat(40);
+assert.deepEqual(classifyProfileBuildIdentity({ gitCommitSha: exactSha, deploymentId: 'dpl_test' }), {
+  status: 'EXACT_COMMIT_AND_DEPLOYMENT',
+  exact_commit_bound: true,
+  deployment_bound: true,
+  git_commit_sha: exactSha.toLowerCase(),
+  deployment_id: 'dpl_test',
+});
+assert.equal(classifyProfileBuildIdentity({ gitCommitSha: exactSha }).status, 'EXACT_COMMIT_ONLY');
+assert.equal(classifyProfileBuildIdentity({ gitCommitSha: 'not-a-sha', deploymentId: 'dpl_test' }).status, 'UNBOUND');
+assert.equal(classifyProfileBuildIdentity({ gitCommitSha: 'not-a-sha', deploymentId: 'dpl_test' }).deployment_bound, true);
+assert.equal(classifyProfileBuildIdentity().status, 'UNBOUND');
 
 const bundle = {
   artifact_ref: {

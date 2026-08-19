@@ -1,5 +1,9 @@
 import { assertCompiledTransport, loadCompiledJsonArtifact } from '../artifact_consumer.mjs';
-import { profileVerifiedJsonArtifact, normalizeProfileIterations } from './browserArtifactProfile.mjs';
+import {
+  classifyProfileBuildIdentity,
+  profileVerifiedJsonArtifact,
+  normalizeProfileIterations,
+} from './browserArtifactProfile.mjs';
 import { monotonicNow } from './rendererObservability.mjs';
 
 const DEFAULT_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
@@ -28,6 +32,13 @@ function queryConfig() {
     manifestUrl: params.get('manifest') || DEFAULT_MANIFEST,
     iterations: normalizeProfileIterations(params.get('iterations') || '5', { min: 1, max: 20 }),
   };
+}
+
+function buildIdentity() {
+  return classifyProfileBuildIdentity({
+    gitCommitSha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
+    deploymentId: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
+  });
 }
 
 async function run() {
@@ -84,7 +95,7 @@ async function run() {
     }
 
     const report = {
-      schema: 'nwe.browser-provenance-profile-report/0.1',
+      schema: 'nwe.browser-provenance-profile-report/0.2',
       status: 'PASS',
       claim_scope: 'hosted/browser verification+JSON-decode profiling only',
       manifest_url: manifestBase,
@@ -94,24 +105,18 @@ async function run() {
       requests,
       raw_source_calls: 0,
       timing_ms: { total: monotonicNow() - startedAt },
-      build: {
-        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
-        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
-      },
+      build: buildIdentity(),
       browser: browserContext(),
-      note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass.',
+      note: 'Each production layer load still performs the normal full RuntimeVerificationBundle verification before JSON use. The isolated replay re-runs that same verifier on already-fetched compiled bytes so network cost is excluded; it is not a replacement or cache bypass. Build binding is reported separately: timing from an UNBOUND build must not be presented as exact-commit evidence.',
     };
     output.textContent = JSON.stringify(report, null, 2);
     globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
   } catch (error) {
     const report = {
-      schema: 'nwe.browser-provenance-profile-report/0.1',
+      schema: 'nwe.browser-provenance-profile-report/0.2',
       status: 'ERROR',
       error: error instanceof Error ? error.message : String(error),
-      build: {
-        git_commit_sha: import.meta.env.NWE_GIT_COMMIT_SHA ?? null,
-        deployment_id: import.meta.env.NWE_DEPLOYMENT_ID ?? null,
-      },
+      build: buildIdentity(),
     };
     output.textContent = JSON.stringify(report, null, 2);
     globalThis.__NWE_BROWSER_ARTIFACT_PROFILE__ = report;
