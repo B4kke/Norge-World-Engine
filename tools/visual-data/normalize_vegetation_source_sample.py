@@ -97,6 +97,51 @@ def require_ogr() -> tuple[str, str]:
     return ogrinfo, ogr2ogr
 
 
+def prepare_sosi_fyba_compat(source: Path, destination: Path) -> dict[str, Any]:
+    """Create a lossless legacy-FYBA input copy without changing provider bytes.
+
+    Current NIBIO SOSI uses UTF-8, which is valid SOSI. The FYBA library used by the
+    hosted GDAL build fails before GDAL can read the UTF-8 TEGNSETT declaration because
+    FYBA itself cannot match Norwegian header keys such as ORIGO-NØ in that encoding.
+    GDAL's SOSI adapter supports ISO8859-10 after FYBA opens the file. We therefore make
+    a local compatibility copy with a strict UTF-8 -> ISO8859-10 transcode. Any character
+    that cannot be represented aborts the gate rather than being replaced.
+    """
+    raw = source.read_bytes()
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise NormalizationError(f"SR16V SOSI is not strict UTF-8: {error}") from error
+
+    pattern = re.compile(r"(?m)^(\.\.TEGNSETT[ \t]+)UTF-8[ \t]*$")
+    matches = pattern.findall(text)
+    if len(matches) != 1:
+        raise NormalizationError(f"expected exactly one '..TEGNSETT UTF-8' header, found {len(matches)}")
+    compat_text = pattern.sub(r"\1ISO8859-10", text, count=1)
+    try:
+        compat_bytes = compat_text.encode("iso8859_10", errors="strict")
+    except UnicodeEncodeError as error:
+        raise NormalizationError(
+            f"SR16V SOSI cannot be losslessly transcoded to ISO8859-10 for FYBA: {error}"
+        ) from error
+
+    roundtrip = compat_bytes.decode("iso8859_10", errors="strict")
+    if roundtrip != compat_text:
+        raise NormalizationError("SR16V FYBA compatibility transcode failed strict round-trip check")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(compat_bytes)
+    return {
+        "operation": "strict-utf8-to-iso8859-10-fyba-compat-copy-v0.1",
+        "provider_bytes_modified": False,
+        "source_declared_encoding": "UTF-8",
+        "compat_declared_encoding": "ISO8859-10",
+        "strict_roundtrip": True,
+        "compat_byte_size": len(compat_bytes),
+        "compat_sha256": hashlib.sha256(compat_bytes).hexdigest(),
+    }
+
+
 def discover_polygon_layer(ogrinfo: str, source: Path, preferred_tokens: tuple[str, ...]) -> str:
     output = run([ogrinfo, "-ro", "-q", str(source)], timeout=120)
     rows: list[tuple[str, str]] = []
@@ -149,6 +194,8 @@ def convert_to_geojson(source: Path, destination: Path, config: dict[str, Any]) 
     return {
         "source_format": config["source_format"],
         "layer": layer,
+        "decoder_input_bytes": source.stat().st_size,
+        "decoder_input_sha256": sha256_path(source),
         "geojson_bytes": destination.stat().st_size,
         "geojson_sha256": sha256_path(destination),
     }
@@ -265,10 +312,22 @@ def normalize_feature_collection(path: Path, role: str) -> tuple[list[dict[str, 
     }
 
 
-def layer_payload(role: str, source_path: Path, geojson_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def layer_payload(
+    role: str,
+    provider_source_path: Path,
+    decoder_source_path: Path,
+    geojson_path: Path,
+    compatibility: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     config = SOURCE_CONFIG[role]
-    conversion = convert_to_geojson(source_path, geojson_path, config)
+    conversion = convert_to_geojson(decoder_source_path, geojson_path, config)
     features, stats = normalize_feature_collection(geojson_path, role)
+    transform = {
+        "operation": "gdal-ogr-decode-reproject-xy-exact-tile-clip-shapely-normalize-v0.1-candidate",
+        "bounds_epsg25832": list(BOUNDS_25832),
+        "ar50_excluded_volatile_fields": sorted(config["volatile_fields"]),
+        "decoder_compatibility": compatibility or {"operation": "none"},
+    }
     semantic = {
         "role": "forest_structure" if role == "sr16v" else "coarse_area_classification",
         "source_key": role,
@@ -278,22 +337,24 @@ def layer_payload(role: str, source_path: Path, geojson_path: Path) -> tuple[dic
         "license": config["license"],
         "attribution": config["attribution"],
         "horizontal_crs": "EPSG:25832",
-        "transform": {
-            "operation": "gdal-ogr-decode-reproject-xy-exact-tile-clip-shapely-normalize-v0.1-candidate",
-            "bounds_epsg25832": list(BOUNDS_25832),
-            "ar50_excluded_volatile_fields": sorted(config["volatile_fields"]),
-        },
+        "transform": transform,
         "features": features,
     }
     full = {
         **semantic,
         "source_raw": {
             "format": config["source_format"],
-            "sha256": sha256_path(source_path),
-            "byte_size": source_path.stat().st_size,
+            "sha256": sha256_path(provider_source_path),
+            "byte_size": provider_source_path.stat().st_size,
         },
     }
-    return full, {"conversion": conversion, "stats": stats, "semantic_sha256": canonical_sha256(semantic)}
+    return full, {
+        "conversion": conversion,
+        "stats": stats,
+        "semantic_sha256": canonical_sha256(semantic),
+        "provider_source_sha256": sha256_path(provider_source_path),
+        "compatibility": compatibility or {"operation": "none"},
+    }
 
 
 def resolve_inputs(cache_root: Path, manifest: dict[str, Any], ar50_index: int) -> tuple[Path, Path]:
@@ -333,8 +394,21 @@ def main() -> int:
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    sr16_layer, sr16_evidence = layer_payload("sr16v", sr16_source, work_dir / "sr16v.geojson")
-    ar50_layer, ar50_evidence = layer_payload("ar50", ar50_source, work_dir / "ar50.geojson")
+    sr16_compat_path = work_dir / "sr16v-fyba-iso8859-10.sos"
+    sr16_compat = prepare_sosi_fyba_compat(sr16_source, sr16_compat_path)
+    sr16_layer, sr16_evidence = layer_payload(
+        "sr16v",
+        sr16_source,
+        sr16_compat_path,
+        work_dir / "sr16v.geojson",
+        sr16_compat,
+    )
+    ar50_layer, ar50_evidence = layer_payload(
+        "ar50",
+        ar50_source,
+        ar50_source,
+        work_dir / "ar50.geojson",
+    )
 
     semantic_payload = {
         "schema": "nwe.vegetation-source-normalized-sample/0.1-candidate",
