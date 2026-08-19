@@ -11,27 +11,39 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function applyOrbitDelta(camera, dx, dy) {
+function resolvedLimits(limits = PREVIEW_CAMERA_LIMITS) {
+  return {
+    minDistance: Number.isFinite(limits?.minDistance) ? limits.minDistance : PREVIEW_CAMERA_LIMITS.minDistance,
+    maxDistance: Number.isFinite(limits?.maxDistance) ? limits.maxDistance : PREVIEW_CAMERA_LIMITS.maxDistance,
+    minPitch: Number.isFinite(limits?.minPitch) ? limits.minPitch : PREVIEW_CAMERA_LIMITS.minPitch,
+    maxPitch: Number.isFinite(limits?.maxPitch) ? limits.maxPitch : PREVIEW_CAMERA_LIMITS.maxPitch,
+  };
+}
+
+export function applyOrbitDelta(camera, dx, dy, limits = PREVIEW_CAMERA_LIMITS) {
+  const resolved = resolvedLimits(limits);
   camera.yaw = (camera.yaw - dx * 0.006) % TAU;
-  camera.pitch = clamp(camera.pitch + dy * 0.0045, PREVIEW_CAMERA_LIMITS.minPitch, PREVIEW_CAMERA_LIMITS.maxPitch);
+  camera.pitch = clamp(camera.pitch + dy * 0.0045, resolved.minPitch, resolved.maxPitch);
   return camera;
 }
 
-export function applyWheelZoom(camera, deltaY) {
+export function applyWheelZoom(camera, deltaY, limits = PREVIEW_CAMERA_LIMITS) {
+  const resolved = resolvedLimits(limits);
   camera.distance = clamp(
     camera.distance * Math.exp(deltaY * 0.00115),
-    PREVIEW_CAMERA_LIMITS.minDistance,
-    PREVIEW_CAMERA_LIMITS.maxDistance,
+    resolved.minDistance,
+    resolved.maxDistance,
   );
   return camera;
 }
 
-export function applyPinchZoom(camera, previousSpan, nextSpan) {
+export function applyPinchZoom(camera, previousSpan, nextSpan, limits = PREVIEW_CAMERA_LIMITS) {
   if (!(previousSpan > 0) || !(nextSpan > 0)) return camera;
+  const resolved = resolvedLimits(limits);
   camera.distance = clamp(
     camera.distance * (previousSpan / nextSpan),
-    PREVIEW_CAMERA_LIMITS.minDistance,
-    PREVIEW_CAMERA_LIMITS.maxDistance,
+    resolved.minDistance,
+    resolved.maxDistance,
   );
   return camera;
 }
@@ -69,8 +81,9 @@ function span(points) {
   return Math.hypot(pair[1].x - pair[0].x, pair[1].y - pair[0].y);
 }
 
-export function installPreviewCameraControls(canvas, camera, onChange, { resetCamera } = {}) {
+export function installPreviewCameraControls(canvas, camera, onChange, { resetCamera, limits = PREVIEW_CAMERA_LIMITS } = {}) {
   const pointers = new Map();
+  const activeLimits = resolvedLimits(limits);
   let mode = 'idle';
   let lastSingle = null;
   let lastCentroid = null;
@@ -114,7 +127,7 @@ export function installPreviewCameraControls(canvas, camera, onChange, { resetCa
         resetGestureBaseline();
         return;
       }
-      applyPinchZoom(camera, lastSpan, nextSpan);
+      applyPinchZoom(camera, lastSpan, nextSpan, activeLimits);
       applyPanDelta(camera, nextCentroid.x - lastCentroid.x, nextCentroid.y - lastCentroid.y);
       lastCentroid = nextCentroid;
       lastSpan = nextSpan;
@@ -134,7 +147,7 @@ export function installPreviewCameraControls(canvas, camera, onChange, { resetCa
 
     const wantsPan = event.shiftKey || event.buttons === 4 || event.button === 1 || event.buttons === 2;
     if (wantsPan) applyPanDelta(camera, dx, dy);
-    else applyOrbitDelta(camera, dx, dy);
+    else applyOrbitDelta(camera, dx, dy, activeLimits);
     onChange();
   };
 
@@ -147,7 +160,7 @@ export function installPreviewCameraControls(canvas, camera, onChange, { resetCa
 
   const wheel = (event) => {
     event.preventDefault();
-    applyWheelZoom(camera, event.deltaY);
+    applyWheelZoom(camera, event.deltaY, activeLimits);
     onChange();
   };
 
