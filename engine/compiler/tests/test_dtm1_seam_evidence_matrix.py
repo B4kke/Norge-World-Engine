@@ -20,6 +20,11 @@ def test_current_nannestad_matrix_remains_fail_closed():
     assert core["provider_authorized"] is False
     assert "10 m excess" in core["blocker"]
     assert "225000000 m2" in core["blocker"]
+    assert "11/11" in core["blocker"]
+    assert "3/7 is best" in core["blocker"]
+    assert "6/11" in core["blocker"]
+    assert "10/0" in core["blocker"]
+    assert "QA sensors only" in core["blocker"]
     assert "provider_generation_distribution_contract_sha256" in core["provenance_fields"]
     assert "provider_edge_domain_contract_sha256" in core["provenance_fields"]
     assert "provider_export_maptile_area_m2" in core["provenance_fields"]
