@@ -236,3 +236,35 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-VEGETATION-01-SAMPLE`: when P0 milestone acceptance is complete, acquire and inventory one real Nannestad SR16R + AR50 sample through official download paths and prove cache/offline reproducibility before defining the vegetation runtime artifact.
+
+## 2026-08-20 01:27 CEST — FORGE — P1-VEGETATION-01-SAMPLE
+
+**What**
+- Implemented a bounded real-source cache/materialization path for Nannestad vegetation, a source-network-free deterministic normalizer and an evidence verifier.
+- Replaced the unproven mandatory `SR16R` assumption with the source path that actually passed license/access + real-byte validation: NIBIO `SR16V` Atom/SOSI + NIBIO `AR50` WFS.
+- Added a strict decoder-only UTF-8 -> ISO8859-10 compatibility copy for hosted GDAL/FYBA while preserving the original provider SOSI bytes/hash as source truth.
+- Kept the expensive real-byte materialize/decode/replay gate as explicit `workflow_dispatch`; ordinary PR source probing was restored to the lighter contract checks.
+
+**Why**
+- The source audit had reached the point where metadata claims were insufficient. The highest-value FORGE work was to prove or falsify one legally reproducible Nannestad vegetation path before any tree-placement/runtime schema is designed, without displacing active `P0-GROUND-07/08` renderer work.
+
+**Result / evidence**
+- FACT: code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9` passed `baseline` run `32312909195` and heavy `visual-source-probe` run `32312909181`.
+- FACT: exact 1 km EPSG:25832 sample normalized `124` SR16V polygons and `15` AR50 polygon/multipolygon features; same cached bytes replayed byte-identically.
+- FACT: independent AR50 raw responses had different hashes, but normalized semantic content matched after excluding only request-time `kopidato`, which was independently proven volatile.
+- FACT: provider SR16V SOSI SHA-256 is `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`; normalized candidate SHA-256 is `c275ddedaf06d6b509c90bf41fb54404d36cbc3457681a092eddcec77d44929c`; semantic SHA-256 is `76536346c39a5a731352ca00d86231d901e025f9a1a4b4b2097700a694534ec1`.
+- FACT: SR16V provider bytes declare SOSI 5.0 / UTF-8 / EPSG:25832 source selection and NN2000 in the source header. Hosted FYBA could not open the valid UTF-8 file directly; strict ISO8859-10 compatibility transcode round-trip passed without replacing characters and does not alter source binding.
+- FACT: current split SR16R metadata has unresolved license/distribution inconsistencies; it remains a higher-fidelity research candidate rather than the mandatory public baseline.
+- TRUTH BOUNDARY: this proves source polygons/attributes and deterministic normalization only. No individual-tree positions, density policy, asset choice, LOD or renderer artifact has been promoted.
+
+**Changed**
+- Draft PR #79 / branch `agent/forge-vegetation-sources`.
+- `tools/visual-data/materialize_vegetation_source_cache.py`.
+- `tools/visual-data/normalize_vegetation_source_sample.py`.
+- `tools/visual-data/verify_vegetation_source_sample.py` and supporting source probes.
+- `.github/workflows/vegetation-source-sample.yml` and lightweight `.github/workflows/visual-source-probe.yml`.
+- `docs/data-licenses/visual-sources.md`, `docs/05-worklog.md` and `docs/06-task-queue.md`.
+- CI evidence artifact `9387116220`; raw/bulk provider geodata remains outside Git and was not uploaded as an artifact.
+
+**Next**
+- `P1-VEGETATION-01-ARTIFACT`: after P0 milestone acceptance, define and prove one tiny renderer-neutral deterministic vegetation artifact candidate from the admitted SR16V + AR50 normalized boundary, with source/config provenance and no renderer-owned semantics.
