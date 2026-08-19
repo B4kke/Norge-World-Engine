@@ -60,9 +60,18 @@ assert.equal(sourceBacked.metadata.height_semantics, 'source-backed');
 assert.equal(sourceBacked.metadata.source_backed_height_count, 1);
 assert.equal(sourceBacked.metadata.fallback_height_count, 0);
 assert.equal(sourceBacked.metadata.roof_triangulation, 'three-earcut-2d-footprint');
+assert.equal(sourceBacked.metadata.uv_semantics, 'renderer-only-meter-scaled');
+assert.equal(sourceBacked.metadata.wall_uv_period_m, 2);
+assert.equal(sourceBacked.metadata.roof_uv_period_m, 1.5);
 assert.equal(sourceBacked.metadata.roof_vertices, 6);
 assert.equal(sourceBacked.metadata.roof_triangles, 4, 'simple six-vertex footprint must triangulate to n-2 roof triangles');
 assert.equal(sourceBacked.metadata.wall_triangles, 12, 'six footprint edges must emit two wall triangles each');
+assert.equal(sourceBacked.walls.uvs.length, (sourceBacked.walls.positions.length / 3) * 2, 'every wall vertex needs a UV');
+assert.equal(sourceBacked.roofs.uvs.length, (sourceBacked.roofs.positions.length / 3) * 2, 'every roof vertex needs a UV');
+assert.equal(sourceBacked.uvs.length, (sourceBacked.positions.length / 3) * 2, 'combined compatibility geometry needs matching UVs');
+assert.deepEqual(Array.from(sourceBacked.walls.uvs.slice(0, 8)), [0, 0, 3, 0, 3, 3.75, 0, 3.75], '6 m × 7.5 m first wall must use 2 m texture periods');
+assert.deepEqual(Array.from(sourceBacked.roofs.uvs.slice(0, 4)), [0, 0, 4, 0], '6 m roof edge must span four 1.5 m texture periods');
+for (const uv of sourceBacked.uvs) assert.ok(Number.isFinite(uv), 'building UVs must remain finite');
 for (const centroid of roofTriangleCentroids(sourceBacked)) {
   assert.ok(pointInPolygon(centroid, concaveFootprint.slice(0, -1)), `roof triangle centroid escaped footprint: ${centroid}`);
 }
@@ -94,5 +103,7 @@ for (let index = 1; index < fallback.roofs.positions.length; index += 3) {
 
 assert.throws(() => buildBuildingSurfaceGeometry({}, { resolved: true }), /projectPoint/);
 assert.throws(() => buildBuildingSurfaceGeometry({}, { projectPoint: () => [0, 0, 0] }), /resolved/);
+assert.throws(() => buildBuildingSurfaceGeometry({}, { projectPoint: () => [0, 0, 0], resolved: true, wallUvPeriodMeters: 0 }), /wallUvPeriodMeters/);
+assert.throws(() => buildBuildingSurfaceGeometry({}, { projectPoint: () => [0, 0, 0], resolved: true, roofUvPeriodMeters: 0 }), /roofUvPeriodMeters/);
 
 console.log('BUILDING_SURFACE_GEOMETRY_PASS');
