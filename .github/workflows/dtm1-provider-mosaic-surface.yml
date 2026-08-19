@@ -1,0 +1,93 @@
+name: dtm1-provider-mosaic-surface
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/dtm1_provider_mosaic_surface.py'
+      - 'engine/compiler/tests/test_dtm1_provider_mosaic_surface.py'
+      - '.github/workflows/dtm1-provider-mosaic-surface.yml'
+  workflow_dispatch:
+
+jobs:
+  provider-mosaic-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install compiler dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run focused regressions
+        run: pytest -q engine/compiler/tests/test_dtm1_provider_mosaic_surface.py
+      - name: Fetch and classify live Høydedata service contracts
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from urllib.request import Request, urlopen
+
+          from nwe_compiler.dtm1_provider_mosaic_surface import classify_provider_mosaic_surfaces
+          from nwe_compiler.terrain_acquisition import USER_AGENT
+
+          URLS = {
+              'dtm': 'https://hoydedata.no/arcgis/rest/services/DTM/ImageServer?f=pjson',
+              'nhm': 'https://hoydedata.no/arcgis/rest/services/NHM_DTM_25833/ImageServer?f=pjson',
+          }
+          payloads = {}
+          services = {}
+          for key, url in URLS.items():
+              req = Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'application/json'})
+              with urlopen(req, timeout=60) as response:
+                  if response.status != 200:
+                      raise RuntimeError(f'HTTP {response.status}: {url}')
+                  payload = response.read()
+              payloads[key] = payload
+              services[key] = json.loads(payload)
+
+          result = classify_provider_mosaic_surfaces(services['dtm'], services['nhm'])
+          facts = result['facts']
+          evidence = {
+              'schema': 'nwe.dtm1-provider-mosaic-surface-live-proof/0.1',
+              'sources': {
+                  key: {
+                      'url': URLS[key],
+                      'sha256': hashlib.sha256(payloads[key]).hexdigest(),
+                      'size_bytes': len(payloads[key]),
+                  }
+                  for key in URLS
+              },
+              'classification': result,
+              'status': 'SERVICE_CONTRACT_DIVERGENCE_CONFIRMED_SEAM_AUTHORITY_UNPROVEN',
+          }
+          with open('/tmp/dtm1-provider-mosaic-surface.json', 'w', encoding='utf-8') as fh:
+              json.dump(evidence, fh, indent=2, sort_keys=True)
+              fh.write('\n')
+
+          print(json.dumps({
+              'facts': facts,
+              'production_seam_authority': result['claim_calibration']['production_seam_authority'],
+              'authority_status': result['claim_calibration']['authority_status'],
+          }, indent=2, sort_keys=True))
+
+          if not all(facts.values()):
+              raise SystemExit('live provider service contract changed; fail closed')
+          if result['claim_calibration']['production_seam_authority'] is not False:
+              raise SystemExit('service metadata must not create downloadable-source seam authority')
+          PY
+      - name: Assert evidence workspace contains no raw geodata
+        if: always()
+        run: |
+          if find /tmp -maxdepth 1 -type f \( -iname '*.tif' -o -iname '*.tiff' -o -iname '*.las' -o -iname '*.laz' \) | grep -q .; then
+            echo 'raw geodata unexpectedly present in evidence workspace'
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dtm1-provider-mosaic-surface-${{ github.sha }}
+          path: /tmp/dtm1-provider-mosaic-surface.json
+          if-no-files-found: warn
+          retention-days: 7
