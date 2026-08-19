@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
+import { createLicensedHumanoid } from './humanoidAsset.mjs';
 import { createPreviewSceneGeometry } from './preview1SceneGeometry.mjs';
 import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
@@ -9,32 +10,22 @@ const TERRAIN_MATERIAL_SCHEMA = 'nwe.terrain-render-style/0.1';
 const BUILDING_MATERIAL_SCHEMA = 'nwe.building-render-style/0.1';
 const TERRAIN_DETAIL_PERIOD_M = 5;
 const TERRAIN_DETAIL_TEXTURE_SIZE = 64;
+const HUMANOID_GROUND_LIFT_M = 0.02;
 
-function clamp01(value) {
-  return Math.max(0, Math.min(1, value));
-}
+function clamp01(value) { return Math.max(0, Math.min(1, value)); }
 
 function assertTerrainPayloadIdentity(payload, expectedTileId, expectedArtifactSha) {
-  if (!payload?.mesh?.positions || !payload?.mesh?.indices || !payload?.mesh?.normals || !payload?.mesh?.uvs) {
-    throw new Error('THREE_GROUND_TERRAIN_PAYLOAD_INVALID');
-  }
+  if (!payload?.mesh?.positions || !payload?.mesh?.indices || !payload?.mesh?.normals || !payload?.mesh?.uvs) throw new Error('THREE_GROUND_TERRAIN_PAYLOAD_INVALID');
   const vertexCount = payload.mesh.positions.length / 3;
-  if (payload.mesh.normals.length !== payload.mesh.positions.length || payload.mesh.uvs.length !== vertexCount * 2) {
-    throw new Error('THREE_GROUND_TERRAIN_ATTRIBUTE_MISMATCH');
-  }
-  if (payload?.artifact?.header?.tile_id !== expectedTileId) {
-    throw new Error(`THREE_GROUND_TERRAIN_TILE_MISMATCH: ${payload?.artifact?.header?.tile_id ?? 'missing'} != ${expectedTileId}`);
-  }
-  if (payload?.artifact?.sha256 !== expectedArtifactSha) {
-    throw new Error(`THREE_GROUND_TERRAIN_ARTIFACT_MISMATCH: ${payload?.artifact?.sha256 ?? 'missing'} != ${expectedArtifactSha}`);
-  }
+  if (payload.mesh.normals.length !== payload.mesh.positions.length || payload.mesh.uvs.length !== vertexCount * 2) throw new Error('THREE_GROUND_TERRAIN_ATTRIBUTE_MISMATCH');
+  if (payload?.artifact?.header?.tile_id !== expectedTileId) throw new Error(`THREE_GROUND_TERRAIN_TILE_MISMATCH: ${payload?.artifact?.header?.tile_id ?? 'missing'} != ${expectedTileId}`);
+  if (payload?.artifact?.sha256 !== expectedArtifactSha) throw new Error(`THREE_GROUND_TERRAIN_ARTIFACT_MISMATCH: ${payload?.artifact?.sha256 ?? 'missing'} != ${expectedArtifactSha}`);
 }
 
 function bufferGeometry(positions, indices, normals = null, uvs = null, colors = null) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  if (normals) geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-  else geometry.computeVertexNormals();
+  if (normals) geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3)); else geometry.computeVertexNormals();
   if (uvs) geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   if (colors) geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
@@ -42,10 +33,7 @@ function bufferGeometry(positions, indices, normals = null, uvs = null, colors =
   return geometry;
 }
 
-function disposeMesh(mesh) {
-  if (!mesh) return;
-  mesh.geometry?.dispose?.();
-}
+function disposeMesh(mesh) { if (mesh) mesh.geometry?.dispose?.(); }
 
 function terrainExtentMeters(payload) {
   const bounds = payload?.mesh?.metadata?.bounds ?? payload?.artifact?.header?.bounds;
@@ -70,9 +58,7 @@ function createTerrainDetailTexture({ surface = false } = {}) {
       const offset = (y * size + x) * 4;
       if (surface) {
         const shade = Math.round(166 + value * 82);
-        data[offset] = shade;
-        data[offset + 1] = shade;
-        data[offset + 2] = shade;
+        data[offset] = shade; data[offset + 1] = shade; data[offset + 2] = shade;
       } else {
         data[offset] = Math.round(154 + value * 58);
         data[offset + 1] = Math.round(168 + value * 62);
@@ -82,10 +68,8 @@ function createTerrainDetailTexture({ surface = false } = {}) {
     }
   }
   const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.magFilter = THREE.LinearFilter;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter; texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.generateMipmaps = true;
   texture.colorSpace = surface ? THREE.NoColorSpace : THREE.SRGBColorSpace;
   texture.needsUpdate = true;
@@ -97,9 +81,7 @@ function createTerrainVertexColors(positions, normals) {
   const colors = new Float32Array(vertexCount * 3);
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
     const offset = vertex * 3;
-    const x = positions[offset];
-    const y = positions[offset + 1];
-    const z = positions[offset + 2];
+    const x = positions[offset]; const y = positions[offset + 1]; const z = positions[offset + 2];
     const slope = 1 - clamp01(normals[offset + 1]);
     const macro = clamp01(0.5 + 0.25 * Math.sin(x * 0.011) + 0.25 * Math.cos(z * 0.009));
     const micro = 0.5 + 0.5 * Math.sin((x + z) * 0.047 + y * 0.031);
@@ -112,16 +94,11 @@ function createTerrainVertexColors(positions, normals) {
 
 function groundHeightAtCenter(payload) {
   const header = payload.artifact.header;
-  const easting = (header.bounds[0] + header.bounds[2]) / 2;
-  const northing = (header.bounds[1] + header.bounds[3]) / 2;
   return sampleHeightGrid(payload.elevations, {
-    width: header.width,
-    height: header.height,
-    bounds: header.bounds,
-    pixelSizeMeters: header.pixel_size_m,
-    nodata: header.nodata,
-    easting,
-    northing,
+    width: header.width, height: header.height, bounds: header.bounds,
+    pixelSizeMeters: header.pixel_size_m, nodata: header.nodata,
+    easting: (header.bounds[0] + header.bounds[2]) / 2,
+    northing: (header.bounds[1] + header.bounds[3]) / 2,
   }) - payload.mesh.metadata.origin[2];
 }
 
@@ -133,72 +110,35 @@ function backendName(renderer, forceWebGL) {
 }
 
 async function initializeThreeRenderer(canvas, profile, forceWebGL) {
-  const renderer = new THREE.WebGPURenderer({
-    canvas,
-    antialias: profile.webglAntialias !== false,
-    alpha: false,
-    forceWebGL,
-  });
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: profile.webglAntialias !== false, alpha: false, forceWebGL });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, profile.maxDpr ?? 1.5));
   renderer.setClearColor(0x9eb4bd, 1);
   await renderer.init();
   return renderer;
 }
 
-export async function createThreeGroundRenderer({
-  canvas,
-  terrainPayload,
-  roadsArtifact,
-  buildingsArtifact,
-  graphicsProfile,
-  backend = 'auto',
-  onBackendFallback = () => {},
-  onFrame = () => {},
-} = {}) {
+export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, graphicsProfile, backend = 'auto', onBackendFallback = () => {}, onFrame = () => {} } = {}) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   const initStartedAt = monotonicNow();
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, webglAntialias: true };
   const expectedTerrainTileId = terrainPayload?.artifact?.header?.tile_id;
   const expectedTerrainArtifactSha = terrainPayload?.artifact?.sha256;
   if (!expectedTerrainTileId || !expectedTerrainArtifactSha) throw new Error('THREE_GROUND_TERRAIN_IDENTITY_MISSING');
-
   const requestedBackend = backend === 'webgl2' ? 'webgl2' : backend === 'webgpu' ? 'webgpu' : 'auto';
   if (requestedBackend === 'webgpu' && !globalThis.navigator?.gpu) throw new Error('WEBGPU_UNAVAILABLE');
   let forceWebGL = requestedBackend === 'webgl2';
   let renderer;
-  try {
-    renderer = await initializeThreeRenderer(canvas, profile, forceWebGL);
-  } catch (error) {
+  try { renderer = await initializeThreeRenderer(canvas, profile, forceWebGL); }
+  catch (error) {
     if (requestedBackend !== 'auto') throw error;
     onBackendFallback({ from: 'webgpu', to: 'webgl2', error });
     forceWebGL = true;
     renderer = await initializeThreeRenderer(canvas, profile, true);
   }
-
-  return createThreeGroundRendererFromInitialized({
-    renderer,
-    forceWebGL,
-    canvas,
-    terrainPayload,
-    roadsArtifact,
-    buildingsArtifact,
-    profile,
-    initStartedAt,
-    onFrame,
-  });
+  return createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, profile, initStartedAt, onFrame });
 }
 
-function createThreeGroundRendererFromInitialized({
-  renderer,
-  forceWebGL,
-  canvas,
-  terrainPayload,
-  roadsArtifact,
-  buildingsArtifact,
-  profile,
-  initStartedAt,
-  onFrame,
-}) {
+async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, profile, initStartedAt, onFrame }) {
   const sceneStartedAt = monotonicNow();
   const sceneGeometry = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
@@ -207,36 +147,23 @@ function createThreeGroundRendererFromInitialized({
   const activeBackend = backendName(renderer, forceWebGL);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9eb4bd);
-  scene.fog = new THREE.Fog(0x9eb4bd, 220, 1150);
+  scene.background = new THREE.Color(0x9eb4bd); scene.fog = new THREE.Fog(0x9eb4bd, 220, 1150);
   scene.add(new THREE.HemisphereLight(0xe4f2ff, 0x44513a, 1.35));
-  const sun = new THREE.DirectionalLight(0xfff3d2, 2.45);
-  sun.position.set(-180, 320, 140);
-  scene.add(sun);
+  const sun = new THREE.DirectionalLight(0xfff3d2, 2.45); sun.position.set(-180, 320, 140); scene.add(sun);
 
   const terrainColorTexture = createTerrainDetailTexture();
   const terrainSurfaceTexture = createTerrainDetailTexture({ surface: true });
   const [terrainExtentE, terrainExtentN] = terrainExtentMeters(terrainPayload);
   const detailRepeatX = Math.max(1, terrainExtentE / TERRAIN_DETAIL_PERIOD_M);
   const detailRepeatY = Math.max(1, terrainExtentN / TERRAIN_DETAIL_PERIOD_M);
-  terrainColorTexture.repeat.set(detailRepeatX, detailRepeatY);
-  terrainSurfaceTexture.repeat.set(detailRepeatX, detailRepeatY);
+  terrainColorTexture.repeat.set(detailRepeatX, detailRepeatY); terrainSurfaceTexture.repeat.set(detailRepeatX, detailRepeatY);
 
-  const terrainMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.94,
-    metalness: 0.0,
-    map: terrainColorTexture,
-    roughnessMap: terrainSurfaceTexture,
-    bumpMap: terrainSurfaceTexture,
-    bumpScale: 0.14,
-    vertexColors: true,
-  });
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide });
+  const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, metalness: 0, map: terrainColorTexture, roughnessMap: terrainSurfaceTexture, bumpMap: terrainSurfaceTexture, bumpScale: 0.14, vertexColors: true });
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
   const resolvedWallMaterial = new THREE.MeshStandardMaterial({ color: 0xb8c1c4, roughness: 0.78, metalness: 0.02, side: THREE.DoubleSide });
-  const resolvedRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x6f7779, roughness: 0.84, metalness: 0.0, side: THREE.DoubleSide });
-  const fallbackWallMaterial = new THREE.MeshStandardMaterial({ color: 0x7c878a, roughness: 0.86, metalness: 0.0, side: THREE.DoubleSide });
-  const fallbackRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x596265, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide });
+  const resolvedRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x6f7779, roughness: 0.84, metalness: 0, side: THREE.DoubleSide });
+  const fallbackWallMaterial = new THREE.MeshStandardMaterial({ color: 0x7c878a, roughness: 0.86, metalness: 0, side: THREE.DoubleSide });
+  const fallbackRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x596265, roughness: 0.9, metalness: 0, side: THREE.DoubleSide });
 
   const vectorStartedAt = monotonicNow();
   const roadMesh = new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices), roadMaterial);
@@ -250,113 +177,46 @@ function createThreeGroundRendererFromInitialized({
   const terrainLifecycle = { creates: 0, destroys: 0, createTimingMs: [], destroyTimingMs: [] };
   let terrainMesh = null;
   const terrainColorBytes = (terrainPayload.mesh.positions.length / 3) * 3 * Float32Array.BYTES_PER_ELEMENT;
-  const terrainPayloadBytes = byteLengthOf(
-    terrainPayload.mesh.positions,
-    terrainPayload.mesh.normals,
-    terrainPayload.mesh.uvs,
-    terrainPayload.mesh.indices,
-  ) + terrainColorBytes;
-  const vectorPayloadBytes = byteLengthOf(
-    sceneGeometry.roads.positions,
-    sceneGeometry.roads.indices,
-    sceneGeometry.buildingsResolved.walls.positions,
-    sceneGeometry.buildingsResolved.walls.indices,
-    sceneGeometry.buildingsResolved.roofs.positions,
-    sceneGeometry.buildingsResolved.roofs.indices,
-    sceneGeometry.buildingsFallback.walls.positions,
-    sceneGeometry.buildingsFallback.walls.indices,
-    sceneGeometry.buildingsFallback.roofs.positions,
-    sceneGeometry.buildingsFallback.roofs.indices,
-  );
+  const terrainPayloadBytes = byteLengthOf(terrainPayload.mesh.positions, terrainPayload.mesh.normals, terrainPayload.mesh.uvs, terrainPayload.mesh.indices) + terrainColorBytes;
+  const vectorPayloadBytes = byteLengthOf(sceneGeometry.roads.positions, sceneGeometry.roads.indices, sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices);
   const terrainTexturePayloadBytes = TERRAIN_DETAIL_TEXTURE_SIZE * TERRAIN_DETAIL_TEXTURE_SIZE * 4 * 2;
 
   function makeTerrainMesh(payload) {
     assertTerrainPayloadIdentity(payload, expectedTerrainTileId, expectedTerrainArtifactSha);
-    const colors = createTerrainVertexColors(payload.mesh.positions, payload.mesh.normals);
-    return new THREE.Mesh(
-      bufferGeometry(payload.mesh.positions, payload.mesh.indices, payload.mesh.normals, payload.mesh.uvs, colors),
-      terrainMaterial,
-    );
+    return new THREE.Mesh(bufferGeometry(payload.mesh.positions, payload.mesh.indices, payload.mesh.normals, payload.mesh.uvs, createTerrainVertexColors(payload.mesh.positions, payload.mesh.normals)), terrainMaterial);
   }
-
   const initialTerrainStartedAt = monotonicNow();
-  terrainMesh = makeTerrainMesh(terrainPayload);
-  terrainLifecycle.creates += 1;
-  terrainLifecycle.createTimingMs.push(monotonicNow() - initialTerrainStartedAt);
-  scene.add(terrainMesh);
+  terrainMesh = makeTerrainMesh(terrainPayload); terrainLifecycle.creates += 1; terrainLifecycle.createTimingMs.push(monotonicNow() - initialTerrainStartedAt); scene.add(terrainMesh);
   const gpuResourceApplyCpuMs = monotonicNow() - vectorStartedAt;
 
-  const camera = new THREE.PerspectiveCamera(58, 1, 0.15, 2200);
   const centerGround = groundHeightAtCenter(terrainPayload);
-  const cameraTarget = [0, centerGround + 1.55, -28];
-  camera.position.set(0, centerGround + 1.7, 14);
-  camera.lookAt(...cameraTarget);
+  const humanoidStartedAt = monotonicNow();
+  const humanoid = await createLicensedHumanoid({ scene, position: [0, centerGround + HUMANOID_GROUND_LIFT_M, 0], targetHeightM: 1.75 });
+  const humanoidLoadCpuMs = monotonicNow() - humanoidStartedAt;
 
-  let stopped = false;
-  let dirty = true;
-  let lastDrawAt = 0;
-  let firstFrameResolve;
-  let firstFrameReject;
-  let firstFrameSettled = false;
-  const cameraControls = installThreePreviewCameraControls({
-    canvas,
-    camera,
-    target: cameraTarget,
-    onChange: () => { dirty = true; },
-  });
-  const firstFrame = new Promise((resolve, reject) => {
-    firstFrameResolve = resolve;
-    firstFrameReject = reject;
-  });
+  const camera = new THREE.PerspectiveCamera(58, 1, 0.15, 2200);
+  const cameraTarget = [0, centerGround + 1.55, -28];
+  camera.position.set(0, centerGround + 1.7, 14); camera.lookAt(...cameraTarget);
+
+  let stopped = false; let dirty = true; let lastDrawAt = 0; let lastAnimationAt = 0;
+  let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;
+  const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, onChange: () => { dirty = true; } });
+  const firstFrame = new Promise((resolve, reject) => { firstFrameResolve = resolve; firstFrameReject = reject; });
 
   function resize() {
-    const width = Math.max(1, canvas.clientWidth);
-    const height = Math.max(1, canvas.clientHeight);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.setSize(width, height, false);
+    const width = Math.max(1, canvas.clientWidth); const height = Math.max(1, canvas.clientHeight);
+    camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height, false);
   }
-
   function terrainResourceSnapshot() {
-    return {
-      schema: TERRAIN_RESOURCE_SCHEMA,
-      backend: activeBackend,
-      tile_id: expectedTerrainTileId,
-      artifact_sha256: expectedTerrainArtifactSha,
-      active: Boolean(terrainMesh),
-      creates: terrainLifecycle.creates,
-      destroys: terrainLifecycle.destroys,
-      create_timing_ms: [...terrainLifecycle.createTimingMs],
-      destroy_timing_ms: [...terrainLifecycle.destroyTimingMs],
-      current_buffer_count: terrainMesh ? 5 : 0,
-      current_payload_bytes: terrainMesh ? terrainPayloadBytes : 0,
-      physical_vram_release_observed: false,
-    };
+    return { schema: TERRAIN_RESOURCE_SCHEMA, backend: activeBackend, tile_id: expectedTerrainTileId, artifact_sha256: expectedTerrainArtifactSha, active: Boolean(terrainMesh), creates: terrainLifecycle.creates, destroys: terrainLifecycle.destroys, create_timing_ms: [...terrainLifecycle.createTimingMs], destroy_timing_ms: [...terrainLifecycle.destroyTimingMs], current_buffer_count: terrainMesh ? 5 : 0, current_payload_bytes: terrainMesh ? terrainPayloadBytes : 0, physical_vram_release_observed: false };
   }
-
   function activateTerrainResource(payload) {
-    if (stopped) throw new Error('THREE_GROUND_RENDERER_STOPPED');
-    if (terrainMesh) throw new Error('THREE_GROUND_TERRAIN_ALREADY_ACTIVE');
-    const startedAt = monotonicNow();
-    terrainMesh = makeTerrainMesh(payload);
-    scene.add(terrainMesh);
-    terrainLifecycle.creates += 1;
-    terrainLifecycle.createTimingMs.push(monotonicNow() - startedAt);
-    dirty = true;
-    return terrainResourceSnapshot();
+    if (stopped) throw new Error('THREE_GROUND_RENDERER_STOPPED'); if (terrainMesh) throw new Error('THREE_GROUND_TERRAIN_ALREADY_ACTIVE');
+    const startedAt = monotonicNow(); terrainMesh = makeTerrainMesh(payload); scene.add(terrainMesh); terrainLifecycle.creates += 1; terrainLifecycle.createTimingMs.push(monotonicNow() - startedAt); dirty = true; return terrainResourceSnapshot();
   }
-
   function deactivateTerrainResource() {
-    if (stopped) throw new Error('THREE_GROUND_RENDERER_STOPPED');
-    if (!terrainMesh) throw new Error('THREE_GROUND_TERRAIN_NOT_ACTIVE');
-    const startedAt = monotonicNow();
-    scene.remove(terrainMesh);
-    terrainMesh.geometry.dispose();
-    terrainMesh = null;
-    terrainLifecycle.destroys += 1;
-    terrainLifecycle.destroyTimingMs.push(monotonicNow() - startedAt);
-    dirty = true;
-    return terrainResourceSnapshot();
+    if (stopped) throw new Error('THREE_GROUND_RENDERER_STOPPED'); if (!terrainMesh) throw new Error('THREE_GROUND_TERRAIN_NOT_ACTIVE');
+    const startedAt = monotonicNow(); scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; terrainLifecycle.destroys += 1; terrainLifecycle.destroyTimingMs.push(monotonicNow() - startedAt); dirty = true; return terrainResourceSnapshot();
   }
 
   const draw = async (now = performance.now()) => {
@@ -367,121 +227,47 @@ function createThreeGroundRendererFromInitialized({
       const startedAt = monotonicNow();
       await renderer.renderAsync(scene, camera);
       const cameraState = cameraControls.snapshot();
-      const frame = {
-        at: now,
-        drawGapMs: lastDrawAt ? now - lastDrawAt : null,
-        drawCpuMs: monotonicNow() - startedAt,
-        drawCalls: [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length,
-        backend: activeBackend,
-        pixelRatio: renderer.getPixelRatio(),
-        camera: {
-          yaw: cameraState.yaw,
-          pitch: cameraState.pitch,
-          distance: cameraState.distance,
-          eye_height_m: camera.position.y - centerGround,
-        },
-      };
-      onFrame(frame);
-      lastDrawAt = now;
-      if (!firstFrameSettled) {
-        firstFrameSettled = true;
-        firstFrameResolve(frame);
-      }
+      const rendererCalls = Number(renderer.info?.render?.calls);
+      const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length + humanoid.snapshot().render_mesh_count;
+      const frame = { at: now, drawGapMs: lastDrawAt ? now - lastDrawAt : null, drawCpuMs: monotonicNow() - startedAt, drawCalls: Number.isFinite(rendererCalls) && rendererCalls > 0 ? rendererCalls : fallbackCalls, backend: activeBackend, pixelRatio: renderer.getPixelRatio(), camera: { yaw: cameraState.yaw, pitch: cameraState.pitch, distance: cameraState.distance, eye_height_m: camera.position.y - centerGround }, character: humanoid.snapshot() };
+      onFrame(frame); lastDrawAt = now;
+      if (!firstFrameSettled) { firstFrameSettled = true; firstFrameResolve(frame); }
     } catch (error) {
-      if (!firstFrameSettled) {
-        firstFrameSettled = true;
-        firstFrameReject(error);
-      }
+      if (!firstFrameSettled) { firstFrameSettled = true; firstFrameReject(error); }
       throw error;
     }
   };
 
   const animationLoop = (now) => {
-    if (!stopped && dirty) void draw(now);
+    if (stopped) return;
+    const deltaSeconds = lastAnimationAt ? Math.max(0, (now - lastAnimationAt) / 1000) : 0;
+    lastAnimationAt = now; humanoid.update(deltaSeconds); dirty = true; void draw(now);
   };
   renderer.setAnimationLoop(animationLoop);
-  dirty = true;
 
-  const invalidate = () => {
-    if (!stopped) dirty = true;
-  };
+  const invalidate = () => { if (!stopped) dirty = true; };
   const dispose = () => {
-    if (stopped) return;
-    stopped = true;
-    renderer.setAnimationLoop(null);
-    cameraControls.dispose();
-    if (terrainMesh) {
-      scene.remove(terrainMesh);
-      terrainMesh.geometry.dispose();
-      terrainMesh = null;
-    }
+    if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose();
+    if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; }
     for (const mesh of staticMeshes) disposeMesh(mesh);
-    terrainMaterial.dispose();
-    terrainColorTexture.dispose();
-    terrainSurfaceTexture.dispose();
-    roadMaterial.dispose();
-    resolvedWallMaterial.dispose();
-    resolvedRoofMaterial.dispose();
-    fallbackWallMaterial.dispose();
-    fallbackRoofMaterial.dispose();
-    renderer.dispose();
+    terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); renderer.dispose();
   };
 
-  const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh]
-    .filter((mesh) => mesh.geometry?.index?.count > 0).length;
+  const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
+  const characterSnapshot = humanoid.snapshot();
   const stats = {
     ...sceneGeometry.stats,
-    renderer_adapter: 'three-ground/0.1',
-    three_revision: THREE.REVISION,
-    backend: activeBackend,
-    graphics_profile: profile.id,
-    max_dpr: profile.maxDpr,
-    pixel_ratio: renderer.getPixelRatio(),
-    msaa_samples: profile.webglAntialias === false ? 1 : 4,
-    draw_calls_per_frame: 2 + buildingDrawCalls,
-    gpu_buffer_count: 15,
-    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes,
-    gpu_texture_payload_bytes: terrainTexturePayloadBytes,
-    timestamp_query_supported: false,
-    camera_eye_height_m: 1.7,
-    render_origin: sceneGeometry.origin,
-    terrain_material: {
-      schema: TERRAIN_MATERIAL_SCHEMA,
-      pbr: true,
-      vertex_normals: 'worker-provided',
-      uv_source: 'worker-provided-normalized',
-      detail_period_m: TERRAIN_DETAIL_PERIOD_M,
-      detail_repeat: [detailRepeatX, detailRepeatY],
-      procedural_detail: 'renderer-only-source-safe',
-      vertex_color_variation: true,
-      bump_scale: terrainMaterial.bumpScale,
-      geometry_displacement: false,
-    },
-    building_materials: {
-      schema: BUILDING_MATERIAL_SCHEMA,
-      source_backed: { wall: 'pbr-wall', roof: 'pbr-roof' },
-      unresolved: { wall: 'pbr-wall-fallback-height', roof: 'pbr-roof-fallback-height' },
-      height_semantics: {
-        source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics,
-        unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics,
-      },
-      roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation,
-    },
-    timing_ms: {
-      scene_build_cpu_ms: sceneBuildCpuMs,
-      gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs,
-      renderer_init_cpu_ms: monotonicNow() - initStartedAt,
-    },
+    renderer_adapter: 'three-ground/0.1', three_revision: THREE.REVISION, backend: activeBackend, graphics_profile: profile.id, max_dpr: profile.maxDpr, pixel_ratio: renderer.getPixelRatio(), msaa_samples: profile.webglAntialias === false ? 1 : 4,
+    draw_calls_per_frame: 2 + buildingDrawCalls + characterSnapshot.render_mesh_count,
+    gpu_buffer_count: 15, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: terrainTexturePayloadBytes, timestamp_query_supported: false, camera_eye_height_m: 1.7, render_origin: sceneGeometry.origin,
+    terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: TERRAIN_DETAIL_PERIOD_M, detail_repeat: [detailRepeatX, detailRepeatY], procedural_detail: 'renderer-only-source-safe', vertex_color_variation: true, bump_scale: terrainMaterial.bumpScale, geometry_displacement: false },
+    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'pbr-wall', roof: 'pbr-roof' }, unresolved: { wall: 'pbr-wall-fallback-height', roof: 'pbr-roof-fallback-height' }, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
+    character: characterSnapshot,
+    timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
   };
 
-  return {
-    header: sceneGeometry.header,
-    firstFrame,
-    stats,
-    invalidate,
-    dispose,
-    activateTerrainResource,
-    deactivateTerrainResource,
-    getTerrainResourceLifecycle: terrainResourceSnapshot,
+  return { header: sceneGeometry.header, firstFrame, stats, invalidate, dispose, activateTerrainResource, deactivateTerrainResource, getTerrainResourceLifecycle: terrainResourceSnapshot,
+    setCharacterAnimationState(state, options) { const snapshot = humanoid.setAnimationState(state, options); dirty = true; return snapshot; },
+    getCharacterState() { return humanoid.snapshot(); },
   };
 }
