@@ -1,0 +1,11 @@
+{
+  "name": "nwe-atlas-rapier-physics-probe",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "0.19.3"
+  },
+  "scripts": {
+    "probe": "node rapier_rebase_probe.mjs"
+  }
+}
