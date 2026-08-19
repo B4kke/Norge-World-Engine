@@ -1,11 +1,12 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import { createWorldFrame } from '../../engine/world/world_contract.mjs';
 import { createPhysicsSpatialFrame } from '../../engine/world/physics_state_contract.mjs';
 import { createPhysicsFrameMaintenanceEvent } from '../../engine/world/physics_frame_event_contract.mjs';
 import { createStaticCollisionLifecycleState } from '../../engine/world/static_collision_lifecycle_contract.mjs';
 import { planStaticCollisionEpochRebind } from '../../engine/world/static_collision_epoch_rebind_contract.mjs';
 
 await RAPIER.init();
-const WORLD={id:'world:nannestad:rebind-probe',horizontalCrs:'EPSG:25832',horizontalUnit:'metre',verticalDatum:'NN2000',verticalUnit:'metre'};
+const WORLD=createWorldFrame({id:'world:nannestad:rebind-probe',horizontalCrs:'EPSG:25832',verticalDatum:'NN2000'});
 const OLD='a'.repeat(64), NEW='b'.repeat(64), ENTITY='entity:body';
 const frame0=createPhysicsSpatialFrame({physicsFrameId:'physics:tile-crossing',worldFrame:WORLD,epoch:0,anchorWorld:{worldFrameId:WORLD.id,easting:500000,northing:6650000,height:0}});
 const frame1=createPhysicsSpatialFrame({physicsFrameId:'physics:tile-crossing',worldFrame:WORLD,epoch:1,anchorWorld:{worldFrameId:WORLD.id,easting:501000,northing:6649250,height:0}});
