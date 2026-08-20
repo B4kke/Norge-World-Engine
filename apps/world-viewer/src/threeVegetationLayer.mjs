@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { loadPolyHavenVegetationTemplates } from './polyHavenVegetationAssets.mjs';
 
-const VEGETATION_RENDER_SCHEMA = 'nwe.vegetation-render-layer/0.3';
+const VEGETATION_RENDER_SCHEMA = 'nwe.vegetation-render-layer/0.4';
 const DEFAULT_NEAR_DETAIL_CONIFERS = 16;
 
 function assertPlacement(placement) {
@@ -91,9 +91,12 @@ function composeProxyMatrix(matrix, position, quaternion, scale, placement, inde
   return matrix;
 }
 
-function addProxyMesh(scene, geometry, material, indices, placement, kind, name, { castShadow = true } = {}) {
+function addProxyMesh(scene, geometry, material, indices, placement, kind, name) {
   if (indices.length === 0) return null;
-  const mesh = configureInstanceMesh(new THREE.InstancedMesh(geometry, material, indices.length), name, { castShadow });
+  // These proxies are deliberately cheap distant silhouettes. Letting their low-poly
+  // cone/icosahedron shapes cast into the bounded player shadow map creates huge hard
+  // black polygons on asphalt. Real/detail vegetation may cast shadows; proxy LODs do not.
+  const mesh = configureInstanceMesh(new THREE.InstancedMesh(geometry, material, indices.length), name, { castShadow: false });
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
@@ -208,6 +211,7 @@ export function createThreeVegetationLayer({
           const mesh = configureInstanceMesh(
             new THREE.InstancedMesh(part.geometry, materialsForInstancing(part.materials ?? []), indices.length),
             `nwe-polyhaven-near-${template.asset.source_slug}-${partIndex}`,
+            { castShadow: true },
           );
           indices.forEach((placementIndex, instanceIndex) => {
             mesh.setMatrixAt(instanceIndex, composeDetailedMatrix(matrix, position, quaternion, scale, placement, placementIndex, nativeHeightM));
@@ -255,6 +259,7 @@ export function createThreeVegetationLayer({
     broadleaf_count: placement.metadata.broadleaf_count ?? broadleaves.length,
     proxy_draw_calls: proxyMeshes.length,
     proxy_mesh_count: proxyMeshes.length,
+    proxy_shadow_policy: 'receive-only-distant-lod; detailed-assets-may-cast',
     proxy_geometry_payload_bytes: proxyGeometryPayloadBytes,
     proxy_instance_matrix_payload_bytes: proxyMatrixPayloadBytes,
     proxy_estimated_triangles: proxyTrianglesPerInstance.conifer * conifers.length + proxyTrianglesPerInstance.broadleaf * broadleaves.length,
