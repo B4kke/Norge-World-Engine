@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Record exact provider order-area objects for the Nannestad visual-layer probes.
 
-GET-only. No geodata or order is created here.
+GET-only. No geodata or order is created here. Sources that use a direct service contract
+(e.g. AR50 WFS) are intentionally not represented as provider-order selections.
 """
 from __future__ import annotations
 

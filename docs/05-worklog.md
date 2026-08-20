@@ -210,3 +210,91 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-GROUND-07`: implement the first bounded lighting/shadow/atmosphere/tone-mapping pass without changing world truth or destroying the proven navigation budget.
+
+## 2026-08-20 00:06 CEST — FORGE — P1-VEGETATION-01-SOURCE-AUDIT
+
+**What**
+- Recovered the existing vegetation source audit and re-verified it against current 2026 NIBIO/Geonorge/data.norge primary metadata instead of starting a new source plan.
+- Refined the open baseline from a vague `AR5 + SR16` concept to `SR16R + AR50 + existing NWE road/building exclusion geometry`.
+- Documented FKB-AR5 and Nasjonalt grunnkart for arealanalyse as capability-gated licensed enrichments rather than required public dependencies.
+- Defined a bounded Nannestad real-sample admission gate before any vegetation source becomes canonical compiler input.
+
+**Why**
+- `P1-VEGETATION-01` is the next visible-quality data layer after the active playable P0. Establishing a legally reproducible source stack now avoids building tree placement around data the public NWE pipeline cannot lawfully acquire or redistribute, while not displacing active `P0-GROUND-07/08` renderer/integration work.
+
+**Result / evidence**
+- FACT: NIBIO's 30-Jan-2026 SR16 product sheet documents full Norwegian forest coverage, 16×16 m SR16R cells, ±1-pixel positional accuracy, dominant species, mean/overheight, tree counts per hectare, canopy cover, LAI, remote-sensing year and uncertainty estimates; SR16R also has harvesting-update semantics that are not yet implemented equivalently for SR16V segments.
+- FACT: current SR16 download/Atom distributions are exposed with NLOD 1.0/open-license metadata; exact distribution metadata still belongs in each future SourceSnapshot.
+- FACT: AR50 is nationwide and useful for coarse land-cover exclusion/classification, but its 1:50k generalization merges areas below 15 dekar and cannot be treated as exact vegetation-edge truth.
+- FACT: NIBIO explicitly restricts FKB-AR5 download to Geovekst/Norge digitalt rights; current Nasjonalt grunnkart for arealanalyse distributions are likewise tied to a Norge digitalt license/restricted access.
+- NOT YET PROVEN: no real Nannestad SR16R/AR50 source bytes were acquired in this audit, so neither source is promoted to an admitted compiler dependency yet.
+
+**Changed**
+- Branch `agent/forge-vegetation-sources`.
+- `docs/data-licenses/visual-sources.md`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `P1-VEGETATION-01-SAMPLE`: when P0 milestone acceptance is complete, acquire and inventory one real Nannestad SR16R + AR50 sample through official download paths and prove cache/offline reproducibility before defining the vegetation runtime artifact.
+
+## 2026-08-20 01:27 CEST — FORGE — P1-VEGETATION-01-SAMPLE
+
+**What**
+- Implemented a bounded real-source cache/materialization path for Nannestad vegetation, a source-network-free deterministic normalizer and an evidence verifier.
+- Replaced the unproven mandatory `SR16R` assumption with the source path that actually passed license/access + real-byte validation: NIBIO `SR16V` Atom/SOSI + NIBIO `AR50` WFS.
+- Added a strict decoder-only UTF-8 -> ISO8859-10 compatibility copy for hosted GDAL/FYBA while preserving the original provider SOSI bytes/hash as source truth.
+- Kept the expensive real-byte materialize/decode/replay gate as explicit `workflow_dispatch`; ordinary PR source probing was restored to the lighter contract checks.
+
+**Why**
+- The source audit had reached the point where metadata claims were insufficient. The highest-value FORGE work was to prove or falsify one legally reproducible Nannestad vegetation path before any tree-placement/runtime schema is designed, without displacing active `P0-GROUND-07/08` renderer work.
+
+**Result / evidence**
+- FACT: code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9` passed `baseline` run `32312909195` and heavy `visual-source-probe` run `32312909181`.
+- FACT: exact 1 km EPSG:25832 sample normalized `124` SR16V polygons and `15` AR50 polygon/multipolygon features; same cached bytes replayed byte-identically.
+- FACT: independent AR50 raw responses had different hashes, but normalized semantic content matched after excluding only request-time `kopidato`, which was independently proven volatile.
+- FACT: provider SR16V SOSI SHA-256 is `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`; normalized candidate SHA-256 is `c275ddedaf06d6b509c90bf41fb54404d36cbc3457681a092eddcec77d44929c`; semantic SHA-256 is `76536346c39a5a731352ca00d86231d901e025f9a1a4b4b2097700a694534ec1`.
+- FACT: SR16V provider bytes declare SOSI 5.0 / UTF-8 / EPSG:25832 source selection and NN2000 in the source header. Hosted FYBA could not open the valid UTF-8 file directly; strict ISO8859-10 compatibility transcode round-trip passed without replacing characters and does not alter source binding.
+- FACT: current split SR16R metadata has unresolved license/distribution inconsistencies; it remains a higher-fidelity research candidate rather than the mandatory public baseline.
+- TRUTH BOUNDARY: this proves source polygons/attributes and deterministic normalization only. No individual-tree positions, density policy, asset choice, LOD or renderer artifact has been promoted.
+
+**Changed**
+- Draft PR #79 / branch `agent/forge-vegetation-sources`.
+- `tools/visual-data/materialize_vegetation_source_cache.py`.
+- `tools/visual-data/normalize_vegetation_source_sample.py`.
+- `tools/visual-data/verify_vegetation_source_sample.py` and supporting source probes.
+- `.github/workflows/vegetation-source-sample.yml` and lightweight `.github/workflows/visual-source-probe.yml`.
+- `docs/data-licenses/visual-sources.md`, `docs/05-worklog.md` and `docs/06-task-queue.md`.
+- CI evidence artifact `9387116220`; raw/bulk provider geodata remains outside Git and was not uploaded as an artifact.
+
+**Next**
+- `P1-VEGETATION-01-ARTIFACT`: after P0 milestone acceptance, define and prove one tiny renderer-neutral deterministic vegetation artifact candidate from the admitted SR16V + AR50 normalized boundary, with source/config provenance and no renderer-owned semantics.
+
+## 2026-08-20 01:51 CEST — FORGE — P1-VEGETATION-01-ARTIFACT
+
+**What**
+- Inspected LUMEN PR #80 and kept its Three.js/Poly Haven instancing, asset choice and visible-instance budget in renderer ownership while replacing the missing FORGE side of the handoff.
+- Added `nwe.vegetation-representative-artifact/0.1-candidate`: a renderer-neutral deterministic compiler artifact over normalized SR16V + AR50 with source-backed segment semantics and explicitly procedural representative positions/yaw.
+- Preserved SR16V tree class, modeled mean height, >=16 cm DBH tree density, uncertainty, canopy cover, remote-sensing year and update date; applied coarse AR50 non-forest exclusion only.
+- Added real-sample compile/evidence/verifier tooling and extended the manual heavy source gate through artifact compilation; ordinary PR source probing was restored to lightweight mode after the materially new gate passed.
+
+**Why**
+- PR #80 already proved useful renderer infrastructure but still hard-required `nwe.synthetic-vegetation-placement/0.1`. The highest-value FORGE work was therefore the missing source-backed renderer-neutral input contract, not another renderer implementation or another vegetation-source research cycle.
+
+**Result / evidence**
+- FACT: `baseline` run `32314719926` PASS and heavy real-source `visual-source-probe` run `32314719935` PASS on code-bearing head `de91525ac45c4ca19eb5ed4b5fb470e2be1dbedd`.
+- FACT: the real 1 km Nannestad sample compiled `92` usable SR16V segments into `828` deterministic representative points over `516753.05 m²`; coarse AR50 non-forest suppression removed `112923.69 m²`.
+- FACT: source-backed `srtrean_ge16` semantics represented `23493.8875` modeled trees with DBH >=16 cm; representative weights sum to the same modeled aggregate within floating-point tolerance.
+- FACT: same normalized A1/A2 input produced byte-identical RFC8785 artifact bytes; independent AR50 acquisition B produced the same semantic artifact hash. Artifact SHA-256 `9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636`; semantic SHA-256 `320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f`; compiler-config ID `f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e`.
+- EXPERIMENT: `16` representatives/hectare is only the current bounded representation target. It is not source tree density or a selected production LOD policy; changing it changes compiler-config/artifact identity.
+- TRUTH BOUNDARY: representative easting/northing/yaw are deterministic generated detail, not observed individual trees. The artifact contains no Three/WebGPU types, asset IDs, render origin or terrain Z and does not yet apply exact accepted road/building exclusion.
+
+**Changed**
+- Draft PR #79 / branch `agent/forge-vegetation-sources`.
+- `engine/compiler/src/nwe_compiler/vegetation.py` and `engine/compiler/tests/test_vegetation.py`.
+- `tools/visual-data/compile_vegetation_representative_sample.py` and `tools/visual-data/verify_vegetation_representative_sample.py`.
+- `.github/workflows/vegetation-source-sample.yml` and temporary-then-restored `.github/workflows/visual-source-probe.yml`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+- CI evidence artifact `9387699149`; raw/bulk provider geodata remains outside Git.
+
+**Next**
+- `P1-VEGETATION-01-RENDERER-HANDOFF`: LUMEN adapts PR #80 to consume the candidate FORGE artifact while keeping render-local conversion, accepted-DTM grounding, local road/building/spawn/slope filtering, asset mapping, visible-instance budgets and LOD as presentation/runtime concerns.

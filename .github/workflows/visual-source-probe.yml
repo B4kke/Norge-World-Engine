@@ -23,13 +23,24 @@ jobs:
         run: |
           python -m py_compile tools/visual-data/probe_visual_sources.py
           python -m py_compile tools/visual-data/probe_visual_order_selections.py
+          python -m py_compile tools/visual-data/probe_sr16_metadata_links.py
+          python -m py_compile tools/visual-data/probe_vegetation_real_sample.py
+          python -m py_compile tools/visual-data/probe_nibio_capabilities_catalog.py
+          python -m py_compile tools/visual-data/probe_ar50_determinism.py
+          python -m py_compile tools/visual-data/materialize_vegetation_source_cache.py
+          python -m py_compile tools/visual-data/normalize_vegetation_source_sample.py
+          python -m py_compile tools/visual-data/verify_vegetation_source_sample.py
+          python -m py_compile tools/visual-data/compile_vegetation_representative_sample.py
+          python -m py_compile tools/visual-data/verify_vegetation_representative_sample.py
 
-      - name: Probe current official download contracts
+      - name: Probe current official source contracts
         run: |
-          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json
-          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json
-          cat /tmp/nwe-visual-source-probe.json
-          cat /tmp/nwe-visual-order-selection.json
+          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json >/dev/null
+          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json >/dev/null
+          python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json >/dev/null
+          python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json >/dev/null
+          python tools/visual-data/probe_nibio_capabilities_catalog.py --output /tmp/nwe-nibio-capabilities-catalog.json >/dev/null
+          python tools/visual-data/probe_ar50_determinism.py --output /tmp/nwe-ar50-determinism.json >/dev/null
 
       - uses: actions/upload-artifact@v4
         with:
@@ -37,5 +48,9 @@ jobs:
           path: |
             /tmp/nwe-visual-source-probe.json
             /tmp/nwe-visual-order-selection.json
+            /tmp/nwe-sr16-metadata-links.json
+            /tmp/nwe-vegetation-real-source-probe.json
+            /tmp/nwe-nibio-capabilities-catalog.json
+            /tmp/nwe-ar50-determinism.json
           if-no-files-found: error
           retention-days: 14
