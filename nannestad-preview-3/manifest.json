@@ -1,0 +1,299 @@
+{
+  "attribution": [
+    "NHM DTM height data: \u00a9 Kartverket, CC BY 4.0.",
+    "Road data: Statens vegvesen, NLOD 1.0.",
+    "Building data: \u00a9 OpenStreetMap contributors, ODbL 1.0."
+  ],
+  "buildings": {
+    "artifact_byte_size": 80846,
+    "artifact_role": "building-footprints",
+    "artifact_sha256": "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd",
+    "bundle": "./buildings.bundle.json",
+    "compiled_count": 135,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/building-footprints/678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd.json",
+    "media_type": "application/json; profile=nwe.building-footprint-artifact/0.1",
+    "normalized_count": 135,
+    "raw_object_count": 5704,
+    "raw_sha256": "ee4c0c6a509a137821816aa4ee0581b559bff558688861a74f5c4c5a9cb55a38",
+    "source_selected_count": 141
+  },
+  "generated_from_commit": "2d10d3f7b0498b8560b8e08dc8158aad8dc018c6",
+  "preview_id": "nannestad-preview-1",
+  "preview_semantics": {
+    "raw_source_runtime_calls": 0,
+    "road_width": "visual-debug-only-3.2m",
+    "runtime_distribution": "temporary-preview-runtime-branch-not-final-architecture",
+    "terrain_provider_requests_during_compile": {
+      "coverage_requests": 9,
+      "provider_requests": 11,
+      "shared_service_metadata_requests": 2
+    },
+    "terrain_runtime_grid": "3x3-1km",
+    "terrain_source_path": "kartverket-nhm-dtm-25832-wcs-direct-runtime-grid",
+    "terrain_tile_count": 9,
+    "unresolved_building_height": "visual-debug-only-5m",
+    "vectors_scope": "center-1x1km-only"
+  },
+  "roads": {
+    "artifact_byte_size": 171732,
+    "artifact_role": "road-network",
+    "artifact_sha256": "34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a",
+    "bundle": "./roads.bundle.json",
+    "compiled_count": 246,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/road-network/34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a.json",
+    "media_type": "application/json; profile=nwe.road-network-artifact/0.1",
+    "normalized_count": 407,
+    "raw_object_count": 471,
+    "raw_sha256": "789aef2ba8792bfd15d7ed814628aae8f991d1d98e74a079b11a71666ea86c30",
+    "source_selected_count": 471
+  },
+  "schema": "nwe.world-preview-manifest/0.1",
+  "status": "REAL_COMPILED",
+  "terrain": {
+    "artifact_byte_size": 4000381,
+    "artifact_role": "terrain-height-grid",
+    "artifact_sha256": "a0f6107ce9497a9e7221aa06a7b590cb9b8b2958ac316c32ef79059e604b052e",
+    "bundle": "./terrain.bundle.json",
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/terrain-height-grid/a0f6107ce9497a9e7221aa06a7b590cb9b8b2958ac316c32ef79059e604b052e.nwehgt",
+    "media_type": "application/vnd.nwe.terrain-height-grid",
+    "tile": {
+      "bounds": [
+        611000.0,
+        6677000.0,
+        612000.0,
+        6678000.0
+      ],
+      "center_e": 611500.0,
+      "center_n": 6677500.0,
+      "elevation_max_m": 197.59242248535156,
+      "elevation_min_m": 168.59288024902344,
+      "horizontal_crs": "EPSG:25832",
+      "id": "epsg25832_611000_6677000_1000m",
+      "vertical_datum": "NN2000"
+    }
+  },
+  "terrain_tiles": [
+    {
+      "artifact_byte_size": 4000380,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "7e8f889294f3d947f7678449b13f7001d4580730b3dc1b10ce2249c6e97c1295",
+      "bundle": "./terrain/epsg25832_610000_6678000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_610000_6678000_1000m/terrain-height-grid/7e8f889294f3d947f7678449b13f7001d4580730b3dc1b10ce2249c6e97c1295.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          610000.0,
+          6678000.0,
+          611000.0,
+          6679000.0
+        ],
+        "center_e": 610500.0,
+        "center_n": 6678500.0,
+        "elevation_max_m": 204.39102172851562,
+        "elevation_min_m": 149.6185302734375,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_610000_6678000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000380,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "5d6fb6389bee43688fb232af939c0c5e813d09f29daca897364257f5b9da5ddc",
+      "bundle": "./terrain/epsg25832_611000_6678000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_611000_6678000_1000m/terrain-height-grid/5d6fb6389bee43688fb232af939c0c5e813d09f29daca897364257f5b9da5ddc.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          611000.0,
+          6678000.0,
+          612000.0,
+          6679000.0
+        ],
+        "center_e": 611500.0,
+        "center_n": 6678500.0,
+        "elevation_max_m": 204.6024627685547,
+        "elevation_min_m": 165.98049926757812,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_611000_6678000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000380,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "a9930882cf6b48d873fe842ce3932aae2f03f83dd9a6eb16e3283284e19be227",
+      "bundle": "./terrain/epsg25832_612000_6678000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_612000_6678000_1000m/terrain-height-grid/a9930882cf6b48d873fe842ce3932aae2f03f83dd9a6eb16e3283284e19be227.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          612000.0,
+          6678000.0,
+          613000.0,
+          6679000.0
+        ],
+        "center_e": 612500.0,
+        "center_n": 6678500.0,
+        "elevation_max_m": 224.2755889892578,
+        "elevation_min_m": 191.43405151367188,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_612000_6678000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000375,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "a18805dc506e21810df43a81b802d4d24d44c99fdd3085dddbaa3297d0d2e25a",
+      "bundle": "./terrain/epsg25832_610000_6677000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_610000_6677000_1000m/terrain-height-grid/a18805dc506e21810df43a81b802d4d24d44c99fdd3085dddbaa3297d0d2e25a.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          610000.0,
+          6677000.0,
+          611000.0,
+          6678000.0
+        ],
+        "center_e": 610500.0,
+        "center_n": 6677500.0,
+        "elevation_max_m": 192.9410858154297,
+        "elevation_min_m": 148.599609375,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_610000_6677000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000381,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "a0f6107ce9497a9e7221aa06a7b590cb9b8b2958ac316c32ef79059e604b052e",
+      "bundle": "./terrain/epsg25832_611000_6677000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/terrain-height-grid/a0f6107ce9497a9e7221aa06a7b590cb9b8b2958ac316c32ef79059e604b052e.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          611000.0,
+          6677000.0,
+          612000.0,
+          6678000.0
+        ],
+        "center_e": 611500.0,
+        "center_n": 6677500.0,
+        "elevation_max_m": 197.59242248535156,
+        "elevation_min_m": 168.59288024902344,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_611000_6677000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000380,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "dca40fff170ae4fdfe108581d8317ddf2b7287865cd83373e54e3f05672f497a",
+      "bundle": "./terrain/epsg25832_612000_6677000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_612000_6677000_1000m/terrain-height-grid/dca40fff170ae4fdfe108581d8317ddf2b7287865cd83373e54e3f05672f497a.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          612000.0,
+          6677000.0,
+          613000.0,
+          6678000.0
+        ],
+        "center_e": 612500.0,
+        "center_n": 6677500.0,
+        "elevation_max_m": 213.59376525878906,
+        "elevation_min_m": 172.0502471923828,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_612000_6677000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000378,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "f43201b3b3138c6eeafd3d03c5c16fce69cd0ffc54e7737fd11110009b572789",
+      "bundle": "./terrain/epsg25832_610000_6676000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_610000_6676000_1000m/terrain-height-grid/f43201b3b3138c6eeafd3d03c5c16fce69cd0ffc54e7737fd11110009b572789.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          610000.0,
+          6676000.0,
+          611000.0,
+          6677000.0
+        ],
+        "center_e": 610500.0,
+        "center_n": 6676500.0,
+        "elevation_max_m": 192.57069396972656,
+        "elevation_min_m": 140.12646484375,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_610000_6676000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000380,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "ad0c3ae7c4f9efba0b1d253a5a235043f4b79f679281aea6949f0f26729647c3",
+      "bundle": "./terrain/epsg25832_611000_6676000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_611000_6676000_1000m/terrain-height-grid/ad0c3ae7c4f9efba0b1d253a5a235043f4b79f679281aea6949f0f26729647c3.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          611000.0,
+          6676000.0,
+          612000.0,
+          6677000.0
+        ],
+        "center_e": 611500.0,
+        "center_n": 6676500.0,
+        "elevation_max_m": 196.66680908203125,
+        "elevation_min_m": 152.8611602783203,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_611000_6676000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    },
+    {
+      "artifact_byte_size": 4000379,
+      "artifact_role": "terrain-height-grid",
+      "artifact_sha256": "0ca537b0e58dd40edaecde2b9f4b627ce837328d03d0db6c56f655520096e18b",
+      "bundle": "./terrain/epsg25832_612000_6676000_1000m.bundle.json",
+      "compiled_path": "./compiled/epsg25832_612000_6676000_1000m/terrain-height-grid/0ca537b0e58dd40edaecde2b9f4b627ce837328d03d0db6c56f655520096e18b.nwehgt",
+      "media_type": "application/vnd.nwe.terrain-height-grid",
+      "tile": {
+        "bounds": [
+          612000.0,
+          6676000.0,
+          613000.0,
+          6677000.0
+        ],
+        "center_e": 612500.0,
+        "center_n": 6676500.0,
+        "elevation_max_m": 194.4079132080078,
+        "elevation_min_m": 162.4034423828125,
+        "horizontal_crs": "EPSG:25832",
+        "id": "epsg25832_612000_6676000_1000m",
+        "vertical_datum": "NN2000"
+      }
+    }
+  ],
+  "tile": {
+    "bounds": [
+      611000.0,
+      6677000.0,
+      612000.0,
+      6678000.0
+    ],
+    "center_e": 611500.0,
+    "center_n": 6677500.0,
+    "elevation_max_m": 197.59242248535156,
+    "elevation_min_m": 168.59288024902344,
+    "horizontal_crs": "EPSG:25832",
+    "id": "epsg25832_611000_6677000_1000m",
+    "vertical_datum": "NN2000"
+  }
+}

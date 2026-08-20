@@ -1,0 +1,3 @@
+NHM DTM height data: © Kartverket, CC BY 4.0.
+Road data: Statens vegvesen, NLOD 1.0.
+Building data: © OpenStreetMap contributors, ODbL 1.0.

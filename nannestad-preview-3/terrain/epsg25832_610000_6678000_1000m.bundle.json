@@ -1,0 +1,151 @@
+{
+  "artifact_ref": {
+    "artifact_role": "terrain-height-grid",
+    "artifact_status": "REAL_COMPILED",
+    "byte_size": 4000380,
+    "lineage_hash": "76951d9a08057fb3974e74b35754a69e52a65b6ce1aeac205ddf2ccb735880ac",
+    "media_type": "application/vnd.nwe.terrain-height-grid",
+    "schema": "nwe.artifact-ref/0.1",
+    "sha256": "7e8f889294f3d947f7678449b13f7001d4580730b3dc1b10ce2249c6e97c1295",
+    "tile_id": "epsg25832_610000_6678000_1000m",
+    "transport": {
+      "reference": "cache://compiled/epsg25832_610000_6678000_1000m/terrain-height-grid/7e8f889294f3d947f7678449b13f7001d4580730b3dc1b10ce2249c6e97c1295.nwehgt"
+    }
+  },
+  "artifact_ref_hash": "5937f84d3595568df541e00dc382ace450274018b408daaf1ab0624e3ae8be88",
+  "bundle_schema": "nwe.runtime-verification-bundle/0.1",
+  "canonicalization_id": "urn:ietf:rfc:8785",
+  "compile_lineage": {
+    "artifact_role": "terrain-height-grid",
+    "compiler_config_hash": "8024cdee3599a8708c506995211c5544c8f34a8f51f9be6080c737a057d8892b",
+    "normalized_snapshot_hashes": [
+      "db9912b686af38b82256df5a1ffb668eef5395c5fe75d9430f290b58104fa083"
+    ],
+    "schema": "nwe.compile-lineage/0.1",
+    "source_snapshot_hashes": [
+      "18414d81892a784f4a712c88b92e5f16941e1cfd5740cbd98555e1d8d27988dd"
+    ],
+    "tile_id": "epsg25832_610000_6678000_1000m"
+  },
+  "compiler_config": {
+    "compiler_id": "nwe-world-compiler",
+    "compiler_version": "0.1.0",
+    "quantization": "none",
+    "schema": "nwe.compiler-config/0.1",
+    "storage": "float32-le-row-major-north-to-south",
+    "terrain_format": "nwe-height-grid/0.1",
+    "terrain_source_path": "nhm-wcs-direct-grid/0.1"
+  },
+  "compiler_config_hash": "8024cdee3599a8708c506995211c5544c8f34a8f51f9be6080c737a057d8892b",
+  "hash_algorithm": "sha-256",
+  "lineage_hash": "76951d9a08057fb3974e74b35754a69e52a65b6ce1aeac205ddf2ccb735880ac",
+  "normalized_snapshot_hashes": [
+    "db9912b686af38b82256df5a1ffb668eef5395c5fe75d9430f290b58104fa083"
+  ],
+  "normalized_snapshots": [
+    {
+      "byte_size": 4000000,
+      "horizontal_crs": "EPSG:25832",
+      "media_type": "application/vnd.nwe.normalized-height-grid; profile=nhm-wcs-direct/0.1",
+      "sample_count": 1000000,
+      "schema": "nwe.normalized-snapshot/0.1",
+      "sha256": "226d2b6bee4e3b9ffa19daa47f1c70facc995f1e6b22648d95b66ee25e951c33",
+      "source_snapshot_hash": "18414d81892a784f4a712c88b92e5f16941e1cfd5740cbd98555e1d8d27988dd",
+      "transform_contract_hash": "f8d657e28183afb4417de6b38e8da7dcd25df4e9bc04cf2303285da76f0cdadb",
+      "vertical_datum": "NN2000"
+    }
+  ],
+  "promotion_record": {
+    "artifact_ref_hash": "5937f84d3595568df541e00dc382ace450274018b408daaf1ab0624e3ae8be88",
+    "from_state": "NORMALIZED",
+    "gates": {
+      "artifact_bytes_verified": "PASS",
+      "compiler_identity_bound": "PASS",
+      "determinism_policy_satisfied": "PASS",
+      "lineage_reconstructed": "PASS",
+      "normalized_bytes_verified": "PASS",
+      "source_validated": "PASS",
+      "transform_validated": "PASS"
+    },
+    "lineage_hash": "76951d9a08057fb3974e74b35754a69e52a65b6ce1aeac205ddf2ccb735880ac",
+    "schema": "nwe.promotion-record/0.1",
+    "to_state": "REAL_COMPILED"
+  },
+  "promotion_record_hash": "4fd3fdf581c65c3edb94f3138a933f1059fed84a7dd6b5edf52ea82d344ba1bb",
+  "source_snapshot_hashes": [
+    "18414d81892a784f4a712c88b92e5f16941e1cfd5740cbd98555e1d8d27988dd"
+  ],
+  "source_snapshots": [
+    {
+      "attribution": "\u00a9 Kartverket",
+      "license_profile": "CC-BY-4.0",
+      "nodata": null,
+      "pixel_size": [
+        "1",
+        "1"
+      ],
+      "promotion_state": "VALIDATED_SOURCE",
+      "raw_byte_size": 4195950,
+      "raw_sha256": "95723208741151a56ab94a72076c299c3dae843861456d9d0bb8744ce76442ca",
+      "retrieval_identity": {
+        "capabilities_sha256": "30045563eadd52409e50b1f76c3692fe1d99ef43268e10574c5622a0e38ada68",
+        "coverage": "nhm_dtm_topo_25832",
+        "dataset_id": "8c62e33e-76ba-3c00-9db6-3a10e44135bc",
+        "describe_coverage_sha256": "8d320111a5b409d02270027f14e1dedf61338de3422100a553284b8c0569ba86",
+        "query_bounds": [
+          "610000",
+          "6678000",
+          "611000",
+          "6679000"
+        ],
+        "request_crs": "EPSG:25832",
+        "request_url": "https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25832?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage&COVERAGE=nhm_dtm_topo_25832&CRS=EPSG%3A25832&RESPONSE_CRS=EPSG%3A25832&BBOX=610000%2C6678000%2C611000%2C6679000&WIDTH=1000&HEIGHT=1000&FORMAT=GeoTIFF",
+        "requested_format": "GeoTIFF",
+        "requested_height": 1000,
+        "requested_width": 1000,
+        "response_content_type": "image/tiff",
+        "response_crs": "EPSG:25832",
+        "service_endpoint": "https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25832",
+        "service_metadata_uuid": "05821c51-2f5b-411f-9098-924d13dbea9a",
+        "service_protocol": "OGC WCS 1.0.0",
+        "tile_id": "epsg25832_610000_6678000_1000m"
+      },
+      "schema": "nwe.source-snapshot/0.3",
+      "source_bounds": [
+        "610000",
+        "6678000",
+        "611000",
+        "6679000"
+      ],
+      "source_crs": "EPSG:25832",
+      "source_id": "kartverket:nhm-dtm-25832-wcs",
+      "source_vertical_datum": "NN2000",
+      "z_semantics": "normal_height_m"
+    }
+  ],
+  "transform_contract_hashes": [
+    "f8d657e28183afb4417de6b38e8da7dcd25df4e9bc04cf2303285da76f0cdadb"
+  ],
+  "transform_contracts": [
+    {
+      "bounds_epsg25832": [
+        "610000",
+        "6678000",
+        "611000",
+        "6679000"
+      ],
+      "height": 1000,
+      "horizontal_crs": "EPSG:25832",
+      "num_threads": 1,
+      "operation": "nhm-wcs-direct-grid-validate-decode-float32-no-resampling",
+      "pixel_size_m": "1",
+      "resampling": "none",
+      "schema": "nwe.transform-contract/0.1",
+      "source_crs": "EPSG:25832",
+      "source_snapshot_hash": "18414d81892a784f4a712c88b92e5f16941e1cfd5740cbd98555e1d8d27988dd",
+      "vertical_datum": "NN2000",
+      "vertical_operation": "identity-NN2000",
+      "width": 1000
+    }
+  ]
+}
