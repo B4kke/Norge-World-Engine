@@ -5,7 +5,7 @@ import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 
 const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
-const ROAD_MINIMUM_POINT_SPACING_M = 1.25;
+const ROAD_MINIMUM_POINT_SPACING_M = 0;
 const ROAD_VERTICAL_SEMANTICS = 'renderer-only-accepted-dtm-edge-drape';
 const BUILDING_FALLBACK_HEIGHT_M = 5;
 const BUILDING_GROUND_LIFT_M = 0.08;
@@ -92,10 +92,6 @@ function roadPointToLocal(point, origin, sampleHeight, lift = 0) {
   const easting = Number(point?.[0]);
   const northing = Number(point?.[1]);
   if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid road point');
-  // Generic road ribbons are presentation geometry. Until the compiled road contract
-  // carries explicit bridge/tunnel/elevated semantics, blindly consuming NVDB Z can
-  // create vertical discontinuities and terrain intersections. Drape presentation
-  // surfaces to the accepted DTM while retaining the source artifact untouched.
   const elevation = sampleHeight(easting, northing);
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
 }
@@ -182,6 +178,8 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       road_surface_paths: roads.metadata.path_count,
       road_surface_segments: roads.metadata.segment_count,
       road_surface_triangles: roads.metadata.triangle_count,
+      road_join_strategy: roads.metadata.join_strategy,
+      road_join_triangles: roads.metadata.join_triangle_count,
       road_width_semantics: roads.metadata.width_semantics,
       road_width_range_m: roads.metadata.width_range_m,
       road_width_class_counts: roads.metadata.width_class_counts,
@@ -197,6 +195,11 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       unresolved_building_heights: buildingsFallback.count,
       building_resolved_height_semantics: buildingsResolved.metadata.height_semantics,
       building_fallback_height_semantics: buildingsFallback.metadata.height_semantics,
+      building_foundation_semantics: buildingsFallback.metadata.foundation_semantics,
+      building_roof_morphology_semantics: buildingsFallback.metadata.roof_morphology_semantics,
+      building_gable_roofs: buildingsResolved.metadata.gable_roof_count + buildingsFallback.metadata.gable_roof_count,
+      building_flat_roofs: buildingsResolved.metadata.flat_roof_count + buildingsFallback.metadata.flat_roof_count,
+      building_fallback_height_range_m: buildingsFallback.metadata.fallback_height_range_m,
       building_wall_triangles: buildingsResolved.metadata.wall_triangles + buildingsFallback.metadata.wall_triangles,
       building_roof_triangles: buildingsResolved.metadata.roof_triangles + buildingsFallback.metadata.roof_triangles,
       building_roof_triangulation: buildingsResolved.metadata.roof_triangulation,
