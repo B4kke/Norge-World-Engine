@@ -76,10 +76,9 @@ function projectPath(points, projectPoint, minimumPointSpacingMeters) {
 
   if (!(minimumPointSpacingMeters > 0) || projected.length <= 2) return projected;
 
-  // Renderer-only sampling: dense source vertices can be much closer together than the
-  // non-authoritative visual road width. Keeping sub-meter joins in a 3.2 m ribbon can
-  // make the two ribbon edges cross. Preserve path endpoints, but skip intermediate
-  // samples below the measured visual threshold. The compiled centerline is untouched.
+  // Renderer-only sampling. The source centerline is retained in the compiled artifact.
+  // The 1.25 m guard is the first measured threshold that removes the four bow-tie
+  // ribbon quads in the accepted 246-path Nannestad artifact at the current visual widths.
   const sampled = [projected[0]];
   for (let index = 1; index < projected.length - 1; index += 1) {
     if (planarDistance(sampled.at(-1), projected[index]) >= minimumPointSpacingMeters) sampled.push(projected[index]);
@@ -96,28 +95,54 @@ function projectPath(points, projectPoint, minimumPointSpacingMeters) {
   return sampled;
 }
 
+export function rendererRoadWidthMeters(path, fallbackWidthMeters = DEFAULT_VISUAL_WIDTH_M) {
+  const type = String(path?.road_type ?? '').toLocaleLowerCase('nb-NO');
+  if (/fortau/.test(type)) return 1.8;
+  if (/gang-?\s*og\s*sykkel|gang.*sykkel|sykkelveg/.test(type)) return 3.0;
+  if (/gangveg|gangvei/.test(type)) return 2.4;
+  if (/sti|traktor/.test(type)) return 2.2;
+  if (/enkel\s+bilveg/.test(type)) return 4.6;
+  if (/rundkjøring|rampe/.test(type)) return 5.2;
+  if (/bilveg|kjøreveg|kjørevei|veg|vei/.test(type)) return 5.0;
+  return fallbackWidthMeters;
+}
+
+function resolveEdgeHeight(surfaceHeightAtLocalXZ, x, z, fallbackY, context) {
+  if (typeof surfaceHeightAtLocalXZ !== 'function') return fallbackY;
+  const value = Number(surfaceHeightAtLocalXZ(x, z, context));
+  if (!Number.isFinite(value)) throw new Error('ROAD_SURFACE_EDGE_HEIGHT_INVALID');
+  return value;
+}
+
 export function buildRoadSurfaceGeometry(roadsArtifact, {
   projectPoint,
   widthMeters = DEFAULT_VISUAL_WIDTH_M,
+  widthForPath = rendererRoadWidthMeters,
   miterLimit = DEFAULT_MITER_LIMIT,
   uvPeriodMeters = DEFAULT_UV_PERIOD_M,
   minimumPointSpacingMeters = DEFAULT_MINIMUM_POINT_SPACING_M,
+  surfaceHeightAtLocalXZ = null,
+  edgeHeightSemantics = surfaceHeightAtLocalXZ ? 'renderer-supplied-drape' : 'projected-centerline',
 } = {}) {
   if (typeof projectPoint !== 'function') throw new TypeError('projectPoint is required');
   if (!(Number.isFinite(widthMeters) && widthMeters > 0)) throw new RangeError('widthMeters must be > 0');
+  if (typeof widthForPath !== 'function') throw new TypeError('widthForPath must be a function');
   if (!(Number.isFinite(miterLimit) && miterLimit >= 1)) throw new RangeError('miterLimit must be >= 1');
   if (!(Number.isFinite(uvPeriodMeters) && uvPeriodMeters > 0)) throw new RangeError('uvPeriodMeters must be > 0');
   if (!(Number.isFinite(minimumPointSpacingMeters) && minimumPointSpacingMeters >= 0)) throw new RangeError('minimumPointSpacingMeters must be >= 0');
+  if (surfaceHeightAtLocalXZ !== null && typeof surfaceHeightAtLocalXZ !== 'function') throw new TypeError('surfaceHeightAtLocalXZ must be a function or null');
 
   const positions = [];
   const uvs = [];
   const indices = [];
-  const halfWidth = widthMeters / 2;
   let pathCount = 0;
   let segmentCount = 0;
   let centerlineLengthM = 0;
   let sourcePointCount = 0;
   let sampledPointCount = 0;
+  let minimumWidthM = Number.POSITIVE_INFINITY;
+  let maximumWidthM = 0;
+  const widthClassCounts = {};
 
   for (const path of roadsArtifact?.paths ?? []) {
     sourcePointCount += path?.points?.length ?? 0;
@@ -125,16 +150,27 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
     sampledPointCount += points.length;
     if (points.length < 2) continue;
 
+    const requestedWidth = Number(widthForPath(path, widthMeters));
+    const pathWidth = Number.isFinite(requestedWidth) && requestedWidth > 0 ? requestedWidth : widthMeters;
+    const halfWidth = pathWidth / 2;
+    minimumWidthM = Math.min(minimumWidthM, pathWidth);
+    maximumWidthM = Math.max(maximumWidthM, pathWidth);
+    const widthKey = `${pathWidth.toFixed(1)}m`;
+    widthClassCounts[widthKey] = (widthClassCounts[widthKey] ?? 0) + 1;
+
     const baseVertex = positions.length / 3;
     let distanceAlong = 0;
     for (let index = 0; index < points.length; index += 1) {
       if (index > 0) distanceAlong += planarDistance(points[index - 1], points[index]);
       const [offsetX, offsetZ] = joinOffset(points, index, halfWidth, miterLimit);
       const center = points[index];
-      positions.push(
-        center[0] + offsetX, center[1], center[2] + offsetZ,
-        center[0] - offsetX, center[1], center[2] - offsetZ,
-      );
+      const leftX = center[0] + offsetX;
+      const leftZ = center[2] + offsetZ;
+      const rightX = center[0] - offsetX;
+      const rightZ = center[2] - offsetZ;
+      const leftY = resolveEdgeHeight(surfaceHeightAtLocalXZ, leftX, leftZ, center[1], { path, pointIndex: index, side: 'left', center });
+      const rightY = resolveEdgeHeight(surfaceHeightAtLocalXZ, rightX, rightZ, center[1], { path, pointIndex: index, side: 'right', center });
+      positions.push(leftX, leftY, leftZ, rightX, rightY, rightZ);
       const v = distanceAlong / uvPeriodMeters;
       uvs.push(0, v, 1, v);
     }
@@ -144,8 +180,6 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
       const b = a + 1;
       const c = a + 2;
       const d = a + 3;
-      // Left/right vertex pairs are emitted in local X/Z. Winding must face +Y so
-      // computed normals and tangent-space normal maps stay stable at ground level.
       indices.push(a, c, b, b, c, d);
     }
 
@@ -161,14 +195,17 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
     uvs: new Float32Array(uvs),
     indices: new IndexArray(indices),
     metadata: {
-      schema: 'nwe.road-surface-render-geometry/0.1',
+      schema: 'nwe.road-surface-render-geometry/0.2',
       source: 'compiled-road-paths',
       width_m: widthMeters,
-      width_semantics: 'renderer-only-fallback',
+      width_semantics: 'renderer-only-road-type-fallback',
+      width_range_m: pathCount > 0 ? [minimumWidthM, maximumWidthM] : [widthMeters, widthMeters],
+      width_class_counts: widthClassCounts,
       miter_limit: miterLimit,
       uv_period_m: uvPeriodMeters,
       minimum_point_spacing_m: minimumPointSpacingMeters,
       point_spacing_semantics: 'renderer-only-sampling',
+      edge_height_semantics: edgeHeightSemantics,
       source_point_count: sourcePointCount,
       sampled_point_count: sampledPointCount,
       removed_sample_count: Math.max(0, sourcePointCount - sampledPointCount),
