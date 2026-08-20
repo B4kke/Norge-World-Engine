@@ -21,10 +21,12 @@ assert.match(sceneGeometry, /road_renderer_sampling_semantics:\s*roads\.metadata
 assert.doesNotMatch(sceneGeometry, /sourceZ\s*=\s*Number\(point\?\.\[2\]\)/, 'generic presentation roads must not blindly use source Z until bridge/tunnel semantics are compiled');
 assert.doesNotMatch(sceneGeometry, /0\.35/, 'legacy 35 cm road lift must not return');
 assert.match(roadGeometry, /width_semantics:\s*'renderer-only-road-type-fallback'/, 'road width never becomes authoritative semantics');
-assert.match(roadGeometry, /join_strategy:\s*'segment-safe-bevel'/, 'road joins must use the bow-tie-proof bevel strategy');
-assert.match(roadGeometry, /Segment-local offset pairs cannot bow-tie/, 'road quads must be generated from segment-local normals');
+assert.match(roadGeometry, /join_strategy:\s*'nonoverlap-inner-intersection-bevel'/, 'road joins must use the bow-tie- and z-fight-resistant non-overlap bevel strategy');
+assert.match(roadGeometry, /overlap_policy:\s*'no-intentional-segment-overlap'/, 'road builder must explicitly prohibit the previous overlapping join coverage');
+assert.match(roadGeometry, /lineIntersectionXZ/, 'inner road boundaries must meet at offset-line intersections');
+assert.match(roadGeometry, /innerFallback/, 'extreme turns need a bounded no-spike fallback without overlapping rectangles');
 assert.match(roadGeometry, /rendererRoadWidthMeters/, 'road classes have bounded renderer-only width fallbacks');
 assert.match(roadGeometry, /surfaceHeightAtLocalXZ/, 'road builder supports per-edge terrain draping');
-assert.doesNotMatch(roadGeometry, /cappedLength|joinOffset|miter/, 'fragile shared miter strip must not return');
+assert.doesNotMatch(roadGeometry, /cappedLength|joinOffset/, 'fragile shared miter strip must not return');
 
 console.log('ROAD_SURFACE_SCENE_CONTRACT_PASS');
