@@ -22,7 +22,7 @@ function triangleNormalY(positions, ia, ib, ic) {
   const bx = positions[ib * 3]; const bz = positions[ib * 3 + 2];
   const cx = positions[ic * 3]; const cz = positions[ic * 3 + 2];
   const abx = bx - ax; const abz = bz - az;
-  const acx = cx - ax; const acz = cz - az;
+  const acx = cx - ax; const acz = cx * 0 + (positions[ic * 3 + 2] - az);
   return abz * acx - abx * acz;
 }
 
@@ -33,8 +33,8 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   let triangles = 0;
   let negativeTriangles = 0;
   let degenerateTriangles = 0;
-  let mixedSignSegments = 0;
-  let fullyInvertedSegments = 0;
+  let segmentTriangles = 0;
+  let joinTriangles = 0;
   let minimumNormalY = Number.POSITIVE_INFINITY;
   let sourcePoints = 0;
   let sampledPoints = 0;
@@ -54,34 +54,33 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
     if (geometry.metadata.path_count === 0) continue;
     renderedPaths += 1;
 
-    const segmentIssues = [];
-    for (let segment = 0; segment < geometry.metadata.segment_count; segment += 1) {
-      const offset = segment * 6;
-      const n0 = triangleNormalY(geometry.positions, geometry.indices[offset], geometry.indices[offset + 1], geometry.indices[offset + 2]);
-      const n1 = triangleNormalY(geometry.positions, geometry.indices[offset + 3], geometry.indices[offset + 4], geometry.indices[offset + 5]);
-      minimumNormalY = Math.min(minimumNormalY, n0, n1);
-      triangles += 2;
-      const negative0 = n0 < -EPSILON;
-      const negative1 = n1 < -EPSILON;
-      const degenerate0 = Math.abs(n0) <= EPSILON;
-      const degenerate1 = Math.abs(n1) <= EPSILON;
-      negativeTriangles += Number(negative0) + Number(negative1);
-      degenerateTriangles += Number(degenerate0) + Number(degenerate1);
-      if (negative0 !== negative1) mixedSignSegments += 1;
-      if (negative0 && negative1) fullyInvertedSegments += 1;
-      if (includeAnomalies && (negative0 || negative1 || degenerate0 || degenerate1)) {
-        segmentIssues.push({ segment, triangle_normal_y: [n0, n1] });
+    const issues = [];
+    const segmentIndexCount = geometry.metadata.segment_count * 6;
+    for (let offset = 0; offset < geometry.indices.length; offset += 3) {
+      const n = triangleNormalY(geometry.positions, geometry.indices[offset], geometry.indices[offset + 1], geometry.indices[offset + 2]);
+      minimumNormalY = Math.min(minimumNormalY, n);
+      triangles += 1;
+      const isSegmentTriangle = offset < segmentIndexCount;
+      if (isSegmentTriangle) segmentTriangles += 1;
+      else joinTriangles += 1;
+      const negative = n < -EPSILON;
+      const degenerate = Math.abs(n) <= EPSILON;
+      negativeTriangles += Number(negative);
+      degenerateTriangles += Number(degenerate);
+      if (includeAnomalies && (negative || degenerate)) {
+        issues.push({ triangle: offset / 3, role: isSegmentTriangle ? 'segment' : 'bevel-join', triangle_normal_y: n });
       }
     }
 
-    if (includeAnomalies && segmentIssues.length > 0) {
+    if (includeAnomalies && issues.length > 0) {
       anomalies.push({
         path_index: pathIndex,
         path_id: path?.path_id ?? null,
         road_type: path?.road_type ?? null,
         source_point_count: path?.points?.length ?? 0,
-        issues: segmentIssues.slice(0, 12),
-        issue_count: segmentIssues.length,
+        join_strategy: geometry.metadata.join_strategy,
+        issues: issues.slice(0, 12),
+        issue_count: issues.length,
       });
     }
   }
@@ -89,30 +88,29 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   return {
     minimum_point_spacing_m: minimumPointSpacingMeters,
     status: negativeTriangles === 0 && degenerateTriangles === 0 ? 'PASS' : 'FAIL',
+    join_strategy: 'segment-safe-bevel',
     rendered_paths: renderedPaths,
     source_points: sourcePoints,
     sampled_points: sampledPoints,
     removed_samples: sourcePoints - sampledPoints,
     triangles,
+    segment_triangles: segmentTriangles,
+    join_triangles: joinTriangles,
     negative_triangles: negativeTriangles,
     degenerate_triangles: degenerateTriangles,
-    mixed_sign_segments: mixedSignSegments,
-    fully_inverted_segments: fullyInvertedSegments,
     minimum_normal_y: Number.isFinite(minimumNormalY) ? minimumNormalY : null,
     anomalies,
   };
 }
 
-const unsampled = inspect(0, { includeAnomalies: true });
-const sampled = inspect(1.25, { includeAnomalies: true });
+const active = inspect(0, { includeAnomalies: true });
 const report = {
-  schema: 'nwe.real-road-surface-inspection/0.6',
-  status: sampled.status,
+  schema: 'nwe.real-road-surface-inspection/0.7',
+  status: active.status,
   coordinate_semantics: 'render-local-float32-matching-preview-planar-origin',
   render_origin: renderOrigin,
   artifact: { tile_id: artifact.tile_id, schema: artifact.schema, path_count: artifact.paths.length },
-  unsampled_geometry: unsampled,
-  sampled_geometry: sampled,
+  active_source_point_geometry: active,
 };
 
 console.log(JSON.stringify(report, null, 2));
