@@ -22,7 +22,7 @@ function triangleNormalY(positions, ia, ib, ic) {
   const bx = positions[ib * 3]; const bz = positions[ib * 3 + 2];
   const cx = positions[ic * 3]; const cz = positions[ic * 3 + 2];
   const abx = bx - ax; const abz = bz - az;
-  const acx = cx - ax; const acz = cx * 0 + (positions[ic * 3 + 2] - az);
+  const acx = cx - ax; const acz = cz - az;
   return abz * acx - abx * acz;
 }
 
@@ -35,9 +35,12 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   let degenerateTriangles = 0;
   let segmentTriangles = 0;
   let joinTriangles = 0;
+  let joinInnerFallbacks = 0;
   let minimumNormalY = Number.POSITIVE_INFINITY;
   let sourcePoints = 0;
   let sampledPoints = 0;
+  let joinStrategy = null;
+  let overlapPolicy = null;
 
   for (let pathIndex = 0; pathIndex < artifact.paths.length; pathIndex += 1) {
     const path = artifact.paths[pathIndex];
@@ -51,6 +54,9 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
     });
     sourcePoints += geometry.metadata.source_point_count;
     sampledPoints += geometry.metadata.sampled_point_count;
+    joinInnerFallbacks += geometry.metadata.join_inner_fallback_count ?? 0;
+    joinStrategy ??= geometry.metadata.join_strategy;
+    overlapPolicy ??= geometry.metadata.overlap_policy;
     if (geometry.metadata.path_count === 0) continue;
     renderedPaths += 1;
 
@@ -88,7 +94,9 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
   return {
     minimum_point_spacing_m: minimumPointSpacingMeters,
     status: negativeTriangles === 0 && degenerateTriangles === 0 ? 'PASS' : 'FAIL',
-    join_strategy: 'segment-safe-bevel',
+    join_strategy: joinStrategy,
+    overlap_policy: overlapPolicy,
+    join_inner_fallback_count: joinInnerFallbacks,
     rendered_paths: renderedPaths,
     source_points: sourcePoints,
     sampled_points: sampledPoints,
@@ -105,7 +113,7 @@ function inspect(minimumPointSpacingMeters, { includeAnomalies = false } = {}) {
 
 const active = inspect(0, { includeAnomalies: true });
 const report = {
-  schema: 'nwe.real-road-surface-inspection/0.7',
+  schema: 'nwe.real-road-surface-inspection/0.8',
   status: active.status,
   coordinate_semantics: 'render-local-float32-matching-preview-planar-origin',
   render_origin: renderOrigin,
