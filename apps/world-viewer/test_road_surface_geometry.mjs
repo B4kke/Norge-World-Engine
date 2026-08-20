@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildRoadSurfaceGeometry } from './src/roadSurfaceGeometry.mjs';
+import { buildRoadSurfaceGeometry, rendererRoadWidthMeters } from './src/roadSurfaceGeometry.mjs';
 
 const identityProject = (point) => [Number(point[0]), Number(point[2] ?? 0), Number(point[1])];
 
@@ -21,16 +21,13 @@ function assertUpwardWinding(geometry) {
 
 const corner = buildRoadSurfaceGeometry({
   paths: [{ points: [[0, 0, 10], [10, 0, 10], [10, 10, 10]] }],
-}, { projectPoint: identityProject, widthMeters: 4, miterLimit: 2, uvPeriodMeters: 5 });
+}, { projectPoint: identityProject, widthMeters: 4, miterLimit: 2, uvPeriodMeters: 5, minimumPointSpacingMeters: 0 });
 
 assert.equal(corner.metadata.path_count, 1);
 assert.equal(corner.metadata.segment_count, 2);
-assert.equal(corner.metadata.width_semantics, 'renderer-only-fallback');
-assert.equal(corner.metadata.minimum_point_spacing_m, 1.25);
-assert.equal(corner.metadata.point_spacing_semantics, 'renderer-only-sampling');
-assert.equal(corner.metadata.source_point_count, 3);
-assert.equal(corner.metadata.sampled_point_count, 3);
-assert.equal(corner.metadata.removed_sample_count, 0);
+assert.equal(corner.metadata.width_semantics, 'renderer-only-road-type-fallback');
+assert.deepEqual(corner.metadata.width_range_m, [4, 4]);
+assert.equal(corner.metadata.edge_height_semantics, 'projected-centerline');
 assert.equal(corner.metadata.winding, 'counter-clockwise-upward');
 assert.equal(corner.positions.length / 3, 6, 'one shared left/right pair must be emitted per centerline point');
 assert.equal(corner.indices.length, 12, 'two connected surface quads must emit four triangles');
@@ -42,15 +39,35 @@ const joinLeft = [corner.positions[6], corner.positions[8]];
 const joinRight = [corner.positions[9], corner.positions[11]];
 assert.ok(Math.hypot(joinLeft[0] - 10, joinLeft[1]) <= 4.0001, 'miter must remain capped');
 assert.ok(Math.hypot(joinRight[0] - 10, joinRight[1]) <= 4.0001, 'opposite miter must remain capped');
-assert.equal(corner.positions[7], 10, 'surface must preserve projected centerline height');
-assert.equal(corner.positions[10], 10, 'both road edges must share projected centerline height');
+assert.equal(corner.positions[7], 10, 'surface preserves projected centerline height without an edge-drape callback');
+assert.equal(corner.positions[10], 10, 'both road edges share projected centerline height without edge drape');
+
+const draped = buildRoadSurfaceGeometry({
+  paths: [{ road_type: 'Enkel bilveg', points: [[0, 0, 99], [10, 0, 99]] }],
+}, {
+  projectPoint: ([x, z]) => [x, 50, z],
+  minimumPointSpacingMeters: 0,
+  surfaceHeightAtLocalXZ: (x, z) => 4 + x * 0.1 + z * 0.2,
+  edgeHeightSemantics: 'renderer-only-accepted-dtm-edge-drape',
+});
+assert.equal(draped.metadata.edge_height_semantics, 'renderer-only-accepted-dtm-edge-drape');
+assert.deepEqual(draped.metadata.width_range_m, [4.6, 4.6], 'Enkel bilveg gets an explicit renderer-only visual width');
+assert.notEqual(draped.positions[1], 50, 'edge drape replaces projected centerline height');
+assert.notEqual(draped.positions[1], draped.positions[4], 'cross-slope road edges may have distinct terrain heights');
+assertUpwardWinding(draped);
+
+assert.equal(rendererRoadWidthMeters({ road_type: 'Fortau' }), 1.8);
+assert.equal(rendererRoadWidthMeters({ road_type: 'Gang- og sykkelveg' }), 3.0);
+assert.equal(rendererRoadWidthMeters({ road_type: 'Gangveg' }), 2.4);
+assert.equal(rendererRoadWidthMeters({ road_type: 'Enkel bilveg' }), 4.6);
+assert.equal(rendererRoadWidthMeters({ road_type: 'unknown' }), 3.2);
 
 const separate = buildRoadSurfaceGeometry({
   paths: [
     { points: [[0, 0, 1], [2, 0, 1]] },
     { points: [[100, 100, 2], [102, 100, 2]] },
   ],
-}, { projectPoint: identityProject });
+}, { projectPoint: identityProject, minimumPointSpacingMeters: 0 });
 assert.equal(separate.metadata.path_count, 2);
 assert.equal(separate.metadata.segment_count, 2);
 assert.equal(separate.positions.length / 3, 8);
@@ -59,7 +76,7 @@ assertUpwardWinding(separate);
 
 const deduped = buildRoadSurfaceGeometry({
   paths: [{ points: [[0, 0, 0], [0, 0, 0], [5, 0, 0]] }],
-}, { projectPoint: identityProject });
+}, { projectPoint: identityProject, minimumPointSpacingMeters: 0 });
 assert.equal(deduped.metadata.segment_count, 1, 'duplicate centerline points must not create zero-length surface segments');
 assert.equal(deduped.positions.length / 3, 4);
 assertUpwardWinding(deduped);
@@ -71,17 +88,11 @@ assert.equal(denselySampled.metadata.source_point_count, 5);
 assert.equal(denselySampled.metadata.sampled_point_count, 2, 'sub-threshold renderer samples must be compacted');
 assert.equal(denselySampled.metadata.removed_sample_count, 3);
 assert.equal(denselySampled.metadata.segment_count, 1);
-assert.equal(denselySampled.metadata.point_spacing_semantics, 'renderer-only-sampling');
 assertUpwardWinding(denselySampled);
-
-const unsimplified = buildRoadSurfaceGeometry({
-  paths: [{ points: [[0, 0, 0], [0.4, 0, 0], [3, 0, 0]] }],
-}, { projectPoint: identityProject, minimumPointSpacingMeters: 0 });
-assert.equal(unsimplified.metadata.sampled_point_count, 3, 'sampling must remain explicitly disableable for diagnostics');
-assert.equal(unsimplified.metadata.removed_sample_count, 0);
 
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, widthMeters: 0 }), /widthMeters/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, minimumPointSpacingMeters: -1 }), /minimumPointSpacingMeters/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, {}), /projectPoint/);
+assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, surfaceHeightAtLocalXZ: 1 }), /surfaceHeightAtLocalXZ/);
 
 console.log('ROAD_SURFACE_GEOMETRY_PASS');
