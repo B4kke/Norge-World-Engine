@@ -29,14 +29,32 @@ jobs:
       - name: Build exact World Viewer
         run: npm run build --workspace @nwe/world-viewer
 
-      - name: Capture REAL WORLD READY screenshot
+      - name: Materialize accepted Preview 1 runtime snapshot
         run: |
+          rm -rf /tmp/nwe-preview-runtime
+          git clone --depth 1 --branch preview-runtime "https://github.com/${GITHUB_REPOSITORY}.git" /tmp/nwe-preview-runtime
+          test -f /tmp/nwe-preview-runtime/nannestad-preview-1/manifest.json
+          python -m json.tool /tmp/nwe-preview-runtime/nannestad-preview-1/manifest.json > /dev/null
+
+      - name: Capture REAL WORLD READY screenshot
+        shell: bash
+        run: |
+          set -u
           mkdir -p artifacts
-          node apps/world-viewer/capture_preview1_screenshot.mjs \
-            --dist-root apps/world-viewer/dist \
-            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json \
-            --output artifacts/preview1-ground-ready.png \
-            --timeout-ms 90000
+          for attempt in 1 2; do
+            echo "Visual proof Chrome attempt ${attempt}/2"
+            rm -f artifacts/preview1-ground-ready.png
+            if node apps/world-viewer/capture_preview1_screenshot.mjs \
+              --runtime-root /tmp/nwe-preview-runtime/nannestad-preview-1 \
+              --dist-root apps/world-viewer/dist \
+              --output artifacts/preview1-ground-ready.png \
+              --timeout-ms 90000; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 2 ]; then sleep 2; fi
+          done
+          echo "Visual proof failed after two bounded Chrome startup attempts" >&2
+          exit 1
 
       - name: Upload exact visual proof
         uses: actions/upload-artifact@v4
