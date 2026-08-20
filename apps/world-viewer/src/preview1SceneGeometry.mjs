@@ -7,6 +7,7 @@ const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
 const ROAD_MINIMUM_POINT_SPACING_M = 0;
 const ROAD_VERTICAL_SEMANTICS = 'renderer-only-accepted-dtm-edge-drape';
+const ROAD_TILE_EDGE_HEIGHT_SEMANTICS = 'renderer-only-clamp-height-sample-to-accepted-dtm-bounds';
 const BUILDING_FALLBACK_HEIGHT_M = 5;
 const BUILDING_GROUND_LIFT_M = 0.08;
 
@@ -96,10 +97,15 @@ function roadPointToLocal(point, origin, sampleHeight, lift = 0) {
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
 }
 
-function roadEdgeHeightAtLocalXZ(localX, localZ, origin, sampleHeight, lift = 0) {
-  const easting = origin.e + localX;
-  const northing = origin.n - localZ;
-  return sampleHeight(easting, northing) - origin.h + lift;
+function roadEdgeHeightAtLocalXZ(localX, localZ, origin, sampleHeight, terrainBounds, lift = 0) {
+  if (!Array.isArray(terrainBounds) || terrainBounds.length !== 4) throw new Error('road edge terrain bounds are required');
+  const [minE, minN, maxE, maxN] = terrainBounds.map(Number);
+  if (![minE, minN, maxE, maxN].every(Number.isFinite) || !(maxE > minE && maxN > minN)) throw new Error('road edge terrain bounds are invalid');
+  const requestedEasting = origin.e + localX;
+  const requestedNorthing = origin.n - localZ;
+  const sampledEasting = Math.max(minE, Math.min(maxE, requestedEasting));
+  const sampledNorthing = Math.max(minN, Math.min(maxN, requestedNorthing));
+  return sampleHeight(sampledEasting, sampledNorthing) - origin.h + lift;
 }
 
 function footprintPointToLocal(point, origin, sampleHeight) {
@@ -144,12 +150,13 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     n: terrainPayload.mesh.metadata.origin[1],
     h: terrainPayload.mesh.metadata.origin[2],
   };
+  const terrainBounds = terrainPayload.artifact.header.bounds;
   const sampleHeight = terrainHeightSampler(terrainPayload);
   const roads = buildRoadSurfaceGeometry(roadsArtifact, {
     projectPoint: (point) => roadPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
     widthMeters: ROAD_VISUAL_WIDTH_M,
     minimumPointSpacingMeters: ROAD_MINIMUM_POINT_SPACING_M,
-    surfaceHeightAtLocalXZ: (x, z) => roadEdgeHeightAtLocalXZ(x, z, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
+    surfaceHeightAtLocalXZ: (x, z) => roadEdgeHeightAtLocalXZ(x, z, origin, sampleHeight, terrainBounds, ROAD_SURFACE_LIFT_M),
     edgeHeightSemantics: ROAD_VERTICAL_SEMANTICS,
   });
   const buildingProjectPoint = (point) => footprintPointToLocal(point, origin, sampleHeight);
@@ -184,6 +191,7 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       road_width_range_m: roads.metadata.width_range_m,
       road_width_class_counts: roads.metadata.width_class_counts,
       road_vertical_semantics: roads.metadata.edge_height_semantics,
+      road_tile_edge_height_semantics: ROAD_TILE_EDGE_HEIGHT_SEMANTICS,
       road_renderer_sampling_semantics: roads.metadata.point_spacing_semantics,
       road_renderer_minimum_point_spacing_m: roads.metadata.minimum_point_spacing_m,
       road_source_point_count: roads.metadata.source_point_count,
