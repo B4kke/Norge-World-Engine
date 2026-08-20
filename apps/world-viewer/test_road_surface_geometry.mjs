@@ -25,8 +25,10 @@ const corner = buildRoadSurfaceGeometry({
 
 assert.equal(corner.metadata.path_count, 1);
 assert.equal(corner.metadata.segment_count, 2);
-assert.equal(corner.metadata.join_strategy, 'segment-safe-bevel');
+assert.equal(corner.metadata.join_strategy, 'nonoverlap-inner-intersection-bevel');
+assert.equal(corner.metadata.overlap_policy, 'no-intentional-segment-overlap');
 assert.equal(corner.metadata.join_triangle_count, 1);
+assert.equal(corner.metadata.join_inner_fallback_count, 0);
 assert.equal(corner.metadata.width_semantics, 'renderer-only-road-type-fallback');
 assert.deepEqual(corner.metadata.width_range_m, [4, 4]);
 assert.equal(corner.metadata.edge_height_semantics, 'projected-centerline');
@@ -34,11 +36,18 @@ assert.equal(corner.metadata.point_spacing_semantics, 'source-points-after-exact
 assert.equal(corner.metadata.minimum_point_spacing_m, 0);
 assert.equal(corner.metadata.removed_sample_count, 0);
 assert.equal(corner.metadata.winding, 'counter-clockwise-upward');
-assert.equal(corner.positions.length / 3, 9, 'two independent safe segment rectangles plus one bevel-center vertex are emitted');
-assert.equal(corner.indices.length, 15, 'two safe quads plus one outside bevel triangle are emitted');
-assert.equal(corner.uvs.length, 18);
-assert.deepEqual(Array.from(corner.indices.slice(0, 12)), [0, 2, 1, 1, 2, 3, 4, 6, 5, 5, 6, 7], 'segment quads must be independent and bow-tie proof');
+assert.equal(corner.positions.length / 3, 11, 'two trimmed segment quads plus one isolated three-vertex bevel triangle are emitted');
+assert.equal(corner.indices.length, 15, 'two non-overlapping quads plus one outside bevel triangle are emitted');
+assert.equal(corner.uvs.length, 22);
+assert.deepEqual(Array.from(corner.indices.slice(0, 12)), [0, 2, 1, 1, 2, 3, 4, 6, 5, 5, 6, 7], 'segment quads stay independently addressable but meet through the inner join point');
 assertUpwardWinding(corner);
+
+// At a left turn, the left/inner endpoints of incoming + outgoing segments must meet
+// at the same offset-line intersection; the previous overlapping-rectangle strategy
+// left different inner endpoints and caused coplanar overlap/z-fighting.
+const incomingLeftEnd = [corner.positions[2 * 3], corner.positions[2 * 3 + 2]];
+const outgoingLeftStart = [corner.positions[4 * 3], corner.positions[4 * 3 + 2]];
+assert.deepEqual(incomingLeftEnd, outgoingLeftStart, 'inner road boundary must be shared geometrically across the bevel join');
 
 const draped = buildRoadSurfaceGeometry({
   paths: [{ road_type: 'Enkel bilveg', points: [[0, 0, 99], [10, 0, 99]] }],
@@ -99,6 +108,7 @@ assertUpwardWinding(explicitlySampled);
 
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, widthMeters: 0 }), /widthMeters/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, minimumPointSpacingMeters: -1 }), /minimumPointSpacingMeters/);
+assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, innerJoinLimit: 0.5 }), /innerJoinLimit/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, {}), /projectPoint/);
 assert.throws(() => buildRoadSurfaceGeometry({ paths: [] }, { projectPoint: identityProject, surfaceHeightAtLocalXZ: 1 }), /surfaceHeightAtLocalXZ/);
 
