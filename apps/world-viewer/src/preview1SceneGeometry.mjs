@@ -1,6 +1,7 @@
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { installPreviewCameraControls } from './previewCameraControls.mjs';
 import { buildBuildingSurfaceGeometry } from './buildingSurfaceGeometry.mjs';
+import { buildBuildingFacadeDetailGeometry } from './buildingFacadeDetailGeometry.mjs';
 import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 
 const ROAD_VISUAL_WIDTH_M = 3.2;
@@ -171,6 +172,10 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     fallbackHeightMeters: BUILDING_FALLBACK_HEIGHT_M,
     groundLiftMeters: BUILDING_GROUND_LIFT_M,
   });
+  const buildingFacades = buildBuildingFacadeDetailGeometry(buildingsArtifact, {
+    projectPoint: buildingProjectPoint,
+    fallbackHeightMeters: BUILDING_FALLBACK_HEIGHT_M,
+  });
   return {
     header: terrainPayload.artifact.header,
     origin,
@@ -178,6 +183,7 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     roads,
     buildingsResolved,
     buildingsFallback,
+    buildingFacades,
     stats: {
       terrain_vertices: terrainPayload.mesh.metadata.vertexCount,
       terrain_triangles: terrainPayload.mesh.metadata.triangleCount,
@@ -211,6 +217,12 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       building_wall_triangles: buildingsResolved.metadata.wall_triangles + buildingsFallback.metadata.wall_triangles,
       building_roof_triangles: buildingsResolved.metadata.roof_triangles + buildingsFallback.metadata.roof_triangles,
       building_roof_triangulation: buildingsResolved.metadata.roof_triangulation,
+      building_facade_semantics: buildingFacades.metadata.authority,
+      building_facade_decorated_count: buildingFacades.metadata.buildings_decorated,
+      building_window_count: buildingFacades.metadata.window_count,
+      building_entry_door_count: buildingFacades.metadata.entry_door_count,
+      building_large_door_count: buildingFacades.metadata.large_door_count,
+      building_facade_triangles: buildingFacades.metadata.window_triangles + buildingFacades.metadata.door_triangles,
       debug_road_width_m: ROAD_VISUAL_WIDTH_M,
       debug_unresolved_building_height_m: BUILDING_FALLBACK_HEIGHT_M,
     },
