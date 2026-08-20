@@ -6,6 +6,7 @@ import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
 const ROAD_MINIMUM_POINT_SPACING_M = 1.25;
+const ROAD_VERTICAL_SEMANTICS = 'renderer-only-accepted-dtm-edge-drape';
 const BUILDING_FALLBACK_HEIGHT_M = 5;
 const BUILDING_GROUND_LIFT_M = 0.08;
 
@@ -87,13 +88,22 @@ function terrainHeightSampler(payload) {
   });
 }
 
-function worldPointToLocal(point, origin, sampleHeight, lift = 0) {
+function roadPointToLocal(point, origin, sampleHeight, lift = 0) {
   const easting = Number(point?.[0]);
   const northing = Number(point?.[1]);
-  if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid world point');
-  const sourceZ = Number(point?.[2]);
-  const elevation = Number.isFinite(sourceZ) && sourceZ > -10000 ? sourceZ : sampleHeight(easting, northing);
+  if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid road point');
+  // Generic road ribbons are presentation geometry. Until the compiled road contract
+  // carries explicit bridge/tunnel/elevated semantics, blindly consuming NVDB Z can
+  // create vertical discontinuities and terrain intersections. Drape presentation
+  // surfaces to the accepted DTM while retaining the source artifact untouched.
+  const elevation = sampleHeight(easting, northing);
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
+}
+
+function roadEdgeHeightAtLocalXZ(localX, localZ, origin, sampleHeight, lift = 0) {
+  const easting = origin.e + localX;
+  const northing = origin.n - localZ;
+  return sampleHeight(easting, northing) - origin.h + lift;
 }
 
 function footprintPointToLocal(point, origin, sampleHeight) {
@@ -140,9 +150,11 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
   };
   const sampleHeight = terrainHeightSampler(terrainPayload);
   const roads = buildRoadSurfaceGeometry(roadsArtifact, {
-    projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
+    projectPoint: (point) => roadPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
     widthMeters: ROAD_VISUAL_WIDTH_M,
     minimumPointSpacingMeters: ROAD_MINIMUM_POINT_SPACING_M,
+    surfaceHeightAtLocalXZ: (x, z) => roadEdgeHeightAtLocalXZ(x, z, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
+    edgeHeightSemantics: ROAD_VERTICAL_SEMANTICS,
   });
   const buildingProjectPoint = (point) => footprintPointToLocal(point, origin, sampleHeight);
   const buildingsResolved = buildBuildingSurfaceGeometry(buildingsArtifact, {
@@ -171,6 +183,9 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       road_surface_segments: roads.metadata.segment_count,
       road_surface_triangles: roads.metadata.triangle_count,
       road_width_semantics: roads.metadata.width_semantics,
+      road_width_range_m: roads.metadata.width_range_m,
+      road_width_class_counts: roads.metadata.width_class_counts,
+      road_vertical_semantics: roads.metadata.edge_height_semantics,
       road_renderer_sampling_semantics: roads.metadata.point_spacing_semantics,
       road_renderer_minimum_point_spacing_m: roads.metadata.minimum_point_spacing_m,
       road_source_point_count: roads.metadata.source_point_count,
