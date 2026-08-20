@@ -16,14 +16,13 @@ import {
 
 const TERRAIN_RESOURCE_SCHEMA = 'nwe.preview-terrain-resource-lifecycle/0.1';
 const TERRAIN_MATERIAL_SCHEMA = 'nwe.terrain-render-style/0.1';
-const ROAD_MATERIAL_SCHEMA = 'nwe.road-render-style/0.1';
-const BUILDING_MATERIAL_SCHEMA = 'nwe.building-render-style/0.1';
+const ROAD_MATERIAL_SCHEMA = 'nwe.road-render-style/0.2';
+const BUILDING_MATERIAL_SCHEMA = 'nwe.building-render-style/0.2';
 const TERRAIN_DETAIL_PERIOD_M = 5;
 const TERRAIN_DETAIL_TEXTURE_SIZE = 64;
 const HUMANOID_GROUND_LIFT_M = 0.02;
 const POLY_HAVEN_TEXTURE_EDGE_PX = 1024;
 const TERRAIN_NORMAL_STRENGTH = 0.18;
-const ROAD_NORMAL_STRENGTH = 0;
 const WALL_NORMAL_STRENGTH = 0.18;
 const ROOF_NORMAL_STRENGTH = 0.22;
 
@@ -124,9 +123,10 @@ function backendName(renderer, forceWebGL) {
   return globalThis.navigator?.gpu ? 'webgpu' : 'webgl2';
 }
 
-function applyTextureMaps(materials, maps, normalStrength, { normal = true } = {}) {
+function applyTextureMaps(materials, maps, normalStrength, { normal = true, diffuse = true } = {}) {
   for (const material of materials) {
-    if (maps?.diffuse) material.map = maps.diffuse;
+    if (diffuse && maps?.diffuse) material.map = maps.diffuse;
+    else if (!diffuse) material.map = null;
     if (normal && maps?.normal && normalStrength > 0) {
       material.normalMap = maps.normal;
       material.normalScale.set(normalStrength, normalStrength);
@@ -187,11 +187,13 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   terrainColorTexture.repeat.set(detailRepeatX, detailRepeatY); terrainSurfaceTexture.repeat.set(detailRepeatX, detailRepeatY);
 
   const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, metalness: 0, map: terrainColorTexture, roughnessMap: terrainSurfaceTexture, bumpMap: terrainSurfaceTexture, bumpScale: 0.07, vertexColors: true });
-  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0xa5a6a2, roughness: 0.94, metalness: 0, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x555755, roughness: 0.96, metalness: 0, side: THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const resolvedWallMaterial = new THREE.MeshStandardMaterial({ color: 0xe0d8cd, roughness: 0.84, metalness: 0, side: THREE.DoubleSide });
   const resolvedRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x747779, roughness: 0.90, metalness: 0, side: THREE.DoubleSide });
   const fallbackWallMaterial = new THREE.MeshStandardMaterial({ color: 0xc5c0b7, roughness: 0.89, metalness: 0, side: THREE.DoubleSide });
   const fallbackRoofMaterial = new THREE.MeshStandardMaterial({ color: 0x65696b, roughness: 0.93, metalness: 0, side: THREE.DoubleSide });
+  const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x26323a, roughness: 0.34, metalness: 0.04, side: THREE.DoubleSide });
+  const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x49382f, roughness: 0.82, metalness: 0, side: THREE.DoubleSide });
 
   const roadWidthMeters = Number(sceneGeometry.roads.metadata?.width_m ?? 3.2);
   const roadUvPeriodMeters = Number(sceneGeometry.roads.metadata?.uv_period_m ?? 4);
@@ -207,18 +209,22 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   });
 
   const vectorStartedAt = monotonicNow();
-  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: true });
+  // Roads are deliberately receiveShadow=false until their source-backed width pass is closed.
+  // Earlier exact screenshots proved the black road fields were not caused by vegetation shadows,
+  // but keeping road lighting simple makes width/contour acceptance visually unambiguous.
+  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: false });
   const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, null, sceneGeometry.buildingsResolved.walls.uvs), resolvedWallMaterial), { cast: true, receive: true });
   const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, null, sceneGeometry.buildingsResolved.roofs.uvs), resolvedRoofMaterial), { cast: true, receive: true });
   const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, null, sceneGeometry.buildingsFallback.walls.uvs), fallbackWallMaterial), { cast: true, receive: true });
   const fallbackRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices, null, sceneGeometry.buildingsFallback.roofs.uvs), fallbackRoofMaterial), { cast: true, receive: true });
-  const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
+  const windowMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingFacades.windows.positions, sceneGeometry.buildingFacades.windows.indices, null, sceneGeometry.buildingFacades.windows.uvs), windowMaterial), { cast: false, receive: false });
+  const doorMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingFacades.doors.positions, sceneGeometry.buildingFacades.doors.indices, null, sceneGeometry.buildingFacades.doors.uvs), doorMaterial), { cast: false, receive: false });
+  const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh, windowMesh, doorMesh];
   scene.add(...staticMeshes);
 
   const vegetationStartedAt = monotonicNow();
   const vegetationPlacement = buildForgeVegetationPlacement({ terrainPayload, roadsArtifact, buildingsArtifact, origin: sceneGeometry.origin });
-  const nearDetailConifers = profile.id === 'low' ? 0 : profile.id === 'high' ? 8 : 4;
-  const vegetationLayer = createThreeVegetationLayer({ scene, placement: vegetationPlacement, nearDetailConifers });
+  const vegetationLayer = createThreeVegetationLayer({ scene, placement: vegetationPlacement });
   const vegetationBuildCpuMs = monotonicNow() - vegetationStartedAt;
 
   const terrainLifecycle = { creates: 0, destroys: 0, createTimingMs: [], destroyTimingMs: [] };
@@ -231,6 +237,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.uvs, sceneGeometry.buildingsResolved.roofs.indices,
     sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.uvs, sceneGeometry.buildingsFallback.walls.indices,
     sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.uvs, sceneGeometry.buildingsFallback.roofs.indices,
+    sceneGeometry.buildingFacades.windows.positions, sceneGeometry.buildingFacades.windows.uvs, sceneGeometry.buildingFacades.windows.indices,
+    sceneGeometry.buildingFacades.doors.positions, sceneGeometry.buildingFacades.doors.uvs, sceneGeometry.buildingFacades.doors.indices,
   );
   const terrainTexturePayloadBytes = TERRAIN_DETAIL_TEXTURE_SIZE * TERRAIN_DETAIL_TEXTURE_SIZE * 4 * 2;
 
@@ -247,15 +255,16 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   lighting.updateAnchor([0, centerGround, 0]);
   const humanoidStartedAt = monotonicNow();
   const humanoidPromise = createLicensedHumanoid({ scene, position: [0, centerGround + HUMANOID_GROUND_LIFT_M, 0], targetHeightM: 1.75 });
-  const [humanoid, surfaceTextures] = await Promise.all([humanoidPromise, surfaceTexturePromise]);
+  const [humanoid, surfaceTextures] = await Promise.all([humanoidPromise, surfaceTexturePromise, vegetationLayer.detailReady]);
   const humanoidLoadCpuMs = monotonicNow() - humanoidStartedAt;
   const surfaceTextureLoadCpuMs = monotonicNow() - surfaceTextureStartedAt;
 
   applyTextureMaps([terrainMaterial], surfaceTextures.textures.terrain, TERRAIN_NORMAL_STRENGTH);
   if (surfaceTextures.textures.terrain.normal) { terrainMaterial.bumpMap = null; terrainMaterial.bumpScale = 0; }
-  // Road normal maps are deliberately disabled until the exact DTM-draped ribbon is
-  // visually clean. Diffuse asphalt remains real CC0 presentation content.
-  applyTextureMaps([roadMaterial], surfaceTextures.textures.road, ROAD_NORMAL_STRENGTH, { normal: false });
+  // Keep Poly Haven asphalt downloaded/provenance-visible, but do not bind its diffuse/normal
+  // until the road UV/material path is independently proven. The current accepted visual road
+  // uses a stable neutral PBR asphalt color instead of the black-field failure mode.
+  applyTextureMaps([roadMaterial], surfaceTextures.textures.road, 0, { normal: false, diffuse: false });
   applyTextureMaps([resolvedWallMaterial, fallbackWallMaterial], surfaceTextures.textures.wall, WALL_NORMAL_STRENGTH);
   applyTextureMaps([resolvedRoofMaterial, fallbackRoofMaterial], surfaceTextures.textures.roof, ROOF_NORMAL_STRENGTH);
 
@@ -268,7 +277,6 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   let stopped = false; let dirty = true; let lastDrawAt = 0; let lastAnimationAt = 0;
   let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;
   let characterFollowInitialized = false;
-  vegetationLayer.detailReady.then(() => { if (!stopped) dirty = true; });
   const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, onChange: () => { dirty = true; } });
   const firstFrame = new Promise((resolve, reject) => { firstFrameResolve = resolve; firstFrameReject = reject; });
 
@@ -297,7 +305,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
       await renderer.renderAsync(scene, camera);
       const cameraState = cameraControls.snapshot();
       const rendererCalls = Number(renderer.info?.render?.calls);
-      const vegetationVisibleMeshes = [...vegetationLayer.meshes, ...vegetationLayer.detailMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length;
+      const vegetationVisibleMeshes = vegetationLayer.meshes.filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length;
       const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length + vegetationVisibleMeshes + humanoid.snapshot().render_mesh_count;
       const frame = { at: now, drawGapMs: lastDrawAt ? now - lastDrawAt : null, drawCpuMs: monotonicNow() - startedAt, drawCalls: Number.isFinite(rendererCalls) && rendererCalls > 0 ? rendererCalls : fallbackCalls, backend: activeBackend, pixelRatio: renderer.getPixelRatio(), camera: { yaw: cameraState.yaw, pitch: cameraState.pitch, distance: cameraState.distance, target: cameraState.target, eye_height_m: camera.position.y - centerGround }, character: humanoid.snapshot() };
       onFrame(frame); lastDrawAt = now;
@@ -320,14 +328,15 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose(); vegetationLayer.dispose();
     if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; }
     for (const mesh of staticMeshes) disposeMesh(mesh);
-    surfaceTextures.dispose(); terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); renderer.dispose();
+    surfaceTextures.dispose(); terrainMaterial.dispose(); terrainColorTexture.dispose(); terrainSurfaceTexture.dispose(); roadMaterial.dispose(); resolvedWallMaterial.dispose(); resolvedRoofMaterial.dispose(); fallbackWallMaterial.dispose(); fallbackRoofMaterial.dispose(); windowMaterial.dispose(); doorMaterial.dispose(); renderer.dispose();
   };
 
   const vegetationSnapshot = vegetationLayer.snapshot();
-  const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
-  const colorDrawCalls = 2 + buildingDrawCalls + vegetationSnapshot.proxy_draw_calls + humanoid.snapshot().render_mesh_count;
-  const vegetationProxyShadowCandidates = vegetationLayer.meshes.filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
-  const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length + vegetationProxyShadowCandidates;
+  const buildingMeshes = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh, windowMesh, doorMesh];
+  const buildingDrawCalls = buildingMeshes.filter((mesh) => mesh.geometry?.index?.count > 0).length;
+  const colorDrawCalls = 2 + buildingDrawCalls + vegetationSnapshot.asset_draw_calls + humanoid.snapshot().render_mesh_count;
+  const vegetationShadowCandidates = vegetationLayer.meshes.filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
+  const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length + vegetationShadowCandidates;
   const shadowDrawCandidates = shadowBuildingDrawCandidates + humanoidShadowMeshCount;
   const characterSnapshot = humanoid.snapshot();
   const externalTextureGpuBytesEstimate = Math.round(surfaceTextures.snapshot.loaded_texture_count * POLY_HAVEN_TEXTURE_EDGE_PX * POLY_HAVEN_TEXTURE_EDGE_PX * 4 * (4 / 3));
@@ -336,18 +345,18 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     ...sceneGeometry.stats,
     renderer_adapter: 'three-ground/0.1', three_revision: THREE.REVISION, backend: activeBackend, graphics_profile: profile.id, max_dpr: profile.maxDpr, pixel_ratio: renderer.getPixelRatio(), msaa_samples: profile.webglAntialias === false ? 1 : 4,
     draw_calls_per_frame: colorDrawCalls,
-    draw_call_semantics: 'color-pass-estimate including instanced vegetation; measured frame drawCalls includes active renderer shadow work',
+    draw_call_semantics: 'color-pass-estimate including instanced real vegetation assets and batched facade cues; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
-    gpu_buffer_count: 20 + vegetationSnapshot.proxy_mesh_count * 2,
-    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationSnapshot.proxy_geometry_payload_bytes + vegetationSnapshot.proxy_instance_matrix_payload_bytes,
+    gpu_buffer_count: 24 + vegetationSnapshot.asset_mesh_count * 2,
+    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationSnapshot.asset_geometry_payload_bytes + vegetationSnapshot.asset_instance_matrix_payload_bytes,
     gpu_texture_payload_bytes: terrainTexturePayloadBytes + externalTextureGpuBytesEstimate,
-    gpu_texture_payload_bytes_semantics: 'procedural bytes exact + loaded 1k external textures estimated RGBA8 with mip chain; async detailed vegetation excluded until promoted',
+    gpu_texture_payload_bytes_semantics: 'procedural bytes exact + loaded 1k external surface textures estimated RGBA8 with mip chain; compact GLB tree materials accounted in asset geometry state, not this texture estimate',
     timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
     surface_material_assets: surfaceTextures.snapshot,
     terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: TERRAIN_DETAIL_PERIOD_M, detail_repeat: [detailRepeatX, detailRepeatY], diffuse_detail: terrainDiffuseSource, normal_detail: surfaceTextures.snapshot.assets.terrain.maps.normal === 'loaded' ? 'polyhaven-leafy-grass-1k' : 'procedural-bump-fallback', normal_strength: TERRAIN_NORMAL_STRENGTH, vertex_color_variation: true, shadow_role: 'receive-only', shadow_reason: 'coarse-dtm-self-shadow-suppressed', geometry_displacement: false },
-    road_material: { schema: ROAD_MATERIAL_SCHEMA, pbr: true, source: surfaceTextures.snapshot.assets.road.maps.diffuse === 'loaded' ? 'polyhaven-asphalt-02-1k' : 'dark-asphalt-pbr-fallback', uv_source: 'renderer-road-meter-distance', normal_strength: ROAD_NORMAL_STRENGTH, normal_map_policy: 'disabled-until-exact-dtm-draped-ribbon-visual-proof', width_semantics: sceneGeometry.roads.metadata?.width_semantics, vertical_semantics: sceneGeometry.roads.metadata?.edge_height_semantics },
-    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'polyhaven-painted-plaster-or-pbr-fallback', roof: 'polyhaven-grey-roof-tiles-or-pbr-fallback' }, unresolved: { wall: 'same-render-asset-with-type-height-and-morphology-fallback', roof: 'same-render-asset-with-type-height-and-morphology-fallback' }, normal_strength: { wall: WALL_NORMAL_STRENGTH, roof: ROOF_NORMAL_STRENGTH }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, foundation_semantics: sceneGeometry.buildingsFallback.metadata.foundation_semantics, roof_morphology_semantics: sceneGeometry.buildingsFallback.metadata.roof_morphology_semantics, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
+    road_material: { schema: ROAD_MATERIAL_SCHEMA, pbr: true, source: 'stable-neutral-pbr-asphalt-color', external_asphalt_asset_status: surfaceTextures.snapshot.assets.road.maps.diffuse, external_asphalt_binding: 'disabled-after-exact-black-field-failure', uv_source: 'renderer-road-meter-distance-retained-for-future-proven-material', normal_map_policy: 'disabled', shadow_role: 'none-during-width-contour-acceptance', width_semantics: sceneGeometry.roads.metadata?.width_semantics, vertical_semantics: sceneGeometry.roads.metadata?.edge_height_semantics },
+    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: 'polyhaven-painted-plaster-or-pbr-fallback', roof: 'polyhaven-grey-roof-tiles-or-pbr-fallback' }, unresolved: { wall: 'same-render-asset-with-type-height-and-morphology-fallback', roof: 'same-render-asset-with-type-height-and-morphology-fallback' }, facade_cues: { authority: sceneGeometry.buildingFacades.metadata.authority, windows: 'batched-dark-glass-like-pbr', doors: 'batched-matte-door-pbr', observed_features: false }, normal_strength: { wall: WALL_NORMAL_STRENGTH, roof: ROOF_NORMAL_STRENGTH }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, foundation_semantics: sceneGeometry.buildingsFallback.metadata.foundation_semantics, roof_morphology_semantics: sceneGeometry.buildingsFallback.metadata.roof_morphology_semantics, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
     vegetation: vegetationSnapshot,
     character: characterSnapshot,
     timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, surface_texture_load_cpu_ms: surfaceTextureLoadCpuMs, vegetation_build_cpu_ms: vegetationBuildCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
