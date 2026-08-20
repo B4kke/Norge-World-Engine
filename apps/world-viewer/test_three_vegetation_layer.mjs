@@ -64,7 +64,7 @@ function template() {
 const scene = new THREE.Scene();
 const layer = createThreeVegetationLayer({ scene, placement, templates: [template()], nearDetailConifers: 1 });
 let snapshot = layer.snapshot();
-assert.equal(snapshot.schema, 'nwe.vegetation-render-layer/0.3');
+assert.equal(snapshot.schema, 'nwe.vegetation-render-layer/0.4');
 assert.equal(snapshot.authority, 'forge-derived-representative-distribution');
 assert.equal(snapshot.individual_tree_truth, false);
 assert.equal(snapshot.source_artifact_sha256, 'fixture-sha');
@@ -74,8 +74,10 @@ assert.equal(snapshot.conifer_count, 2);
 assert.equal(snapshot.broadleaf_count, 2);
 assert.equal(snapshot.proxy_draw_calls, 4, 'crown+trunk for two renderer vegetation classes');
 assert.equal(snapshot.proxy_geometry_strategy, 'instanced-renderer-lod-cone-icosahedron-trunks');
+assert.equal(snapshot.proxy_shadow_policy, 'receive-only-distant-lod; detailed-assets-may-cast');
 assert.equal(scene.children.length, 4, 'proxy vegetation must be visible immediately without waiting on external GLTF');
 assert(layer.meshes.every((mesh) => mesh.isInstancedMesh), 'proxy layer remains GPU-instanced');
+assert(layer.meshes.every((mesh) => mesh.castShadow === false && mesh.receiveShadow === true), 'coarse proxy LOD must not cast hard polygonal shadows into roads/terrain');
 assert(snapshot.proxy_estimated_triangles > 0);
 assert(snapshot.proxy_geometry_payload_bytes > 0);
 assert(snapshot.proxy_instance_matrix_payload_bytes > 0);
@@ -87,6 +89,7 @@ assert.equal(snapshot.detailed_asset_state.rendered_instances, 1, 'only bounded 
 assert.equal(snapshot.detailed_asset_state.assets[0].provider, 'Poly Haven');
 assert.equal(snapshot.detailed_asset_state.assets[0].license, 'CC0-1.0');
 assert.equal(layer.detailMeshes.length, 1);
+assert(layer.detailMeshes.every((mesh) => mesh.castShadow === true), 'real/detail vegetation may participate in bounded near shadows');
 assert.equal(scene.children.length, 5);
 layer.dispose();
 assert.equal(scene.children.length, 0, 'vegetation dispose removes proxy and detailed instanced meshes');
