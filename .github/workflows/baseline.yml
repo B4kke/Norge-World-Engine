@@ -27,6 +27,11 @@ jobs:
           python -m compileall -q engine/compiler/src engine/compiler/tests
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
+          python -m py_compile apps/unreal-runtime/Tools/nwe_unreal_pipeline.py
+          python -m py_compile apps/unreal-runtime/Content/Python/create_nannestad_level.py
+
+      - name: Unreal adapter deterministic unit regressions
+        run: pytest -q apps/unreal-runtime/tests
 
       - name: Preview 1 proof-gate regressions
         run: |
@@ -49,6 +54,13 @@ jobs:
 
       - name: Install lightweight Node workspaces
         run: npm install --workspace @nwe/schemas-js --workspace @nwe/cesium-baseline --include-workspace-root=false
+
+      - name: Unreal adapter real Nannestad package integration
+        run: |
+          node --check apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs
+          python apps/unreal-runtime/Tools/nwe_unreal_pipeline.py all --snapshot-dir /tmp/nwe-unreal-snapshot --output-dir /tmp/nwe-unreal-a
+          python apps/unreal-runtime/Tools/nwe_unreal_pipeline.py build --snapshot-dir /tmp/nwe-unreal-snapshot --output-dir /tmp/nwe-unreal-b
+          diff -qr /tmp/nwe-unreal-a /tmp/nwe-unreal-b
 
       - name: Cross-language RFC 8785 schema test
         run: npm run test:schemas

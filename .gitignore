@@ -42,3 +42,15 @@ cache/
 
 # Local benchmark output
 benchmarks/local/
+
+# Unreal Engine local/generated state
+apps/unreal-runtime/.vs/
+apps/unreal-runtime/Binaries/
+apps/unreal-runtime/DerivedDataCache/
+apps/unreal-runtime/Intermediate/
+apps/unreal-runtime/Saved/
+apps/unreal-runtime/*.sln
+apps/unreal-runtime/Content/Nannestad/Generated/
+
+# Local Python packaging metadata
+*.egg-info/

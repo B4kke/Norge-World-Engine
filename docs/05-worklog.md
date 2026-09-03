@@ -298,3 +298,29 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-VEGETATION-01-RENDERER-HANDOFF`: LUMEN adapts PR #80 to consume the candidate FORGE artifact while keeping render-local conversion, accepted-DTM grounding, local road/building/spawn/slope filtering, asset mapping, visible-instance budgets and LOD as presentation/runtime concerns.
+
+## 2026-09-03 23:26 UTC — LUMEN — UE5-FOUNDATION
+
+**What**
+- Replaced the stale web-runtime product direction with a real Unreal Engine 5.8 Windows game project for a third-person Nannestad vertical slice.
+- Added a deterministic fail-closed adapter from the pinned, fully verified NWE snapshot to a 1009² Landscape `.r16`, chunked terrain, connected NVDB road strips and source/fallback-separated OSM building meshes.
+- Added explicit EPSG:25832/NN2000 → UE coordinates, runtime collision/lighting bootstrap, Quinn-based human character, Open World level authoring automation and setup/CI coverage.
+
+**Why**
+- The explicit product requirement is Unreal Engine 5, real Nannestad geometry/topography and realistic human-scale presentation. Reusing the verified engine-neutral world truth avoids repeating the old prototype's renderer-bound architecture while preserving its valid data work.
+
+**Result / evidence**
+- FACT: snapshot commit `42f94b63a9172b345d4500473a0aa1aff785fa43` reconstructs terrain, roads and building provenance as `READY_FOR_RUNTIME`; normal gameplay requires zero raw Kartverket/NVDB/OSM calls.
+- FACT: the real tile build emits 21 deterministic mesh packets (16 terrain, one connected road layer, four building source/fallback surface classes), 14,870,975 mesh bytes and a 2,036,162-byte Landscape heightmap.
+- FACT: all 246 road paths become 2,372 connected surface segments with capped miter joins; all 135 building footprints are represented, with 15 source-backed and 120 fallback heights kept separately classified.
+- FACT: independent package builds compare byte-identically. Package SHA-256 is `cda37d0c9a14daba65aa74645f989fc998c49ed84529bee6d6f0f535e3de9b37`; Landscape SHA-256 is `989b1d41d65e4f581c0ca5d5879e4b6553537e17f8d92c040a2d87d3b1db158c`; maximum declared height quantization error is 0.000218517 m.
+- FACT: 22 repo skills validate, 177 combined compiler/Unreal tests pass, the 11-case runtime verifier passes, cross-language RFC 8785/JCS passes and `git diff --check` passes.
+- NOT YET PROVEN: no Unreal installation exists in the current environment, so C++ Editor compilation, Python editor API execution, native Landscape import, Play-in-Editor, visual realism, performance and packaged Windows behavior remain open. Lumen/VSM settings and source checks are not substitutes for that evidence.
+
+**Changed**
+- `apps/unreal-runtime/**`: UE project/config/source, deterministic data tools, level/setup automation, tests and operator documentation.
+- `.github/workflows/baseline.yml`, `.gitignore` and `.gitattributes`.
+- `README.md`, `AGENTS.md`, LUMEN role, D-009, roadmap, active queue and `docs/09-unreal-game-plan.md`; the former web plan is marked historical.
+
+**Next**
+- `UE5-RUN-01`: run the clean setup on Windows with UE 5.8 + Third Person content, fix any compile/editor API failures, then retain PIE movement/collision/log/render/performance evidence before native Landscape authoring.
