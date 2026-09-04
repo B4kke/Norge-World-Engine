@@ -4,12 +4,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGraphicsProfile } from './src/graphicsProfiles.mjs';
 
 const APP_ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const DEFAULT_DIST_ROOT = resolve(APP_ROOT, 'dist');
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.nwehgt': 'application/vnd.nwe.terrain-height-grid',
 };
 
@@ -72,7 +74,10 @@ function assertBrowserResult(report, manifest, serverRequests) {
   }
   if (result.roads.count !== manifest.roads.compiled_count) throw new Error(`road count mismatch ${result.roads.count} != ${manifest.roads.compiled_count}`);
   if (result.buildings.count !== manifest.buildings.compiled_count) throw new Error(`building count mismatch ${result.buildings.count} != ${manifest.buildings.compiled_count}`);
-  if (result.renderer?.terrain_vertices !== 16641 || result.renderer?.terrain_triangles !== 32768) throw new Error(`unexpected terrain mesh ${JSON.stringify(result.renderer)}`);
+  const expectedProfile = resolveGraphicsProfile(result.graphics_profile);
+  const expectedTerrainVertices = expectedProfile.terrainOutputSize ** 2;
+  const expectedTerrainTriangles = (expectedProfile.terrainOutputSize - 1) ** 2 * 2;
+  if (result.renderer?.terrain_vertices !== expectedTerrainVertices || result.renderer?.terrain_triangles !== expectedTerrainTriangles) throw new Error(`unexpected terrain mesh ${JSON.stringify(result.renderer)}`);
   if (result.renderer?.road_paths !== manifest.roads.compiled_count) throw new Error(`rendered road count mismatch ${result.renderer?.road_paths}`);
   if (result.renderer?.building_footprints !== manifest.buildings.compiled_count) throw new Error(`rendered building count mismatch ${result.renderer?.building_footprints}`);
   if ((result.renderer?.source_backed_building_heights ?? 0) + (result.renderer?.unresolved_building_heights ?? 0) !== manifest.buildings.compiled_count) throw new Error('building height provenance counts do not close over rendered footprints');
@@ -119,17 +124,27 @@ function assertBrowserResult(report, manifest, serverRequests) {
   if (!firstFrame || !['webgpu', 'webgl2'].includes(firstFrame.backend)) throw new Error(`renderer first-frame proof missing: ${JSON.stringify(firstFrame)}`);
   if (firstFrame.backend !== result.renderer?.backend) throw new Error(`renderer backend/first-frame mismatch: ${result.renderer?.backend}/${firstFrame.backend}`);
 
+  const materialLibrary = result.renderer?.material_library;
+  if (materialLibrary?.license !== 'CC0-1.0' || materialLibrary.runtime_policy !== 'same-origin-local-assets-only') throw new Error(`local PBR material proof missing: ${JSON.stringify(materialLibrary)}`);
+  if (materialLibrary.texture_count !== 12 || materialLibrary.normal_maps !== true) throw new Error(`high-profile material maps missing: ${JSON.stringify(materialLibrary)}`);
+  if (!Object.values(materialLibrary.assets ?? {}).includes('asphalt_02')) throw new Error(`asphalt asset identity missing: ${JSON.stringify(materialLibrary.assets)}`);
+  const post = result.renderer?.post_processing;
+  if (result.graphics_profile === 'high' && !(post?.enabled && post.ambient_occlusion && post.bloom)) throw new Error(`high-profile post effects missing: ${JSON.stringify(post)}`);
+
   const runtimeRequests = report.runtime_requests ?? [];
   const expectedRuntimeRequests = 7;
   if (runtimeRequests.length !== expectedRuntimeRequests) throw new Error(`runtime request count ${runtimeRequests.length} != ${expectedRuntimeRequests}: ${JSON.stringify(runtimeRequests)}`);
   if (runtimeRequests.some((url) => new URL(url).origin !== serverRequests.origin)) throw new Error(`runtime escaped same-origin snapshot: ${JSON.stringify(runtimeRequests)}`);
   const rawMarkers = ['kartverket', 'geonorge', 'vegvesen', 'nvdb', 'overpass', 'openstreetmap'];
   if (runtimeRequests.some((url) => rawMarkers.some((marker) => url.toLowerCase().includes(marker)))) throw new Error(`raw source marker observed in browser runtime requests: ${JSON.stringify(runtimeRequests)}`);
+  const browserPaths = serverRequests.paths.map((request) => request.split(' ')[1]);
+  if (!browserPaths.includes('/assets/materials/polyhaven/manifest.json')) throw new Error('local material manifest was not requested');
+  if (browserPaths.filter((path) => path.endsWith('.jpg')).length < 12) throw new Error(`expected twelve local PBR JPG requests: ${JSON.stringify(browserPaths)}`);
 
   return {
     schema: 'nwe.world-preview-browser-proof/0.1', status: 'PASS', tile_id: result.tile_id, phase: report.phase,
     runtime_request_count: runtimeRequests.length, raw_source_runtime_calls: 0,
-    renderer: { backend: result.renderer.backend, preference: result.renderer_preference, graphics_profile: result.graphics_profile, fallback: result.renderer.fallback ?? null, first_frame: firstFrame, camera_mode: result.renderer.camera_mode, camera: result.renderer.camera },
+    renderer: { backend: result.renderer.backend, preference: result.renderer_preference, graphics_profile: result.graphics_profile, fallback: result.renderer.fallback ?? null, first_frame: firstFrame, camera_mode: result.renderer.camera_mode, camera: result.renderer.camera, material_library: materialLibrary, post_processing: post },
     character: { world_frame_id: characterWorld.worldTransform.worldFrameId, grounding: characterWorld.grounding, authoritative_position: authoritativePosition, renderer_state: rendererCharacter.state, renderer_pose: rendererPose, movement_probe: characterProbe, controls, presentation_ground_lift_m: 0.02 },
     terrain: { sha256: result.terrain.artifact_sha256, retained_bytes: result.terrain.retained_bytes, vertices: result.renderer.terrain_vertices, triangles: result.renderer.terrain_triangles, timing_ms: result.terrain.timing_ms },
     roads: { sha256: result.roads.artifact_sha256, count: result.roads.count },
@@ -147,6 +162,7 @@ async function main() {
   if (!args['runtime-root']) throw new Error('--runtime-root is required');
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('--timeout-ms must be a positive integer');
   const manifest = readManifest(runtimeRoot);
+  const chrome = findChrome();
 
   let resolveResult;
   let rejectResult;
@@ -192,13 +208,13 @@ async function main() {
   if (!port) throw new Error('browser smoke server did not expose a port');
   const origin = `http://127.0.0.1:${port}`;
 
-  const chrome = findChrome();
   const profile = mkdtempSync(resolve(tmpdir(), `nwe-preview1-browser-${Date.now()}-`));
   const query = new URLSearchParams({
     previewManifest: `${origin}/runtime/manifest.json`,
     previewReport: `${origin}/__preview_report`,
     previewAuditOrigin: '1',
     previewCharacterMovementProbe: '1',
+    graphics: 'high',
   });
   const url = `${origin}/?${query}`;
   const chromeArgs = [

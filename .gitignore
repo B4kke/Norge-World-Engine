@@ -51,6 +51,7 @@ apps/unreal-runtime/Intermediate/
 apps/unreal-runtime/Saved/
 apps/unreal-runtime/*.sln
 apps/unreal-runtime/Content/Nannestad/Generated/
+apps/unreal-runtime/Content/Nannestad/GeneratedVisuals/
 
 # Local Python packaging metadata
 *.egg-info/

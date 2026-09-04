@@ -20,22 +20,24 @@ Unreal consumes the same verified, engine-neutral NWE artifacts through
 `apps/unreal-runtime`; it does not introduce a second Norwegian data pipeline.
 See D-009 and `docs/09-unreal-game-plan.md`.
 
-## Current evidence state — 2026-09-03
+## Current evidence state — 2026-09-04
 
 The first 1 × 1 km Unreal slice is data-ready. Its pinned real DTM1 terrain,
 NVDB road centerlines and OSM building footprints pass the canonical NWE
 provenance verifier and derive deterministically into a UE Landscape heightmap
 plus runtime mesh packets. The UE C++ project, explicit EPSG:25832/NN2000
 coordinate adapter, collision bootstrap, third-person character and Open World
-level setup are implemented. An actual Windows UE 5.8 compile/render/packaging
-pass remains an explicit open gate because the editor is not available in the
-repository CI environment.
+level setup are implemented. A shared, hash-verified local CC0 PBR surface
+catalog now drives both the web reference renderer and Unreal Editor import;
+the web reference also has explicit low/balanced/high/ultra profiles. An actual
+Windows UE 5.8 compile/render/packaging pass remains an explicit open gate
+because the editor is not available in the repository CI environment.
 
 Important open larger-world gates remain:
 - real neighboring DTM1 terrain seam/source-family authority remains fail-closed in current canonical evidence;
 - larger-world streaming, cache/resource budgets and LOD remain evidence-driven;
 - whole-Norway coordinate/indexing/render-origin policy remains open;
-- native Landscape bake, production assets/materials and exact physics choices remain open.
+- native Landscape bake, source-backed land-cover/vegetation, UE frame acceptance and exact physics choices remain open.
 
 Physical Android/mobile testing is not part of the active Windows UE milestone.
 Normal engine progress uses automated data/converter checks plus explicit UE

@@ -74,11 +74,16 @@ after parity.
 ## UE5-VISUAL-01 — Production realism pass
 **Priority:** 3 — after native terrain parity
 **Owner:** LUMEN
-**Status:** OPEN
+**Status:** IMPLEMENTATION SLICE READY / UE FRAME ACCEPTANCE OPEN
 
 **Acceptance:** licensed authored PBR surfaces, source-backed Norwegian
 vegetation and measured daylight lighting produce a street-level frame that is
 clearly beyond baseline materials without changing geometry truth.
+
+**Implemented slice:** four pinned local Poly Haven CC0 1K surface sets with
+diffuse/roughness/OpenGL+DirectX normals; deterministic Web/UE mapping; Unreal
+Epic/Cinematic quality ceilings and 75,000 lux daylight. This is material and
+configuration evidence, not a UE render or exact land-cover claim.
 
 ## UE5-GEO-01 — Road/building fidelity
 **Priority:** 4
@@ -169,11 +174,17 @@ visual and performance checks outside PIE.
 ## P0-GROUND-07 — First graphics/shader pass
 **Priority:** SUPERSEDED BY UE5-VISUAL-01
 **Owner:** LUMEN
-**Status:** HISTORICAL / NOT ACTIVE
+**Status:** HISTORICAL MILESTONE / REFERENCE VIEWER QUALITY REFRESH IMPLEMENTED
 
 **Implement:** bounded near-player shadows, sun/directional light, sky/fog, tone mapping, material roughness/normal variation and conservative shader detail. Prefer batching/instancing and shared materials over unique draws/textures.
 
 **Acceptance:** screenshot/video-level output is visibly beyond debug geometry while automated sample metrics show no obvious navigation-breaking regression.
+
+**2026-09-04 refresh:** the reference viewer now has local pinned PBR surfaces,
+meter-scaled road/building UVs, low/balanced/high/ultra profiles, profile-bounded
+shadows/fog/DPR/anisotropy and high/ultra TSL GTAO + bloom. Production build and
+local structural/hash tests pass; exact-commit hosted browser evidence remains
+the push/CI gate.
 
 ## P0-GROUND-08 — Integrated acceptance + Preview
 **Priority:** SUPERSEDED BY UE5-PACKAGE-01

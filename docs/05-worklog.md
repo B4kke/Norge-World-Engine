@@ -324,3 +324,53 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `UE5-RUN-01`: run the clean setup on Windows with UE 5.8 + Third Person content, fix any compile/editor API failures, then retain PIE movement/collision/log/render/performance evidence before native Landscape authoring.
+
+## 2026-09-04 22:02 UTC — LUMEN — UE5-VISUAL-01-WEBGPU-QUALITY
+
+**What**
+- Added four local, pinned Poly Haven CC0 PBR surface sets for terrain, asphalt,
+  weathered timber walls and grey roof tiles, including separate OpenGL and
+  DirectX normal maps plus diffuse/roughness maps.
+- Replaced generated web detail textures with a hash-audited local material
+  library, meter-scaled building UVs and profile-gated normal maps/anisotropy.
+- Added low/balanced/high/ultra renderer profiles; high/ultra use Three TSL GTAO
+  and restrained bloom, larger bounded shadow maps, longer view/fog ranges and
+  higher terrain/DPR budgets.
+- Added Unreal Editor import/material automation over the same catalog, a
+  75,000 lux daylight baseline and Epic/Cinematic PC graphics configuration.
+
+**Why**
+- The existing world geometry was honest but visually baseline-grade. This is
+  the smallest shared Web/UE quality slice that materially improves surfaces
+  and light without inventing new geography or reviving rejected proxy trees.
+
+**Result / evidence**
+- FACT: all 16 retained JPG files match catalog byte size, official API MD5 and
+  locally recorded SHA-256; direct inspection confirms the four expected
+  photographic surface classes.
+- FACT: the full world-viewer test chain and Vite production build pass with 73
+  transformed modules; new profile, material, UV, visual-style and post-process
+  regressions pass.
+- FACT: Unreal Python syntax compilation and all five source/config contract
+  tests pass, including catalog hash enforcement, DirectX normal mapping,
+  generated material paths, renderer settings and daylight intensity.
+- ENVIRONMENT LIMIT: this runner has neither Chrome/Chromium/agent-browser nor
+  Unreal Engine 5.8, so live WebGPU/WebGL frames, Editor API execution, C++
+  compile, PIE and UE visual/performance acceptance are not claimed locally.
+- TRUTH BOUNDARY: the PBR maps are generic licensed presentation surfaces;
+  they are not source-backed claims about exact land cover, façade or roof at a
+  coordinate.
+
+**Changed**
+- Draft PR #84 / branch `agent/lumen-unreal-nannestad-foundation`.
+- `apps/world-viewer`: material catalog/assets, PBR loader, UVs, quality
+  profiles, TSL post processing, UI evidence, tests and browser proof gate.
+- `apps/unreal-runtime`: shared-catalog Editor import, generated PBR materials,
+  daylight/render/scalability configuration, tests and operator documentation.
+- `docs/05-worklog.md`, `docs/06-task-queue.md` and
+  `docs/09-unreal-game-plan.md`.
+
+**Next**
+- `UE5-RUN-01`: run the exact branch on Windows UE 5.8, correct any Editor/C++
+  integration issue, then retain a daylight PIE frame plus movement, collision,
+  GPU and memory evidence before promoting native Landscape or vegetation.

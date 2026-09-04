@@ -17,7 +17,8 @@ const labMode = params.get('lab') === 'terrain';
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
 const previewReportUrl = params.get('previewReport');
 const sameOriginAudit = params.get('previewAuditOrigin') === '1';
-const graphicsProfile = resolveGraphicsProfile(params.get('graphics') || 'balanced');
+const defaultGraphicsProfileId = matchMedia('(max-width: 760px)').matches ? 'balanced' : 'high';
+const graphicsProfile = resolveGraphicsProfile(params.get('graphics') || defaultGraphicsProfileId);
 const rendererPreference = resolveRendererPreference(params.get('renderer') || 'auto');
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
@@ -51,6 +52,7 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
               ${option('low', 'Lav', graphicsProfile.id)}
               ${option('balanced', 'Balansert', graphicsProfile.id)}
               ${option('high', 'Høy', graphicsProfile.id)}
+              ${option('ultra', 'Ultra', graphicsProfile.id)}
             </select></label>
           `}
           <button type="button" class="panel-toggle" id="panel-toggle" aria-controls="runtime-panel" aria-expanded="false">Data</button>
@@ -88,6 +90,10 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
           <p class="section-label">Runtime / GPU</p>
           <div class="row"><span>Active renderer</span><strong id="metric-renderer">WAIT</strong></div>
           <div class="row"><span>Graphics profile</span><strong id="metric-graphics">${graphicsProfile.label.toUpperCase()}</strong></div>
+          <div class="row"><span>Local PBR surfaces</span><strong id="metric-pbr">WAIT</strong></div>
+          <div class="row"><span>Texture quality</span><strong id="metric-texture-quality">WAIT</strong></div>
+          <div class="row"><span>Light / shadows</span><strong id="metric-lighting">WAIT</strong></div>
+          <div class="row"><span>Post effects</span><strong id="metric-post">WAIT</strong></div>
           <div class="row"><span>Full provenance</span><strong id="metric-provenance">WAIT</strong></div>
           <div class="row"><span>Dedicated Worker</span><strong class="${workerAvailable ? 'pass' : 'warn'}">${workerAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
           <div class="row"><span>WebCrypto</span><strong class="${webcryptoAvailable ? 'pass' : 'warn'}">${webcryptoAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}</strong></div>
@@ -101,7 +107,7 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
           <div class="row"><span>Terrain mesh</span><strong id="metric-mesh">—</strong></div>
           <div class="row"><span>Source-backed building heights</span><strong id="metric-height-backed">—</strong></div>
           <div class="row"><span>Unresolved building heights</span><strong id="metric-height-fallback">—</strong></div>
-          <p class="copy">Road ribbon width and unresolved 5 m building height are preview-only visual aids, not authoritative physical semantics. Their source geometry remains unchanged.</p>
+          <p class="copy">PBR-flater, roadbredde og uløst 5 m byggehøyde er presentasjon, ikke nye geografiske fakta. Kildegeometrien forblir uendret.</p>
         </section>
 
         <section>
@@ -119,7 +125,7 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
   });
   document.querySelector<HTMLSelectElement>('#graphics-select')?.addEventListener('change', (event) => {
     const value = (event.currentTarget as HTMLSelectElement).value;
-    if (GRAPHICS_PROFILE_IDS.includes(value)) updateQuerySetting('graphics', value, 'balanced');
+    if (GRAPHICS_PROFILE_IDS.includes(value)) updateQuerySetting('graphics', value, defaultGraphicsProfileId);
   });
 
   const shellElement = document.querySelector<HTMLElement>('.shell');
@@ -247,6 +253,13 @@ async function runDefaultPreview() {
       setMetric('metric-bytes', formatBytes(result.terrain.retained_bytes));
       setMetric('metric-renderer', `${String(result.renderer.backend).toUpperCase()}${result.renderer.fallback ? ' · FALLBACK' : ''}`, result.renderer.fallback ? 'warn' : 'pass');
       setMetric('metric-graphics', `${graphicsProfile.label.toUpperCase()} · ${result.renderer.terrain_vertices.toLocaleString()} V`, 'pass');
+      const materials = result.renderer.material_library;
+      const visualStyle = result.renderer.renderer_visual_style;
+      const post = result.renderer.post_processing;
+      setMetric('metric-pbr', `${materials.texture_count} LOCAL · CC0`, 'pass');
+      setMetric('metric-texture-quality', `${materials.anisotropy_active}× ANISO · NORMAL ${materials.normal_maps ? 'ON' : 'OFF'}`, materials.normal_maps ? 'pass' : 'neutral');
+      setMetric('metric-lighting', `${visualStyle.shadow.filter.replace('ShadowMap', '').toUpperCase()} · ${visualStyle.shadow.map_size}²`, 'pass');
+      setMetric('metric-post', post.enabled ? `${post.ambient_occlusion ? 'GTAO' : ''}${post.ambient_occlusion && post.bloom ? ' + ' : ''}${post.bloom ? 'BLOOM' : ''}` : 'DIRECT', post.enabled ? 'pass' : 'neutral');
       setMetric('metric-mesh', `${result.renderer.terrain_vertices.toLocaleString()} vertices · ${result.renderer.terrain_triangles.toLocaleString()} tris`);
       setMetric('metric-height-backed', String(result.renderer.source_backed_building_heights), 'pass');
       setMetric('metric-height-fallback', `${result.renderer.unresolved_building_heights} · DEBUG 5 m`, 'warn');
@@ -255,7 +268,7 @@ async function runDefaultPreview() {
       const note = document.querySelector<HTMLElement>('#world-note');
       if (note) {
         const fallback = result.renderer.fallback ? ` Auto fallback: ${result.renderer.fallback.reason}.` : '';
-        note.textContent = `REAL COMPILED world truth verifisert. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${fallback}`;
+        note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale CC0-PBR-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${fallback}`;
       }
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');

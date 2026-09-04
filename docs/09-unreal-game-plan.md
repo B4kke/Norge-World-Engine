@@ -1,6 +1,6 @@
 # 09 — Nannestad Unreal game plan
 
-**Status:** ACTIVE — 2026-09-03
+**Status:** ACTIVE — 2026-09-04
 **Runtime:** Unreal Engine 5.8, Windows PC, third person
 **First world slice:** `epsg25832_611000_6677000_1000m`
 
@@ -40,7 +40,9 @@ lighting and disposable runtime realization.
 - collision on terrain/building bootstrap geometry;
 - code-owned third-person character using Epic's Quinn mesh and animation
   content, with keyboard/gamepad movement, jumping and follow camera;
-- Open World template setup script and baseline PBR material slots;
+- Open World template setup script and hash-verified local CC0 PBR material import;
+- Epic/Cinematic PC graphics presets with TSR, Lumen, VSM, virtual textures,
+  anisotropic filtering and physically scaled daylight;
 - generated-data exclusion from Git and offline-at-runtime packaging rules.
 
 The procedural terrain mesh is a bootstrap that makes the verified data
@@ -53,7 +55,7 @@ immediately consumable. Native Landscape is the production terrain target.
 | Terrain | DTM1 elevation, EPSG:25832, NN2000 | mesh resampling and r16 quantization | UE render/collision comparison |
 | Roads | NVDB centerline and elevation | class-based width, 5 cm lift | admitted width/lane/surface fields |
 | Buildings | OSM footprint/type; any admitted height remains separate | fallback height and flat roof | source-backed height/roof/relations |
-| Materials | stable material roles | current conservative colors/roughness | authored licensed PBR assets and measured lighting |
+| Materials | stable material roles; pinned CC0 map identity | generic Poly Haven surface mapping and tint | land-cover/façade semantics plus UE frame review |
 | People | Epic Quinn is a real skeletal human character asset | identity/wardrobe | authored cast/MetaHuman decision if required |
 
 No fallback is allowed to flow back into canonical world truth. “Realistic” is
@@ -93,10 +95,12 @@ resolution and carries both Nanite and regular Landscape streaming data.
 
 ### UE5-VISUAL-01
 
-Add licensed production terrain/asphalt/wall/roof assets, terrain layer masks,
+The first asset/quality slice is implemented: pinned local Poly Haven terrain,
+asphalt, timber-wall and roof maps; DirectX-normal import; realistic daylight;
+and Epic/Cinematic render settings. Remaining acceptance is terrain layer masks,
 source-backed Norwegian vegetation, road markings and controlled exposure/color
-grading. Pass a daylight street-level frame review with no fallback material
-mistaken for final art.
+grading in an actual UE frame. No fallback material may be mistaken for final
+geographic art.
 
 ### UE5-GEO-01
 

@@ -29,7 +29,10 @@ ANweWorldBootstrap::ANweWorldBootstrap()
     SunLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("SunLight"));
     SunLight->SetupAttachment(SceneRoot);
     SunLight->SetMobility(EComponentMobility::Movable);
-    SunLight->SetIntensity(8.0f);
+    // UE directional-light intensity is lux. This is a clear Nordic daylight
+    // starting point; exposure and weather authoring remain presentation data.
+    SunLight->SetIntensity(75000.0f);
+    SunLight->SetLightColor(FLinearColor(1.0f, 0.956f, 0.86f));
     SunLight->SetRelativeRotation(FRotator(-34.0, -28.0, 0.0));
     SunLight->bAtmosphereSunLight = true;
     SunLight->AtmosphereSunLightIndex = 0;
@@ -42,7 +45,7 @@ ANweWorldBootstrap::ANweWorldBootstrap()
     SkyLight->SetupAttachment(SceneRoot);
     SkyLight->SetMobility(EComponentMobility::Movable);
     SkyLight->bRealTimeCapture = true;
-    SkyLight->SetIntensity(0.8f);
+    SkyLight->SetIntensity(1.0f);
 
     HeightFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("HeightFog"));
     HeightFog->SetupAttachment(SceneRoot);
@@ -54,22 +57,22 @@ ANweWorldBootstrap::ANweWorldBootstrap()
 
     MaterialOverrides.Add(
         TEXT("terrain"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Terrain.M_Terrain"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Terrain.M_Terrain"))));
     MaterialOverrides.Add(
         TEXT("road_asphalt"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Road_Asphalt.M_Road_Asphalt"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Road_Asphalt.M_Road_Asphalt"))));
     MaterialOverrides.Add(
         TEXT("building_walls_source"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Wall_Source.M_Wall_Source"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Source.M_Wall_Source"))));
     MaterialOverrides.Add(
         TEXT("building_roofs_source"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Roof_Source.M_Roof_Source"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Source.M_Roof_Source"))));
     MaterialOverrides.Add(
         TEXT("building_walls_fallback"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Wall_Fallback.M_Wall_Fallback"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Fallback.M_Wall_Fallback"))));
     MaterialOverrides.Add(
         TEXT("building_roofs_fallback"),
-        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/Materials/M_Roof_Fallback.M_Roof_Fallback"))));
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Fallback.M_Roof_Fallback"))));
 }
 
 void ANweWorldBootstrap::BeginPlay()

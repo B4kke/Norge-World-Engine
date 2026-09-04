@@ -31,6 +31,10 @@ def test_renderer_configuration_selects_the_declared_pc_baseline() -> None:
     assert renderer["r.Shadow.Virtual.Enable"] == "1"
     assert renderer["r.GenerateMeshDistanceFields"] == "True"
     assert renderer["r.AllowStaticLighting"] == "False"
+    assert renderer["r.AntiAliasingMethod"] == "4"
+    assert renderer["r.Nanite.ProjectEnabled"] == "True"
+    assert renderer["r.VirtualTextures"] == "True"
+    assert renderer["r.SupportSkyAtmosphereAffectsHeightFog"] == "True"
     windows = parser["/Script/WindowsTargetPlatform.WindowsTargetSettings"]
     assert windows["DefaultGraphicsRHI"] == "DefaultGraphicsRHI_DX12"
     assert windows["+D3D12TargetedShaderFormats"] == "PCD3D_SM6"
@@ -63,3 +67,32 @@ def test_character_fails_visibly_when_human_assets_are_absent() -> None:
     assert "ABP_Quinn" in character
     assert "Human character assets are missing" in character
     assert "SetSkeletalMesh" in character
+
+
+def test_visual_pipeline_uses_verified_local_pbr_assets_and_pc_quality_ceiling() -> None:
+    level_script = (PROJECT_ROOT / "Content" / "Python" / "create_nannestad_level.py").read_text(
+        encoding="utf-8"
+    )
+    bootstrap = (
+        PROJECT_ROOT / "Source" / "Nannestad" / "Private" / "NweWorldBootstrap.cpp"
+    ).read_text(encoding="utf-8")
+    scalability = (PROJECT_ROOT / "Config" / "DefaultScalability.ini").read_text(
+        encoding="utf-8"
+    )
+    user_settings = (
+        PROJECT_ROOT / "Config" / "DefaultGameUserSettings.ini"
+    ).read_text(encoding="utf-8")
+
+    assert 'MATERIAL_CATALOG_SCHEMA = "nwe.polyhaven-material-catalog/0.1"' in level_script
+    assert 'catalog.get("license") != "CC0-1.0"' in level_script
+    assert "hashlib.sha256(file_bytes).hexdigest()" in level_script
+    assert '"normal_dx"' in level_script
+    assert "MaterialExpressionTextureSampleParameter2D" in level_script
+    assert "SAMPLERTYPE_NORMAL" in level_script
+    assert "GeneratedVisuals/Materials" in level_script
+    assert "GeneratedVisuals/Materials" in bootstrap
+    assert "SetIntensity(75000.0f)" in bootstrap
+    assert "[ShadowQuality@Cine]" in scalability
+    assert "r.MaxAnisotropy=16" in scalability
+    assert "r.MotionBlurQuality=0" in scalability
+    assert "sg.GlobalIlluminationQuality=3" in user_settings

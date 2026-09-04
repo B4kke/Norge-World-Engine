@@ -16,6 +16,8 @@ engine-neutral world truth through an Unreal adapter.
   16 terrain chunks, roads, and source/fallback-separated building surfaces;
 - a runtime world bootstrap with terrain/building collision;
 - Lumen GI/reflections, Virtual Shadow Maps, Sky Atmosphere, volumetric fog/clouds;
+- pinned local CC0 PBR surfaces with diffuse, roughness and DirectX normal maps;
+- Epic/Cinematic PC scalability ceilings with TSR, virtual textures and anisotropic filtering;
 - a code-owned third-person character using Epic's Quinn mannequin/animation pack;
 - an Open World / World Partition level creation script;
 - focused Python and Unreal automation coverage for coordinates and derived data.
@@ -32,9 +34,11 @@ It does **not** yet mean every visible dimension is surveyed. The current road
 widths are presentation fallbacks by road class. Most building heights are
 unknown in the accepted artifact, and the bootstrap uses visibly documented
 class-based presentation heights plus flat roofs. Those values never flow back
-into world truth. Photorealism is not claimed until source-backed building
-height/roof data, production materials, vegetation, and an actual UE render
-acceptance pass exist.
+into world truth. The current Poly Haven surfaces are licensed production-grade
+inputs but still generic presentation mappings, not evidence of the exact
+surface at each Nannestad coordinate. Photorealism is not claimed until
+source-backed building height/roof and land-cover semantics, vegetation, and an
+actual UE render acceptance pass exist.
 
 ## One-time setup on Windows
 
@@ -55,7 +59,8 @@ apps\unreal-runtime\SetupNannestad.ps1 `
 
 The script downloads only the immutable compiled NWE snapshot, reconstructs all
 three provenance chains, derives the local Unreal package, builds the Editor
-target, and creates `/Game/Maps/Nannestad` from Epic's
+target, verifies every committed PBR source map, imports the DirectX normal-map
+variants, and creates `/Game/Maps/Nannestad` from Epic's
 [Open World / World Partition foundation](https://dev.epicgames.com/documentation/en-us/unreal-engine/world-partition-in-unreal-engine).
 Normal gameplay makes zero Kartverket/NVDB/OSM calls.
 
@@ -100,7 +105,7 @@ frame or VSM requirement justifies the extra resident data.
 2. replace presentation road widths with admitted NVDB width/lane semantics;
 3. ingest source-backed building height/roof geometry (FKB/DOM when licensing
    and access are proven) before claiming geographic building fidelity;
-4. add source-backed vegetation and production PBR material assets;
+4. map the admitted vegetation/land-cover artifact to terrain layers and authored Norwegian vegetation;
 5. replace Quinn with an authored MetaHuman cast only after identity, wardrobe,
    LOD and redistribution decisions are explicit;
 6. define the actual game loop. Until then this remains an honest exploration
