@@ -357,6 +357,13 @@ Every completed work session appends exactly one entry using this structure:
 - ENVIRONMENT LIMIT: this runner has neither Chrome/Chromium/agent-browser nor
   Unreal Engine 5.8, so live WebGPU/WebGL frames, Editor API execution, C++
   compile, PIE and UE visual/performance acceptance are not claimed locally.
+- CI DIAGNOSIS: the first hosted visual-proof run exposed a stale
+  `--manifest-url` invocation after the capture harness moved to the checked-in,
+  same-origin snapshot; the workflow now supplies the required `--runtime-root`.
+- PRE-EXISTING CI: the baseline Cesium prototype build already failed on the
+  branch parent because Cesium 1.143 re-exports three shader symbols absent from
+  its resolved `@cesium/engine`; this unrelated prototype dependency drift is
+  not presented as a regression from this visual slice.
 - TRUTH BOUNDARY: the PBR maps are generic licensed presentation surfaces;
   they are not source-backed claims about exact land cover, façade or roof at a
   coordinate.
@@ -365,6 +372,8 @@ Every completed work session appends exactly one entry using this structure:
 - Draft PR #84 / branch `agent/lumen-unreal-nannestad-foundation`.
 - `apps/world-viewer`: material catalog/assets, PBR loader, UVs, quality
   profiles, TSL post processing, UI evidence, tests and browser proof gate.
+- `.github/workflows/preview1-visual-proof.yml`: exact checked-in runtime root
+  for the hosted same-origin screenshot gate.
 - `apps/unreal-runtime`: shared-catalog Editor import, generated PBR materials,
   daylight/render/scalability configuration, tests and operator documentation.
 - `docs/05-worklog.md`, `docs/06-task-queue.md` and
