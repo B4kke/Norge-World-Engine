@@ -284,3 +284,6 @@ Deterministic tick/events, renderer-neutral dynamic entities, collision/physics 
 # Task completion rule
 
 A task closes when its stated acceptance passes. SENTINEL may add **one** cheap adversarial check when the claim is dangerous. Additional test/research cycles require a new failure, changed claim or materially different implementation; otherwise log the issue and move to the next priority.
+
+### WEB-PRESENTATION-REPAIR — 2026-09-05
+Atmospheric sky, terrain-triangle road draping and 1.70 m FPV implemented. Build/regressions pass; live visual/mobile acceptance and realistic building/vegetation assets remain open.

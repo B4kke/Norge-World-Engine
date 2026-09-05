@@ -46,15 +46,24 @@ export function applyCameraState(camera, state) {
   return camera;
 }
 
-export function installThreePreviewCameraControls({ canvas, camera, target, onChange = () => {} } = {}) {
+export function installThreePreviewCameraControls({ canvas, camera, target, firstPerson = false, onChange = () => {} } = {}) {
   if (!canvas || !camera?.position || typeof camera.lookAt !== 'function') throw new TypeError('canvas and Three camera are required');
   const initial = cameraStateFromPose([camera.position.x, camera.position.y, camera.position.z], target);
   const state = { ...initial, target: [...initial.target] };
   const previousTouchAction = canvas.style?.touchAction ?? '';
   if (canvas.style) canvas.style.touchAction = 'none';
 
+  let lastHeading = 0;
+  let eye = [...state.target];
   const sync = () => {
-    applyCameraState(camera, state);
+    if (firstPerson) {
+      state.target.splice(0, 3, ...eye);
+      state.distance = 0;
+      camera.position.set(...state.target);
+      const cp = Math.cos(state.pitch);
+      camera.lookAt(state.target[0] - Math.sin(state.yaw) * cp,
+        state.target[1] - Math.sin(state.pitch), state.target[2] - Math.cos(state.yaw) * cp);
+    } else applyCameraState(camera, state);
     onChange(state);
   };
 
@@ -74,11 +83,14 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
     followTarget(position, { headingRadians = 0, initialize = false } = {}) {
       const character = finiteVector3(position, 'character position');
       if (!Number.isFinite(headingRadians)) throw new TypeError('headingRadians must be finite');
-      state.target.splice(0, 3, character[0], character[1] + THREE_CHARACTER_FOLLOW_DEFAULTS.targetHeightM, character[2]);
+      state.target.splice(0, 3, character[0], character[1] + (firstPerson ? 1.7 : THREE_CHARACTER_FOLLOW_DEFAULTS.targetHeightM), character[2]);
+      if (firstPerson && !initialize) state.yaw -= headingRadians - lastHeading;
+      lastHeading = headingRadians;
+      eye = [...state.target];
       if (initialize) {
         state.yaw = -headingRadians;
-        state.pitch = THREE_CHARACTER_FOLLOW_DEFAULTS.pitchRadians;
-        state.distance = THREE_CHARACTER_FOLLOW_DEFAULTS.distanceM;
+        state.pitch = firstPerson ? 0 : THREE_CHARACTER_FOLLOW_DEFAULTS.pitchRadians;
+        state.distance = firstPerson ? 0 : THREE_CHARACTER_FOLLOW_DEFAULTS.distanceM;
       }
       sync();
       return this.snapshot();
@@ -89,6 +101,7 @@ export function installThreePreviewCameraControls({ canvas, camera, target, onCh
     },
     snapshot() {
       return {
+        mode: firstPerson ? 'first-person' : 'third-person-follow-orbit',
         yaw: state.yaw,
         pitch: state.pitch,
         distance: state.distance,

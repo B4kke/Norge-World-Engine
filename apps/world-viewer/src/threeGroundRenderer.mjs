@@ -1,3 +1,4 @@
+import { drapeRoadOnTerrain } from './roadTerrainDrape.mjs';
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createLicensedHumanoid } from './humanoidAsset.mjs';
@@ -113,6 +114,7 @@ export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsA
 async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, profile, initStartedAt, onFrame }) {
   const sceneStartedAt = monotonicNow();
   const sceneGeometry = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
+  sceneGeometry.roads = drapeRoadOnTerrain(sceneGeometry.roads, terrainPayload.mesh);
   const sceneBuildCpuMs = monotonicNow() - sceneStartedAt;
   const expectedTerrainTileId = terrainPayload.artifact.header.tile_id;
   const expectedTerrainArtifactSha = terrainPayload.artifact.sha256;
@@ -168,6 +170,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const humanoidStartedAt = monotonicNow();
   const humanoid = await createLicensedHumanoid({ scene, position: [0, centerGround + HUMANOID_GROUND_LIFT_M, 0], targetHeightM: 1.75 });
   const humanoidShadowMeshCount = configureObjectShadowRole(humanoid.root, { cast: true, receive: true });
+  humanoid.root.visible = false;
   const humanoidLoadCpuMs = monotonicNow() - humanoidStartedAt;
 
   const camera = new THREE.PerspectiveCamera(58, 1, 0.15, profile.cameraFarM ?? 2400);
@@ -178,7 +181,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   let stopped = false; let dirty = true; let lastDrawAt = 0; let lastAnimationAt = 0;
   let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;
   let characterFollowInitialized = false;
-  const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, onChange: () => { dirty = true; } });
+  const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, firstPerson: true, onChange: () => { dirty = true; } });
   const firstFrame = new Promise((resolve, reject) => { firstFrameResolve = resolve; firstFrameReject = reject; });
 
   function resize() {
@@ -242,7 +245,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     draw_calls_per_frame: colorDrawCalls,
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
-    gpu_buffer_count: 25, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: texturePayloadBytesEstimate, gpu_texture_payload_semantics: 'uncompressed-rgba-estimate', timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'third-person-follow-orbit', render_origin: sceneGeometry.origin,
+    gpu_buffer_count: 25, gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes, gpu_texture_payload_bytes: texturePayloadBytesEstimate, gpu_texture_payload_semantics: 'uncompressed-rgba-estimate', timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'first-person', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
     material_library: materialLibrary.stats,
     post_processing: postProcessing.stats,

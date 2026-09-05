@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 
 export const GROUND_VISUAL_STYLE = Object.freeze({
   schema: 'nwe.ground-visual-style/0.2',
@@ -93,6 +94,16 @@ export function createGroundLighting(scene, profile) {
   if (!scene?.add) throw new TypeError('scene is required');
   const style = resolveGroundVisualStyle(profile);
   scene.background = new THREE.Color(style.skyColor);
+  const sky = new SkyMesh();
+  sky.scale.setScalar((profile?.cameraFarM ?? 2400) * 0.9);
+  sky.sunPosition.value.set(...style.sunOffset).normalize();
+  sky.turbidity.value = 2;
+  sky.rayleigh.value = 1.5;
+  sky.material.depthWrite = false;
+  sky.material.fog = false;
+  sky.frustumCulled = false;
+  sky.onBeforeRender = (_renderer, _scene, camera) => sky.position.copy(camera.position);
+  scene.add(sky);
   scene.fog = new THREE.Fog(style.skyColor, style.fogNearM, style.fogFarM);
 
   const hemisphere = new THREE.HemisphereLight(
@@ -185,7 +196,9 @@ export function createGroundLighting(scene, profile) {
     updateAnchor,
     snapshot,
     dispose() {
-      scene.remove(hemisphere, sunTarget, sun);
+      scene.remove(hemisphere, sunTarget, sun, sky);
+      sky.geometry.dispose();
+      sky.material.dispose();
       sun.dispose();
       hemisphere.dispose();
     },

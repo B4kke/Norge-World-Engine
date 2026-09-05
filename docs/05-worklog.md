@@ -383,3 +383,23 @@ Every completed work session appends exactly one entry using this structure:
 - `UE5-RUN-01`: run the exact branch on Windows UE 5.8, correct any Editor/C++
   integration issue, then retain a daylight PIE frame plus movement, collision,
   GPU and memory evidence before promoting native Landscape or vegetation.
+
+## 2026-09-05 — LUMEN — WEB-PRESENTATION-REPAIR
+
+**What**
+- Added Three SkyMesh atmosphere with aligned sunlight and camera-following sky.
+- Split road triangles against the actual rendered terrain grid before draping; preserved horizontal path and UV interpolation.
+- Enabled first-person camera at 1.70 m with player mesh hidden and camera pan constrained to the player.
+
+**Why**
+- User reported road/terrain intersections and absent sky, and explicitly requested a mobile WebGPU first-person preview.
+
+**Result / evidence**
+- World-viewer regression chain and production build PASS. Ridge-crossing road regression PASS; source geometry remains unchanged.
+- Browser visual acceptance and physical mobile performance remain unverified. Generic buildings and missing source-backed vegetation remain unresolved; this is not a photorealistic completion claim.
+
+**Changed**
+- Ground lighting, renderer, camera controls, road draping, browser smoke contract and regression chain.
+
+**Next**
+- Visually verify the exact preview on WebGPU and complete source-backed buildings/vegetation.

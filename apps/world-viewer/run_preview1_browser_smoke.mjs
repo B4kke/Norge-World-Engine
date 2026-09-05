@@ -113,9 +113,9 @@ function assertBrowserResult(report, manifest, serverRequests) {
   if (Math.abs(Number(characterProbe.world_delta?.planar_m) - 1) > 1e-9) throw new Error(`character movement distance invalid: ${JSON.stringify(characterProbe.world_delta)}`);
   if (characterProbe.grounding?.source !== 'accepted-dtm-grid' || characterProbe.walk_state_observed !== 'walk' || characterProbe.idle_state_observed_after_stop !== 'idle') throw new Error(`character movement state/grounding invalid: ${JSON.stringify(characterProbe)}`);
   if (characterProbe.renderer_pose_matches_derived !== true || characterProbe.camera_follow?.status !== 'PASS') throw new Error(`character renderer/camera movement proof invalid: ${JSON.stringify(characterProbe)}`);
-  if (result.renderer?.camera_mode !== 'third-person-follow-orbit') throw new Error(`character camera mode invalid: ${result.renderer?.camera_mode}`);
+  if (result.renderer?.camera_mode !== 'first-person') throw new Error(`character camera mode invalid: ${result.renderer?.camera_mode}`);
   const cameraTarget = result.renderer?.camera?.target;
-  if (!Array.isArray(cameraTarget) || Math.abs(Number(cameraTarget[0]) - worldLocalX) > 1e-5 || Math.abs(Number(cameraTarget[1]) - (worldLocalY + 1.2)) > 1e-5 || Math.abs(Number(cameraTarget[2]) - worldLocalZ) > 1e-5) throw new Error(`live camera target diverged from character: ${JSON.stringify({ cameraTarget, threePose: [...threePose.position] })}`);
+  if (!Array.isArray(cameraTarget) || Math.abs(Number(cameraTarget[0]) - worldLocalX) > 1e-5 || Math.abs(Number(cameraTarget[1]) - (worldLocalY + 1.7)) > 1e-5 || Math.abs(Number(cameraTarget[2]) - worldLocalZ) > 1e-5) throw new Error(`live camera target diverged from character: ${JSON.stringify({ cameraTarget, threePose: [...threePose.position] })}`);
 
   const controls = result.character_controls;
   if (controls?.schema !== 'nwe.preview1-character-controls/0.1' || controls.touch !== 'separate overlay buttons' || !String(controls.keyboard).includes('W/S')) throw new Error(`character controls proof missing: ${JSON.stringify(controls)}`);
