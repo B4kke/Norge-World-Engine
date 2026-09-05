@@ -298,3 +298,108 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-VEGETATION-01-RENDERER-HANDOFF`: LUMEN adapts PR #80 to consume the candidate FORGE artifact while keeping render-local conversion, accepted-DTM grounding, local road/building/spawn/slope filtering, asset mapping, visible-instance budgets and LOD as presentation/runtime concerns.
+
+## 2026-09-03 23:26 UTC — LUMEN — UE5-FOUNDATION
+
+**What**
+- Replaced the stale web-runtime product direction with a real Unreal Engine 5.8 Windows game project for a third-person Nannestad vertical slice.
+- Added a deterministic fail-closed adapter from the pinned, fully verified NWE snapshot to a 1009² Landscape `.r16`, chunked terrain, connected NVDB road strips and source/fallback-separated OSM building meshes.
+- Added explicit EPSG:25832/NN2000 → UE coordinates, runtime collision/lighting bootstrap, Quinn-based human character, Open World level authoring automation and setup/CI coverage.
+
+**Why**
+- The explicit product requirement is Unreal Engine 5, real Nannestad geometry/topography and realistic human-scale presentation. Reusing the verified engine-neutral world truth avoids repeating the old prototype's renderer-bound architecture while preserving its valid data work.
+
+**Result / evidence**
+- FACT: snapshot commit `42f94b63a9172b345d4500473a0aa1aff785fa43` reconstructs terrain, roads and building provenance as `READY_FOR_RUNTIME`; normal gameplay requires zero raw Kartverket/NVDB/OSM calls.
+- FACT: the real tile build emits 21 deterministic mesh packets (16 terrain, one connected road layer, four building source/fallback surface classes), 14,870,975 mesh bytes and a 2,036,162-byte Landscape heightmap.
+- FACT: all 246 road paths become 2,372 connected surface segments with capped miter joins; all 135 building footprints are represented, with 15 source-backed and 120 fallback heights kept separately classified.
+- FACT: independent package builds compare byte-identically. Package SHA-256 is `cda37d0c9a14daba65aa74645f989fc998c49ed84529bee6d6f0f535e3de9b37`; Landscape SHA-256 is `989b1d41d65e4f581c0ca5d5879e4b6553537e17f8d92c040a2d87d3b1db158c`; maximum declared height quantization error is 0.000218517 m.
+- FACT: 22 repo skills validate, 177 combined compiler/Unreal tests pass, the 11-case runtime verifier passes, cross-language RFC 8785/JCS passes and `git diff --check` passes.
+- NOT YET PROVEN: no Unreal installation exists in the current environment, so C++ Editor compilation, Python editor API execution, native Landscape import, Play-in-Editor, visual realism, performance and packaged Windows behavior remain open. Lumen/VSM settings and source checks are not substitutes for that evidence.
+
+**Changed**
+- `apps/unreal-runtime/**`: UE project/config/source, deterministic data tools, level/setup automation, tests and operator documentation.
+- `.github/workflows/baseline.yml`, `.gitignore` and `.gitattributes`.
+- `README.md`, `AGENTS.md`, LUMEN role, D-009, roadmap, active queue and `docs/09-unreal-game-plan.md`; the former web plan is marked historical.
+
+**Next**
+- `UE5-RUN-01`: run the clean setup on Windows with UE 5.8 + Third Person content, fix any compile/editor API failures, then retain PIE movement/collision/log/render/performance evidence before native Landscape authoring.
+
+## 2026-09-04 22:02 UTC — LUMEN — UE5-VISUAL-01-WEBGPU-QUALITY
+
+**What**
+- Added four local, pinned Poly Haven CC0 PBR surface sets for terrain, asphalt,
+  weathered timber walls and grey roof tiles, including separate OpenGL and
+  DirectX normal maps plus diffuse/roughness maps.
+- Replaced generated web detail textures with a hash-audited local material
+  library, meter-scaled building UVs and profile-gated normal maps/anisotropy.
+- Added low/balanced/high/ultra renderer profiles; high/ultra use Three TSL GTAO
+  and restrained bloom, larger bounded shadow maps, longer view/fog ranges and
+  higher terrain/DPR budgets.
+- Added Unreal Editor import/material automation over the same catalog, a
+  75,000 lux daylight baseline and Epic/Cinematic PC graphics configuration.
+
+**Why**
+- The existing world geometry was honest but visually baseline-grade. This is
+  the smallest shared Web/UE quality slice that materially improves surfaces
+  and light without inventing new geography or reviving rejected proxy trees.
+
+**Result / evidence**
+- FACT: all 16 retained JPG files match catalog byte size, official API MD5 and
+  locally recorded SHA-256; direct inspection confirms the four expected
+  photographic surface classes.
+- FACT: the full world-viewer test chain and Vite production build pass with 73
+  transformed modules; new profile, material, UV, visual-style and post-process
+  regressions pass.
+- FACT: Unreal Python syntax compilation and all five source/config contract
+  tests pass, including catalog hash enforcement, DirectX normal mapping,
+  generated material paths, renderer settings and daylight intensity.
+- ENVIRONMENT LIMIT: this runner has neither Chrome/Chromium/agent-browser nor
+  Unreal Engine 5.8, so live WebGPU/WebGL frames, Editor API execution, C++
+  compile, PIE and UE visual/performance acceptance are not claimed locally.
+- CI DIAGNOSIS: the first hosted visual-proof run exposed a stale
+  `--manifest-url` invocation after the capture harness moved to the checked-in,
+  same-origin snapshot; the workflow now supplies the required `--runtime-root`.
+- PRE-EXISTING CI: the baseline Cesium prototype build already failed on the
+  branch parent because Cesium 1.143 re-exports three shader symbols absent from
+  its resolved `@cesium/engine`; this unrelated prototype dependency drift is
+  not presented as a regression from this visual slice.
+- TRUTH BOUNDARY: the PBR maps are generic licensed presentation surfaces;
+  they are not source-backed claims about exact land cover, façade or roof at a
+  coordinate.
+
+**Changed**
+- Draft PR #84 / branch `agent/lumen-unreal-nannestad-foundation`.
+- `apps/world-viewer`: material catalog/assets, PBR loader, UVs, quality
+  profiles, TSL post processing, UI evidence, tests and browser proof gate.
+- `.github/workflows/preview1-visual-proof.yml`: exact checked-in runtime root
+  for the hosted same-origin screenshot gate.
+- `apps/unreal-runtime`: shared-catalog Editor import, generated PBR materials,
+  daylight/render/scalability configuration, tests and operator documentation.
+- `docs/05-worklog.md`, `docs/06-task-queue.md` and
+  `docs/09-unreal-game-plan.md`.
+
+**Next**
+- `UE5-RUN-01`: run the exact branch on Windows UE 5.8, correct any Editor/C++
+  integration issue, then retain a daylight PIE frame plus movement, collision,
+  GPU and memory evidence before promoting native Landscape or vegetation.
+
+## 2026-09-05 — LUMEN — WEB-PRESENTATION-REPAIR
+
+**What**
+- Added Three SkyMesh atmosphere with aligned sunlight and camera-following sky.
+- Split road triangles against the actual rendered terrain grid before draping; preserved horizontal path and UV interpolation.
+- Enabled first-person camera at 1.70 m with player mesh hidden and camera pan constrained to the player.
+
+**Why**
+- User reported road/terrain intersections and absent sky, and explicitly requested a mobile WebGPU first-person preview.
+
+**Result / evidence**
+- World-viewer regression chain and production build PASS. Ridge-crossing road regression PASS; source geometry remains unchanged.
+- Browser visual acceptance and physical mobile performance remain unverified. Generic buildings and missing source-backed vegetation remain unresolved; this is not a photorealistic completion claim.
+
+**Changed**
+- Ground lighting, renderer, camera controls, road draping, browser smoke contract and regression chain.
+
+**Next**
+- Visually verify the exact preview on WebGPU and complete source-backed buildings/vegetation.

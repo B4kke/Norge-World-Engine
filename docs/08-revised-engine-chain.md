@@ -1,8 +1,8 @@
 # 08 — Ground-level Nannestad execution plan
 
-**Status:** ACTIVE execution plan for the next playable milestone.  
-**Primary product target:** a person can stand and move at ground level in a real Nannestad scene with terrain, roads, buildings, materials and lighting.  
-**Renderer direction:** Three.js/WebGPU-first as the working graphics path, with WebGL2 fallback/baseline; renderer choice remains replaceable through an explicit adapter boundary.  
+**Status:** SUPERSEDED on 2026-09-03 by `docs/09-unreal-game-plan.md`; retained as historical evidence for the completed web vertical.
+**Primary product target:** a person can stand and move at ground level in a real Nannestad scene with terrain, roads, buildings, materials and lighting.
+**Renderer direction:** Three.js/WebGPU-first as the working graphics path, with WebGL2 fallback/baseline; renderer choice remains replaceable through an explicit adapter boundary.
 **Future-engine requirement:** world/compiler/runtime data must remain usable by a later Unreal Engine adapter without rewriting source acquisition, provenance, coordinates or simulation state.
 
 This plan intentionally changes the previous `3×3 → LOD → visual quality` sequence. The accepted single-tile Nannestad artifacts are already sufficient to prove the next thing the project actually needs: **a convincing, walkable, meter-scale world**. Multi-tile terrain/source reconciliation remains important, but it must not block the first ground-level playable vertical slice.
@@ -94,45 +94,45 @@ STRØM owns loading/lifecycle decisions. LUMEN owns GPU objects. ATLAS owns worl
 ## Concrete priority list
 
 ### P0-GROUND-01 — Three.js ground-level renderer shell
-**Owner:** LUMEN  
-**Do now:** integrate Three.js into `apps/world-viewer` behind a renderer adapter; preserve verified artifact loading; create a human-scale camera and local scene origin.  
-**Exit:** accepted terrain can be drawn through the adapter and camera can be placed roughly 1.7 m above sampled ground.  
+**Owner:** LUMEN
+**Do now:** integrate Three.js into `apps/world-viewer` behind a renderer adapter; preserve verified artifact loading; create a human-scale camera and local scene origin.
+**Exit:** accepted terrain can be drawn through the adapter and camera can be placed roughly 1.7 m above sampled ground.
 **Do not:** rewrite scheduler, provenance or compiler to fit Three.js.
 
 ### P0-GROUND-02 — Terrain mesh + material
-**Owner:** LUMEN + STRØM boundary only  
-**Do now:** feed the already accepted terrain artifact/worker mesh into Three.js buffers; add normals, lighting and a reusable terrain material. Use procedural/source-safe detail for the first pass.  
+**Owner:** LUMEN + STRØM boundary only
+**Do now:** feed the already accepted terrain artifact/worker mesh into Three.js buffers; add normals, lighting and a reusable terrain material. Use procedural/source-safe detail for the first pass.
 **Exit:** terrain reads as ground at walking distance instead of a debug heightfield.
 
 ### P0-GROUND-03 — Road surface mesh
-**Owner:** LUMEN using existing compiled NVDB paths; FORGE only if a missing semantic blocks the mesh.  
-**Do now:** generate a renderer-side ribbon/surface mesh from compiled centerlines with clearly marked visual width fallback; asphalt material + basic edge/marking treatment.  
-**Exit:** roads are continuous walkable-looking surfaces.  
+**Owner:** LUMEN using existing compiled NVDB paths; FORGE only if a missing semantic blocks the mesh.
+**Do now:** generate a renderer-side ribbon/surface mesh from compiled centerlines with clearly marked visual width fallback; asphalt material + basic edge/marking treatment.
+**Exit:** roads are continuous walkable-looking surfaces.
 **Guardrail:** visual fallback width is not authoritative road width.
 
 ### P0-GROUND-04 — Building meshes + simple roofs
-**Owner:** LUMEN consuming existing building artifacts  
-**Do now:** batch/extrude 135 accepted footprints; use source-backed heights where present and explicit visual fallback for unresolved heights; polygon-safe roofs; wall/roof materials.  
+**Owner:** LUMEN consuming existing building artifacts
+**Do now:** batch/extrude 135 accepted footprints; use source-backed heights where present and explicit visual fallback for unresolved heights; polygon-safe roofs; wall/roof materials.
 **Exit:** Nannestad reads as a built environment from street level, without fabricating authoritative heights.
 
 ### P0-GROUND-05 — Humanoid asset + locomotion
-**Owner:** LUMEN for asset/animation integration; ATLAS/simulation boundary for authoritative transform shape.  
-**Do now:** select one lightweight humanoid glTF/GLB from a primary source with an explicit permissive/redistributable license. Prefer an asset that already has idle/walk animation; otherwise use a compatible open animation source only after license verification. Add AnimationMixer/state handling, keyboard controls and touch controls where practical.  
+**Owner:** LUMEN for asset/animation integration; ATLAS/simulation boundary for authoritative transform shape.
+**Do now:** select one lightweight humanoid glTF/GLB from a primary source with an explicit permissive/redistributable license. Prefer an asset that already has idle/walk animation; otherwise use a compatible open animation source only after license verification. Add AnimationMixer/state handling, keyboard controls and touch controls where practical.
 **Exit:** a human character can idle and walk over the Nannestad terrain while preserving world-vs-render transform separation.
 
 ### P0-GROUND-06 — Grounding, simple collision and third-person camera
-**Owner:** LUMEN + ATLAS; avoid a physics-engine commitment tonight.  
-**Do now:** terrain height sampling/raycast grounding, slope sanity, a simple character radius/capsule abstraction and third-person follow camera. Building collision may be coarse or deferred if it threatens the milestone.  
+**Owner:** LUMEN + ATLAS; avoid a physics-engine commitment tonight.
+**Do now:** terrain height sampling/raycast grounding, slope sanity, a simple character radius/capsule abstraction and third-person follow camera. Building collision may be coarse or deferred if it threatens the milestone.
 **Exit:** the character does not float through normal terrain movement and the camera behaves at human scale.
 
 ### P0-GROUND-07 — First visual pass
-**Owner:** LUMEN  
-**Do now:** directional/sun light, shadows within a bounded near-player range, sky/fog, tone mapping, material roughness/normal variation and conservative shader detail.  
+**Owner:** LUMEN
+**Do now:** directional/sun light, shadows within a bounded near-player range, sky/fog, tone mapping, material roughness/normal variation and conservative shader detail.
 **Exit:** clearly better than debug geometry while remaining within measurable frame/draw-call budgets.
 
 ### P0-GROUND-08 — One end-to-end acceptance run
-**Owner:** SENTINEL  
-**Do once after integration:** production build + existing targeted regressions + one browser smoke that verifies artifact loading, raw-source-call count, character spawn/movement state and a bounded performance sample.  
+**Owner:** SENTINEL
+**Do once after integration:** production build + existing targeted regressions + one browser smoke that verifies artifact loading, raw-source-call count, character spawn/movement state and a bounded performance sample.
 **Exit:** one reproducible PASS/FAIL report. Do not turn this into repeated manual-device loops.
 
 ---

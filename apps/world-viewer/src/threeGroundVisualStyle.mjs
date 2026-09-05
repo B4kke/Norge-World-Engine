@@ -1,13 +1,14 @@
 import * as THREE from 'three/webgpu';
+import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 
 export const GROUND_VISUAL_STYLE = Object.freeze({
-  schema: 'nwe.ground-visual-style/0.1',
+  schema: 'nwe.ground-visual-style/0.2',
   toneMapping: 'ACESFilmicToneMapping',
-  toneMappingExposure: 1.05,
+  toneMappingExposure: 1.04,
   outputColorSpace: 'SRGBColorSpace',
-  skyColor: 0xa9c8da,
-  fogNearM: 170,
-  fogFarM: 1050,
+  skyColor: 0xb5ccdc,
+  fogNearM: 180,
+  fogFarM: 1300,
   shadowType: 'BasicShadowMap',
   shadowMapSize: 1024,
   shadowHalfExtentM: 70,
@@ -17,9 +18,31 @@ export const GROUND_VISUAL_STYLE = Object.freeze({
   shadowNormalBias: 0.035,
   shadowIntensity: 0.82,
   shadowAnchorUpdateDistanceM: 8,
-  sunOffset: Object.freeze([-65, 120, 50]),
+  hemisphereIntensity: 1.2,
+  sunIntensity: 3,
+  sunColor: 0xffefcf,
+  hemisphereSkyColor: 0xdcefff,
+  hemisphereGroundColor: 0x4b5544,
+  sunOffset: Object.freeze([-72, 125, 52]),
   sunTargetHeightM: 1,
 });
+
+export function resolveGroundVisualStyle(profile = {}) {
+  const filteredShadows = profile.shadowFilter === 'pcf';
+  return Object.freeze({
+    ...GROUND_VISUAL_STYLE,
+    graphicsProfile: profile.id ?? 'balanced',
+    toneMappingExposure: profile.toneMappingExposure ?? GROUND_VISUAL_STYLE.toneMappingExposure,
+    fogNearM: profile.fogNearM ?? GROUND_VISUAL_STYLE.fogNearM,
+    fogFarM: profile.fogFarM ?? GROUND_VISUAL_STYLE.fogFarM,
+    shadowType: filteredShadows ? 'PCFShadowMap' : 'BasicShadowMap',
+    shadowMapSize: profile.shadowMapSize ?? GROUND_VISUAL_STYLE.shadowMapSize,
+    shadowHalfExtentM: profile.shadowHalfExtentM ?? GROUND_VISUAL_STYLE.shadowHalfExtentM,
+    shadowAnchorUpdateDistanceM: profile.shadowAnchorUpdateDistanceM ?? GROUND_VISUAL_STYLE.shadowAnchorUpdateDistanceM,
+    hemisphereIntensity: profile.hemisphereIntensity ?? GROUND_VISUAL_STYLE.hemisphereIntensity,
+    sunIntensity: profile.sunIntensity ?? GROUND_VISUAL_STYLE.sunIntensity,
+  });
+}
 
 function finitePosition(position) {
   if (!Array.isArray(position) || position.length !== 3 || position.some((value) => !Number.isFinite(value))) {
@@ -28,20 +51,24 @@ function finitePosition(position) {
   return position.map(Number);
 }
 
-export function configureGroundRendererVisualStyle(renderer) {
+export function configureGroundRendererVisualStyle(renderer, profile) {
   if (!renderer?.shadowMap) throw new TypeError('renderer with shadowMap is required');
+  const style = resolveGroundVisualStyle(profile);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = GROUND_VISUAL_STYLE.toneMappingExposure;
+  renderer.toneMappingExposure = style.toneMappingExposure;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.BasicShadowMap;
+  renderer.shadowMap.type = style.shadowType === 'PCFShadowMap'
+    ? THREE.PCFShadowMap
+    : THREE.BasicShadowMap;
   return Object.freeze({
-    schema: GROUND_VISUAL_STYLE.schema,
-    tone_mapping: GROUND_VISUAL_STYLE.toneMapping,
+    schema: style.schema,
+    graphics_profile: style.graphicsProfile,
+    tone_mapping: style.toneMapping,
     tone_mapping_exposure: renderer.toneMappingExposure,
-    output_color_space: GROUND_VISUAL_STYLE.outputColorSpace,
+    output_color_space: style.outputColorSpace,
     shadows_enabled: renderer.shadowMap.enabled === true,
-    shadow_filter: GROUND_VISUAL_STYLE.shadowType,
+    shadow_filter: style.shadowType,
   });
 }
 
@@ -63,15 +90,29 @@ export function configureObjectShadowRole(root, options) {
   return meshCount;
 }
 
-export function createGroundLighting(scene) {
+export function createGroundLighting(scene, profile) {
   if (!scene?.add) throw new TypeError('scene is required');
-  const style = GROUND_VISUAL_STYLE;
+  const style = resolveGroundVisualStyle(profile);
   scene.background = new THREE.Color(style.skyColor);
+  const sky = new SkyMesh();
+  sky.scale.setScalar((profile?.cameraFarM ?? 2400) * 0.9);
+  sky.sunPosition.value.set(...style.sunOffset).normalize();
+  sky.turbidity.value = 2;
+  sky.rayleigh.value = 1.5;
+  sky.material.depthWrite = false;
+  sky.material.fog = false;
+  sky.frustumCulled = false;
+  sky.onBeforeRender = (_renderer, _scene, camera) => sky.position.copy(camera.position);
+  scene.add(sky);
   scene.fog = new THREE.Fog(style.skyColor, style.fogNearM, style.fogFarM);
 
-  const hemisphere = new THREE.HemisphereLight(0xd9edff, 0x4b5544, 1.25);
+  const hemisphere = new THREE.HemisphereLight(
+    style.hemisphereSkyColor,
+    style.hemisphereGroundColor,
+    style.hemisphereIntensity,
+  );
   const sunTarget = new THREE.Object3D();
-  const sun = new THREE.DirectionalLight(0xfff0cf, 3.1);
+  const sun = new THREE.DirectionalLight(style.sunColor, style.sunIntensity);
   sun.castShadow = true;
   sun.target = sunTarget;
   sun.shadow.mapSize.set(style.shadowMapSize, style.shadowMapSize);
@@ -120,6 +161,7 @@ export function createGroundLighting(scene) {
   function snapshot() {
     return Object.freeze({
       schema: style.schema,
+      graphics_profile: style.graphicsProfile,
       sky: Object.freeze({ color: style.skyColor, fog_near_m: style.fogNearM, fog_far_m: style.fogFarM }),
       sun: Object.freeze({
         type: 'directional',
@@ -147,5 +189,18 @@ export function createGroundLighting(scene) {
   }
 
   updateAnchor([0, 0, 0]);
-  return { hemisphere, sun, sunTarget, updateAnchor, snapshot };
+  return {
+    hemisphere,
+    sun,
+    sunTarget,
+    updateAnchor,
+    snapshot,
+    dispose() {
+      scene.remove(hemisphere, sunTarget, sun, sky);
+      sky.geometry.dispose();
+      sky.material.dispose();
+      sun.dispose();
+      hemisphere.dispose();
+    },
+  };
 }

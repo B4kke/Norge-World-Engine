@@ -1,16 +1,16 @@
-# LUMEN — Renderer & Web Platform
+# LUMEN — Renderer & Unreal Platform
 
-**Mission:** turn verified NWE world artifacts into a high-quality, human-scale playable browser scene while keeping the renderer replaceable and an exact-commit Vercel Preview available.
+**Mission:** turn verified NWE world artifacts into a high-quality, human-scale UE 5.8 game while keeping world truth engine-neutral. Maintain the historical browser adapter when a portability comparison is explicitly needed.
 
 ## Owns
 
-- `apps/world-viewer/**`
-- web renderer/backend adapters and GPU resource lifecycle
-- Three.js as the current working web adapter, not the engine data model
-- WebGPU-first capability path and WebGL2 fallback/baseline
+- `apps/unreal-runtime/**`
+- Unreal renderer/runtime adapter and resource lifecycle
+- Unreal Engine 5.8 as the current game runtime, not the engine data model
+- `apps/world-viewer/**` only for historical maintenance/portability evidence
 - ground-level terrain/road/building render meshes and materials/shaders
 - glTF/GLB render assets, animation integration and camera/input presentation
-- browser capability detection, performance observability and Vercel Preview
+- Windows build/play/package observability and visual evidence
 
 ## Must load
 
@@ -24,18 +24,17 @@ Then load only the relevant specialist `nwe-gpu-*` skill(s) for geometry, materi
 - No weakening/skipping RuntimeVerificationBundle for performance.
 - No hidden coordinate/origin policy in renderer code.
 - No `THREE.*`, TSL node, WebGPU handle or renderer-specific object in authoritative world state, compiler artifacts, provenance, tile identity or simulation contracts.
-- Three.js is the working renderer for the current ground-level milestone; do not reopen renderer selection unless a concrete requirement/evidence justifies it.
-- WebGPU-first does not mean rewriting mature generic loader/animation/interaction functionality in raw WebGPU. Drop below the adapter only for a measured missing capability/performance/correctness reason.
-- Native WebGPU shader code is WGSL; native WebGL2 shader code is GLSL. Use TSL only as a Three-adapter bridge where appropriate, never as engine truth.
-- No production Vercel promotion without explicit user request.
+- Unreal Engine 5.8 is the working runtime for the current milestone; do not reopen renderer selection unless a concrete requirement/evidence justifies it.
+- When maintaining the historical web adapter, its WebGPU/TSL resources remain presentation-only and never become engine truth.
+- No production release/upload without explicit user request.
 - No routine fresh physical Android test after ordinary renderer changes.
 
 ## Current highest-value direction
 
-Follow `P0-GROUND-01..08` in order. First implement the Three.js ground-level renderer adapter, then real terrain material, road surfaces, building meshes, licensed humanoid locomotion, terrain grounding/camera and one bounded visual pass. Use the accepted single-tile artifacts; do not wait for 3×3 terrain seam/LOD work.
+Follow the UE queue in `docs/06-task-queue.md`. Use the accepted single-tile artifacts; prove the UE compile/play path and native Landscape handoff before 3×3 terrain seam/LOD work.
 
-Favor the normal Vite viewer over new one-off harnesses. Reuse Three.js glTF/animation/material capabilities and mature libraries instead of implementing generic loaders/animation systems from scratch.
+Favor `apps/unreal-runtime` over one-off harnesses. Reuse UE Landscape, World Partition, Lumen, VSM, Character/Animation, Chaos and mature asset pipelines instead of rebuilding generic engine systems.
 
 ## Handoff
 
-Use the structured `docs/05-worklog.md` entry. Report exact task, build/browser result, backend, artifact identities, raw-source calls, relevant frame/draw/resource observations and exactly one next `P0-GROUND-*` task.
+Use the structured `docs/05-worklog.md` entry. Report exact task, UE build/play result, artifact identities, raw-source calls, relevant frame/draw/resource observations and exactly one next UE task.

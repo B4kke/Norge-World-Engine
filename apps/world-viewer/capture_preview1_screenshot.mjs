@@ -11,6 +11,8 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.nwehgt': 'application/vnd.nwe.terrain-height-grid',
 };
 
@@ -122,6 +124,7 @@ async function main() {
   const output = resolve(args.output);
   const timeoutMs = Number(args['timeout-ms'] ?? '90000');
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('--timeout-ms must be a positive integer');
+  const chrome = findChrome();
 
   const server = createServer((req, res) => {
     try {
@@ -156,11 +159,11 @@ async function main() {
   if (!port) throw new Error('screenshot server did not expose a port');
   const origin = `http://127.0.0.1:${port}`;
   const debugPort = 9223;
-  const chrome = findChrome();
   const profile = mkdtempSync(resolve(tmpdir(), `nwe-preview1-screenshot-${Date.now()}-`));
   const query = new URLSearchParams({
     previewManifest: `${origin}/runtime/manifest.json`,
     renderer: 'webgl2',
+    graphics: 'high',
   });
   const url = `${origin}/?${query}`;
   const child = spawn(chrome, [
@@ -199,6 +202,7 @@ async function main() {
       png_bytes: png.length,
       viewport: [1440, 900],
       renderer_request: 'webgl2',
+      graphics_profile: 'high',
     }, null, 2));
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nChrome tail:\n${chromeLog.slice(-5000)}`);

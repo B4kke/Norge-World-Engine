@@ -34,7 +34,7 @@ jobs:
           mkdir -p artifacts
           node apps/world-viewer/capture_preview1_screenshot.mjs \
             --dist-root apps/world-viewer/dist \
-            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json \
+            --runtime-root apps/unreal-runtime/Saved/NWE/Snapshot \
             --output artifacts/preview1-ground-ready.png \
             --timeout-ms 90000
 
