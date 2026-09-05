@@ -1,0 +1,64 @@
+{
+  "attribution": [
+    "DTM1 height data: Kartverket / Geonorge, CC BY 4.0.",
+    "Road data: Statens vegvesen, NLOD 1.0.",
+    "Building data: \u00a9 OpenStreetMap contributors, ODbL 1.0."
+  ],
+  "buildings": {
+    "artifact_byte_size": 80846,
+    "artifact_role": "building-footprints",
+    "artifact_sha256": "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd",
+    "bundle": "./buildings.bundle.json",
+    "compiled_count": 135,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/building-footprints/678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd.json",
+    "media_type": "application/json; profile=nwe.building-footprint-artifact/0.1",
+    "normalized_count": 135,
+    "raw_object_count": 5703,
+    "raw_sha256": "68ae84565422121761b4c91bdbb483625cb3794c817db38f961e23b662b2c3dc",
+    "source_selected_count": 141
+  },
+  "generated_from_commit": "b53627f29c06ca0fd554936d72ad8ea9195e99f6",
+  "preview_id": "nannestad-preview-1",
+  "preview_semantics": {
+    "raw_source_runtime_calls": 0,
+    "road_width": "visual-debug-only-3.2m",
+    "runtime_distribution": "temporary-preview-runtime-branch-not-final-architecture",
+    "unresolved_building_height": "visual-debug-only-5m"
+  },
+  "roads": {
+    "artifact_byte_size": 171732,
+    "artifact_role": "road-network",
+    "artifact_sha256": "34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a",
+    "bundle": "./roads.bundle.json",
+    "compiled_count": 246,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/road-network/34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a.json",
+    "media_type": "application/json; profile=nwe.road-network-artifact/0.1",
+    "normalized_count": 407,
+    "raw_object_count": 471,
+    "raw_sha256": "1eb6f45961f7cc54320785d56e75754c5c9e57b24ca07d2a5d943ba7ebb04214",
+    "source_selected_count": 471
+  },
+  "schema": "nwe.world-preview-manifest/0.1",
+  "status": "REAL_COMPILED",
+  "terrain": {
+    "artifact_byte_size": 4000382,
+    "artifact_role": "terrain-height-grid",
+    "artifact_sha256": "780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96",
+    "bundle": "./terrain.bundle.json",
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/terrain-height-grid/780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96.nwehgt",
+    "media_type": "application/vnd.nwe.terrain-height-grid"
+  },
+  "tile": {
+    "bounds": [
+      611000.0,
+      6677000.0,
+      612000.0,
+      6678000.0
+    ],
+    "center_e": 611500.0,
+    "center_n": 6677500.0,
+    "horizontal_crs": "EPSG:25832",
+    "id": "epsg25832_611000_6677000_1000m",
+    "vertical_datum": "NN2000"
+  }
+}
