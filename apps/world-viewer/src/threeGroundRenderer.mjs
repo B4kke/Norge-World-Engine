@@ -141,7 +141,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   } = materialLibrary.materials;
 
   const vectorStartedAt = monotonicNow();
-  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, sceneGeometry.roads.normals ?? null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: false });
+  const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, sceneGeometry.roads.normals ?? null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: true });
   const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, null, sceneGeometry.buildingsResolved.walls.uvs), resolvedWallMaterial), { cast: true, receive: true });
   const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, null, sceneGeometry.buildingsResolved.roofs.uvs), resolvedRoofMaterial), { cast: true, receive: true });
   const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, null, sceneGeometry.buildingsFallback.walls.uvs), fallbackWallMaterial), { cast: true, receive: true });
@@ -251,7 +251,6 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     post_processing: postProcessing.stats,
     terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: 4, detail_repeat: materialLibrary.stats.terrain_repeat, licensed_surface: materialLibrary.stats.assets.terrain, vertex_color_variation: true, normal_map: profile.normalMaps !== false, geometry_displacement: false },
     building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: materialLibrary.stats.assets.building_walls, roof: materialLibrary.stats.assets.building_roofs }, unresolved: { wall: `${materialLibrary.stats.assets.building_walls}:fallback-tint`, roof: `${materialLibrary.stats.assets.building_roofs}:fallback-tint` }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
-    road_shadow_policy: 'no-shadow-map-receive-over-coincident-terrain; direct-and-hemisphere-lighting-retained',
     character: characterSnapshot,
     timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, material_load_cpu_ms: materialLoadCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
   };
