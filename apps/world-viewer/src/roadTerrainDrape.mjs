@@ -1,5 +1,16 @@
 // Presentation only: split asphalt at every rendered terrain triangle boundary.
 // This preserves horizontal alignment/UVs and prevents terrain piercing the road.
+function pushUpwardTriangle(positions, indices, a, b, c) {
+  const ax = positions[a * 3], az = positions[a * 3 + 2];
+  const bx = positions[b * 3], bz = positions[b * 3 + 2];
+  const cx = positions[c * 3], cz = positions[c * 3 + 2];
+  const crossY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+  if (Math.abs(crossY) <= 1e-10) return false;
+  if (crossY > 0) indices.push(a, b, c);
+  else indices.push(a, c, b);
+  return true;
+}
+
 function clip(poly, distance) {
   const out = [];
   for (let i = 0; i < poly.length; i++) {
@@ -20,6 +31,7 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
   const x0 = p[0], z0 = p[2];
   const dx = p[3] - x0, dz = p[n * 3 + 2] - z0;
   const positions = [], uvs = [], indices = [];
+  let degenerateTrianglesDropped = 0;
   const bound = v => Math.max(0, Math.min(n - 2, Math.floor(v)));
   for (let t = 0; t < road.indices.length; t += 3) {
     const polygon = Array.from(road.indices.slice(t, t + 3), i => [
@@ -44,10 +56,12 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
             positions.push(x0+v[0]*dx, h+lift, z0+v[1]*dz);
             uvs.push(v[2],v[3]);
           }
-          for (let i=1;i<part.length-1;i++) indices.push(base,base+i,base+i+1);
+          for (let i = 1; i < part.length - 1; i++) {
+            if (!pushUpwardTriangle(positions, indices, base, base + i, base + i + 1)) degenerateTrianglesDropped += 1;
+          }
         }
       }
     }
   }
-  return { ...road, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', vertex_count:positions.length/3, triangle_count:indices.length/3} };
+  return { ...road, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', winding:'upward-y', degenerate_triangles_dropped:degenerateTrianglesDropped, vertex_count:positions.length/3, triangle_count:indices.length/3} };
 }
