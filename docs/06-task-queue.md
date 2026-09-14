@@ -287,3 +287,20 @@ A task closes when its stated acceptance passes. SENTINEL may add **one** cheap 
 
 ### WEB-PRESENTATION-REPAIR — 2026-09-05
 Atmospheric sky, terrain-triangle road draping and 1.70 m FPV implemented. Build/regressions pass; live visual/mobile acceptance and realistic building/vegetation assets remain open.
+
+### WEB-VISUAL-PROOF-01 — 2026-09-15
+**Status:** PARTIAL PASS — exact WebGL2 reference proof established; WebGPU/mobile acceptance still open.
+
+Proven:
+- exact PR-head checkout + pinned snapshot/provenance materialization in the screenshot gate;
+- `REAL WORLD READY` and artifact upload pass on the exact implementation head;
+- road drape triangles are normalized to positive-Y winding and the former large black triangular artifacts are removed.
+
+Still open:
+- current high-profile asphalt presentation is too dark and needs measured material/post-process calibration rather than arbitrary albedo hacks;
+- source-backed vegetation is admitted by the compiler but not yet rendered in this reference frame;
+- unresolved building heights/roof semantics remain visibly generic;
+- physical WebGPU/mobile visual and performance evidence remains unproven.
+
+This follow-up is **secondary to `UE5-RUN-01`** and must not block the current Unreal game-runtime acceptance gate.
+
