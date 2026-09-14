@@ -42,6 +42,8 @@ assert.match(renderer, /configureObjectShadowRole\(humanoid\.root/, 'humanoid mu
 assert.match(renderer, /getVisualStyle/, 'renderer must expose the active visual style for browser acceptance');
 assert.match(renderer, /getTerrainResourceLifecycle/, 'adapter must preserve terrain resource lifecycle integration');
 assert.match(renderer, /sceneGeometry\.roads\.uvs/, 'road PBR material must consume the existing meter-scaled road UVs');
+assert.match(renderer, /roadMesh = configureMeshShadowRole[\s\S]*receive: false/, 'draped road must not receive the coincident terrain shadow map');
+assert.match(renderer, /road_shadow_policy:/, 'runtime stats must expose the bounded road shadow workaround');
 assert.match(renderer, /buildingsResolved\.walls\.uvs/, 'building PBR material must consume wall UVs');
 assert.match(renderer, /createGroundPostProcessing/, 'renderer must expose profile-gated post processing');
 assert.match(postProcessing, /GTAONode/, 'high profiles must use WebGPU-capable GTAO');
