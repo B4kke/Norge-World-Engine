@@ -403,3 +403,36 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Visually verify the exact preview on WebGPU and complete source-backed buildings/vegetation.
+
+## 2026-09-15 — LUMEN — PREVIEW1-EXACT-VISUAL-GATE
+
+**What**
+- Repaired the exact Preview 1 screenshot workflow so it checks out the real PR head, materializes and re-verifies the pinned runtime snapshot, and uses explicit CI-only SwiftShader for trusted local WebGL2 visual evidence.
+- Used the repaired proof to expose and fix road drape triangulation artifacts: generated road triangles now drop degenerate slivers and normalize to positive-Y winding before Three derives normals.
+- Tested a road shadow-receiver workaround for the remaining dark asphalt, observed no material visual gain, and reverted it instead of keeping an unproven rendering tradeoff.
+
+**Why**
+- The previous “visual proof” failed before rendering because `/runtime/manifest.json` was absent and its checkout was GitHub's synthetic PR merge commit rather than the PR head.
+- Structural tests alone had missed large black triangular/saw-tooth artifacts visible in the real ground-level frame.
+
+**Result / evidence**
+- Exact final implementation head before documentation: `7e58e6dc9a63ac861638851bde82fa2125c0a4e6`.
+- `preview1-visual-proof` run `34907793193`: PASS; build, pinned snapshot/provenance verification, `REAL WORLD READY`, screenshot and artifact upload all passed.
+- Artifact `10373132469`; extracted PNG SHA-256 `709b3c444a6ab009c0dfce82b085ff0068707b43f19fc833e043f99c052dc2ea`.
+- `world-viewer-vite` run `34907793094`: PASS.
+- `viewer-benchmark` run `34907793188`: PASS.
+- Manual inspection confirms the former road-triangle artifacts are gone. Asphalt is still too dark in the high-profile WebGL2 proof; generic building presentation and missing source-backed rendered vegetation remain open.
+- Baseline run `34907793138` still fails only at the Cesium 3D Tiles baseline build after all preceding compiler/Unreal/world/streaming/viewer-boundary steps pass. Old run `33963144232` failed at the same Cesium step, so this is not attributed to this session.
+
+**Changed**
+- `.github/workflows/preview1-visual-proof.yml`.
+- `apps/world-viewer/capture_preview1_screenshot.mjs`.
+- `apps/world-viewer/src/roadTerrainDrape.mjs`.
+- `apps/world-viewer/test_road_terrain_drape.mjs`.
+- `docs/proofs/2026-09-15-preview1-exact-visual-proof.md`.
+- Project worklog/task queue.
+
+**Next**
+- Primary gate remains `UE5-RUN-01`: run the exact branch on Windows with Unreal Engine 5.8 and retain compile, PIE, collision, movement, frame, GPU and memory evidence.
+- Web follow-up is presentation-only and secondary: calibrate the overly dark asphalt from measured screenshots, render the already-admitted source-backed vegetation, improve source-backed building semantics, then obtain real WebGPU/mobile evidence. Do not weaken world truth to improve appearance.
+
