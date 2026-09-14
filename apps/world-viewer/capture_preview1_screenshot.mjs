@@ -169,7 +169,7 @@ async function main() {
   const child = spawn(chrome, [
     '--headless=new', '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
     '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-    '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1440,900',
+    '--ignore-gpu-blocklist', '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1440,900',
     '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*',
     `--user-data-dir=${profile}`, url,
   ], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
