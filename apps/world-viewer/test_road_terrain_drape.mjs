@@ -9,4 +9,15 @@ for (let i=0; i<result.positions.length; i+=3) {
   assert.ok(Math.abs(y-(Math.max(0,x+z-1)*4+0.06)) < 1e-6);
 }
 assert.deepEqual([...road.positions], [0,-2,0,0,-2,1,1,-2,0,1,-2,1]);
+assert.equal(result.metadata.winding, 'upward-y');
+for (let i = 0; i < result.indices.length; i += 3) {
+  const ia = result.indices[i] * 3;
+  const ib = result.indices[i + 1] * 3;
+  const ic = result.indices[i + 2] * 3;
+  const ax = result.positions[ia], az = result.positions[ia + 2];
+  const bx = result.positions[ib], bz = result.positions[ib + 2];
+  const cx = result.positions[ic], cz = result.positions[ic + 2];
+  const crossY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+  assert.ok(crossY > 1e-10, `draped triangle must face upward; crossY=${crossY}`);
+}
 console.log('ROAD_TERRAIN_DRAPE_PASS');
