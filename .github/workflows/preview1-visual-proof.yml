@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/nwe_unreal_pipeline.py'
+      - 'apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs'
+      - 'engine/streaming/runtime_verifier*.mjs'
       - '.github/workflows/preview1-visual-proof.yml'
   workflow_dispatch:
 
@@ -15,8 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout exact commit
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -28,6 +33,14 @@ jobs:
 
       - name: Build exact World Viewer
         run: npm run build --workspace @nwe/world-viewer
+
+      - name: Materialize and verify pinned runtime snapshot
+        run: |
+          rm -rf apps/unreal-runtime/Saved/NWE/Snapshot
+          python apps/unreal-runtime/Tools/nwe_unreal_pipeline.py fetch \
+            --snapshot-dir apps/unreal-runtime/Saved/NWE/Snapshot
+          node apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs \
+            apps/unreal-runtime/Saved/NWE/Snapshot
 
       - name: Capture REAL WORLD READY screenshot
         run: |
@@ -41,7 +54,7 @@ jobs:
       - name: Upload exact visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: preview1-visual-proof-${{ github.sha }}
+          name: preview1-visual-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/preview1-ground-ready.png
           if-no-files-found: error
           retention-days: 14
