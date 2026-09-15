@@ -1,7 +1,19 @@
 name: vegetation-source-sample
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/vegetation-source-sample.yml'
+      - 'engine/compiler/src/nwe_compiler/vegetation.py'
+      - 'engine/compiler/tests/test_vegetation.py'
+      - 'tools/visual-data/materialize_vegetation_source_cache.py'
+      - 'tools/visual-data/normalize_vegetation_source_sample.py'
+      - 'tools/visual-data/compile_vegetation_representative_sample.py'
+      - 'tools/visual-data/verify_vegetation_representative_sample.py'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   sample:
@@ -9,6 +21,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -122,6 +136,43 @@ jobs:
             --evidence-a2 /tmp/nwe-vegetation-compiled/evidence-a2.json \
             --evidence-b /tmp/nwe-vegetation-compiled/evidence-b.json \
             --output /tmp/nwe-vegetation-representative-verification.json
+
+      - name: Pin accepted vegetation artifact identity
+        run: |
+          expected="9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636"
+          actual="$(sha256sum /tmp/nwe-vegetation-compiled/artifact-a1.json | awk '{print $1}')"
+          echo "expected=$expected"
+          echo "actual=$actual"
+          test "$actual" = "$expected"
+
+      - name: Publish replaceable derived vegetation transport
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          rm -rf /tmp/nwe-vegetation-publish
+          mkdir -p /tmp/nwe-vegetation-publish/nannestad-preview-1
+          cp /tmp/nwe-vegetation-compiled/artifact-a1.json \
+            /tmp/nwe-vegetation-publish/nannestad-preview-1/vegetation-representatives.json
+          cp /tmp/nwe-vegetation-representative-verification.json \
+            /tmp/nwe-vegetation-publish/nannestad-preview-1/vegetation-verification.json
+          cd /tmp/nwe-vegetation-publish
+          git init
+          git checkout --orphan visual-runtime
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cat > README.md <<'TXT'
+          # Norge World Engine derived visual runtime artifacts
+
+          This orphan branch is a replaceable transport for compiled presentation inputs.
+          It contains no raw SR16V/AR50 provider files. Consumers must verify the pinned
+          artifact SHA before use. This branch is not authoritative world truth.
+          TXT
+          git add README.md nannestad-preview-1
+          git commit -m "Publish Nannestad vegetation representative artifact"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin HEAD:visual-runtime
 
       - uses: actions/upload-artifact@v4
         with:
