@@ -28,12 +28,7 @@ case "$action" in
     ;;
 esac
 
-sha_re='^[0-9a-fA-F]{40}printf '%s\n' "$changed" >&2
-if printf '%s\n' "$changed" | grep -Eq '^(apps/world-viewer/|tools/preview/|engine/compiler/|engine/streaming/|engine/schemas/|requirements-dev\.txt$|package\.json$|package-lock\.json$|\.github/workflows/preview1-realdata-publish\.yml$)'; then
-  emit true "proof-sensitive path changed in $range_reason range"
-fi
-emit false "$range_reason range contains no proof-sensitive path"
-
+sha_re='^[0-9a-fA-F]{40}$'
 if [[ ! "$after" =~ $sha_re ]]; then
   emit true "missing or invalid synchronize after SHA"
 fi
@@ -54,15 +49,19 @@ if [[ "$pr_base" =~ $sha_re ]]; then
   fi
   range_start="$pr_base"
   range_reason="pull-request base/head"
-elif [[ ! "$before" =~ $sha_re ]] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-  emit true "synchronize before commit is missing or unavailable locally"
+elif [[ ! "$before" =~ $sha_re ]]; then
+  emit true "missing or invalid synchronize before SHA"
+elif ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+  emit true "synchronize before commit is unavailable locally"
 fi
 
 if ! changed="$(git diff --name-only --no-renames "$range_start" "$after")"; then
   emit true "unable to diff $range_reason range"
 fi
 printf '%s\n' "$changed" >&2
+
 if printf '%s\n' "$changed" | grep -Eq '^(apps/world-viewer/|tools/preview/|engine/compiler/|engine/streaming/|engine/schemas/|requirements-dev\.txt$|package\.json$|package-lock\.json$|\.github/workflows/preview1-realdata-publish\.yml$)'; then
-  emit true "proof-sensitive path changed in synchronize range"
+  emit true "proof-sensitive path changed in $range_reason range"
 fi
-emit false "synchronize range contains no proof-sensitive path"
+
+emit false "$range_reason range contains no proof-sensitive path"
