@@ -2469,7 +2469,14 @@ def verify_unreal_package(output_dir: Path) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("fetch", "verify", "build", "all", "fetch-vegetation"):
+    for command in (
+        "fetch",
+        "verify",
+        "build",
+        "all",
+        "fetch-vegetation",
+        "fetch-building-surface",
+    ):
         subparser = subparsers.add_parser(command)
         subparser.add_argument(
             "--snapshot-dir",
@@ -2480,11 +2487,13 @@ def _parser() -> argparse.ArgumentParser:
             subparser.add_argument(
                 "--vegetation-artifact",
                 type=Path,
-                default=Path(__file__).resolve().parents[1]
-                / "Saved"
-                / "NWE"
-                / "Vegetation"
-                / "vegetation-representatives.json",
+                default=DEFAULT_VEGETATION_ARTIFACT,
+            )
+        if command == "fetch-building-surface":
+            subparser.add_argument(
+                "--building-surface-artifact",
+                type=Path,
+                default=DEFAULT_BUILDING_SURFACE_ARTIFACT,
             )
         if command in ("build", "all"):
             subparser.add_argument(
@@ -2499,7 +2508,19 @@ def _parser() -> argparse.ArgumentParser:
                 "--vegetation-artifact",
                 type=Path,
                 default=None,
-                help="Optional compiled nwe.vegetation-representative-artifact/0.1-candidate JSON.",
+                help=(
+                    "Optional compiled nwe.vegetation-representative-artifact/0.1-candidate "
+                    "JSON. If omitted, an already verified default local derivative is reused."
+                ),
+            )
+            subparser.add_argument(
+                "--building-surface-artifact",
+                type=Path,
+                default=None,
+                help=(
+                    "Optional verified nwe.building-surface-artifact/0.1-candidate JSON. "
+                    "The sibling verification + immutable transport lock are required."
+                ),
             )
     return parser
 
@@ -2515,7 +2536,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "status": "PASS",
                         "command": args.command,
                         "vegetation_artifact": str(destination),
-                        "sha256": VEGETATION_ARTIFACT_SHA256,
+                        "sha256": _sha256_file(destination),
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "fetch-building-surface":
+            fetch_snapshot(args.snapshot_dir)
+            manifest = _read_json(args.snapshot_dir / "manifest.json")
+            if not isinstance(manifest, dict):
+                raise PipelineError("snapshot manifest must be an object")
+            verify_snapshot_files(args.snapshot_dir, manifest)
+            verify_runtime_provenance(args.snapshot_dir)
+            destination = fetch_pinned_building_surface_artifact(
+                args.building_surface_artifact,
+                expected_building_sha256=manifest["buildings"]["artifact_sha256"],
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "PASS",
+                        "command": args.command,
+                        "building_surface_artifact": str(destination),
+                        "sha256": _sha256_file(destination),
+                        "building_artifact_sha256": manifest["buildings"]["artifact_sha256"],
                     },
                     sort_keys=True,
                 )
@@ -2531,20 +2576,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         package = None
         if args.command in ("build", "all"):
             vegetation_path = args.vegetation_artifact
-            if args.command == "all" and vegetation_path is None:
-                vegetation_path = (
-                    Path(__file__).resolve().parents[1]
-                    / "Saved"
-                    / "NWE"
-                    / "Vegetation"
-                    / "vegetation-representatives.json"
-                )
-                fetch_pinned_vegetation_artifact(vegetation_path)
+            if vegetation_path is None:
+                if args.command == "all":
+                    vegetation_path = fetch_pinned_vegetation_artifact(
+                        DEFAULT_VEGETATION_ARTIFACT
+                    )
+                elif DEFAULT_VEGETATION_ARTIFACT.is_file():
+                    vegetation_path = DEFAULT_VEGETATION_ARTIFACT
+
+            building_surface_path = args.building_surface_artifact
+            if building_surface_path is None:
+                if args.command == "all":
+                    building_surface_path = fetch_pinned_building_surface_artifact(
+                        DEFAULT_BUILDING_SURFACE_ARTIFACT,
+                        expected_building_sha256=manifest["buildings"]["artifact_sha256"],
+                    )
+                elif DEFAULT_BUILDING_SURFACE_ARTIFACT.is_file():
+                    building_surface_path = DEFAULT_BUILDING_SURFACE_ARTIFACT
+
             package = build_unreal_package(
                 args.snapshot_dir,
                 args.output_dir,
                 provenance_verifier=lambda _snapshot: None,
                 vegetation_artifact_path=vegetation_path,
+                building_surface_artifact_path=building_surface_path,
             )
     except PipelineError as exc:
         print(f"NWE_UNREAL_PIPELINE_REJECTED: {exc}", file=sys.stderr)
@@ -2560,6 +2615,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "mesh_packets": len(package["mesh_packets"]) if package is not None else None,
         "vegetation_instances": (
             len(package.get("vegetation", {}).get("instances", []))
+            if package is not None
+            else None
+        ),
+        "dom_building_heights": (
+            int(package.get("building_surface", {}).get("derived_height_count", 0))
+            if package is not None
+            else None
+        ),
+        "building_fallback_heights": (
+            int(package.get("building_surface", {}).get("fallback_height_count", 0))
             if package is not None
             else None
         ),
