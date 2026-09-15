@@ -68,5 +68,5 @@ private:
     bool LoadWorldPackage(FString& OutError);
     bool LoadVegetationLayer(const TSharedPtr<FJsonObject>& Package, FString& OutError);
     UMaterialInterface* ResolveMaterial(const FString& MaterialId) const;
-    UStaticMesh* ResolveVegetationMesh(const FString& AssetClass) const;
+    TArray<UStaticMesh*> ResolveVegetationMeshes(const FString& AssetClass) const;
 };
