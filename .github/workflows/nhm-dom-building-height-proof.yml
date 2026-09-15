@@ -1,0 +1,76 @@
+name: nhm-dom-building-height-proof
+
+on:
+  pull_request:
+    paths:
+      - 'engine/compiler/src/nwe_compiler/nhm_dom_wcs_source_candidate.py'
+      - 'engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py'
+      - 'engine/compiler/src/nwe_compiler/vector_cli.py'
+      - 'engine/compiler/src/nwe_compiler/vector_artifacts.py'
+      - 'engine/compiler/src/nwe_compiler/acquisition.py'
+      - 'engine/compiler/src/nwe_compiler/sources/osm_buildings.py'
+      - 'tools/geo/probe_nhm_dom_wcs.py'
+      - 'tools/geo/probe_nhm_dom_building_heights.py'
+      - '.github/workflows/nhm-dom-building-height-proof.yml'
+      - 'requirements-dev.txt'
+  workflow_dispatch:
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Static and unit gates
+        run: |
+          python -m py_compile tools/geo/probe_nhm_dom_wcs.py
+          python -m py_compile tools/geo/probe_nhm_dom_building_heights.py
+          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py
+
+      - name: Confirm live official DOM coverage identity
+        run: |
+          python tools/geo/probe_nhm_dom_wcs.py --output /tmp/nwe-nhm-dom-source-probe.json
+          python -m json.tool /tmp/nwe-nhm-dom-source-probe.json
+
+      - name: Calibrate DOM-DTM heights on real Nannestad buildings
+        run: |
+          rm -rf /tmp/nwe-dom-height-work /tmp/nwe-dom-height-cache
+          python tools/geo/probe_nhm_dom_building_heights.py \
+            --work-dir /tmp/nwe-dom-height-work \
+            --cache-root /tmp/nwe-dom-height-cache \
+            --output /tmp/nwe-dom-building-height-proof.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-dom-building-height-proof.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nhm-dom-building-height-proof/0.1'
+          assert value['status'] == 'EXPERIMENT_PASS'
+          assert value['source']['grid_alignment'] == 'EXACT_1M_MATCH'
+          sampling = value['building_sampling']
+          assert sampling['compiled_buildings'] >= 100
+          assert sampling['usable_dom_dtm_candidates'] >= 50
+          assert sampling['source_height_calibration_count'] > 0
+          assert value['decision']['production_selected'] is False
+          assert value['decision']['runtime_building_heights_changed'] is False
+          for estimator in ('p50', 'p75', 'p90', 'p95'):
+              assert value['calibration'][estimator] is not None
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nhm-dom-building-height-proof-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            /tmp/nwe-nhm-dom-source-probe.json
+            /tmp/nwe-dom-building-height-proof.json
+          if-no-files-found: error
+          retention-days: 14
