@@ -471,6 +471,16 @@ TArray<UStaticMesh*> ANweWorldBootstrap::ResolveVegetationMeshes(const FString& 
 
 UMaterialInterface* ANweWorldBootstrap::ResolveMaterial(const FString& MaterialId) const
 {
+    if (MaterialId == TEXT("terrain"))
+    {
+        TSoftObjectPtr<UMaterialInterface> ImageryMaterial(
+            FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Terrain_Imagery.M_Terrain_Imagery")));
+        if (UMaterialInterface* LoadedImagery = ImageryMaterial.LoadSynchronous())
+        {
+            return LoadedImagery;
+        }
+    }
+
     const TSoftObjectPtr<UMaterialInterface>* Material = MaterialOverrides.Find(FName(*MaterialId));
     if (Material)
     {
