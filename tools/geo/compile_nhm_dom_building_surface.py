@@ -63,7 +63,7 @@ def compile_artifact(proof: dict) -> tuple[dict, dict, bytes]:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise BuildingSurfaceCompileError(f"{source_id}: invalid {key}")
             measurements[key] = float(value)
-        if any(measurements[a] > measurements[b] for a, b in zip(QUANTILES, QUANTILES[1:], strict=True)):
+        if any(measurements[a] > measurements[b] for a, b in zip(QUANTILES, QUANTILES[1:])):
             raise BuildingSurfaceCompileError(f"{source_id}: quantiles are not monotonic")
         sample_count = candidate.get("sample_count")
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 4:
