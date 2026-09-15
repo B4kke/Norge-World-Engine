@@ -1,0 +1,11 @@
+{
+  "artifact_byte_size": 14482,
+  "artifact_semantic_sha256": "87b54808e77a62e52b4f8dce2d3c584679922daccdf5df89dc505bbeb384dce6",
+  "artifact_sha256": "0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3",
+  "building_artifact_sha256": "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd",
+  "compiler_config_id": "325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682",
+  "feature_count": 30,
+  "schema": "nwe.building-roof-orientation-verification/0.1",
+  "source_building_count": 135,
+  "status": "PASS"
+}

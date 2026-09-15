@@ -1,0 +1,11 @@
+{
+  "artifact_byte_size": 62155,
+  "artifact_semantic_sha256": "c3297f444d8227ca09897a712d5e34b780fc3999df6f4d4674e529a7b6384488",
+  "artifact_sha256": "7b07c587cbbf3e42685cc53d9751fa04471d247e2ab9601daa26e75a2e13721a",
+  "building_artifact_sha256": "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd",
+  "compiler_config_id": "d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15",
+  "feature_count": 132,
+  "schema": "nwe.building-surface-artifact-verification/0.1",
+  "source_building_count": 135,
+  "status": "PASS"
+}
