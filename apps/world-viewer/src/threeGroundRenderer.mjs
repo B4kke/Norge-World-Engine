@@ -90,7 +90,7 @@ async function initializeThreeRenderer(canvas, profile, forceWebGL) {
   return renderer;
 }
 
-export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, graphicsProfile, backend = 'auto', onBackendFallback = () => {}, onFrame = () => {} } = {}) {
+export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, groundImagery = null, graphicsProfile, backend = 'auto', onBackendFallback = () => {}, onFrame = () => {} } = {}) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   const initStartedAt = monotonicNow();
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, webglAntialias: true };
@@ -108,10 +108,10 @@ export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsA
     forceWebGL = true;
     renderer = await initializeThreeRenderer(canvas, profile, true);
   }
-  return createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, profile, initStartedAt, onFrame });
+  return createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, groundImagery, profile, initStartedAt, onFrame });
 }
 
-async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, profile, initStartedAt, onFrame }) {
+async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, groundImagery, profile, initStartedAt, onFrame }) {
   const sceneStartedAt = monotonicNow();
   const sceneGeometry = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   sceneGeometry.roads = drapeRoadOnTerrain(sceneGeometry.roads, terrainPayload.mesh);
@@ -129,6 +129,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     renderer,
     profile,
     terrainExtentM: [terrainExtentE, terrainExtentN],
+    groundImagery,
   });
   const materialLoadCpuMs = monotonicNow() - materialLoadStartedAt;
   const {
@@ -249,7 +250,20 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
     material_library: materialLibrary.stats,
     post_processing: postProcessing.stats,
-    terrain_material: { schema: TERRAIN_MATERIAL_SCHEMA, pbr: true, vertex_normals: 'worker-provided', uv_source: 'worker-provided-normalized', detail_period_m: 4, detail_repeat: materialLibrary.stats.terrain_repeat, licensed_surface: materialLibrary.stats.assets.terrain, vertex_color_variation: true, normal_map: profile.normalMaps !== false, geometry_displacement: false },
+    terrain_material: {
+      schema: TERRAIN_MATERIAL_SCHEMA,
+      pbr: true,
+      vertex_normals: 'worker-provided',
+      uv_source: 'worker-provided-normalized',
+      detail_period_m: 4,
+      detail_repeat: materialLibrary.stats.terrain_repeat,
+      licensed_surface: materialLibrary.stats.assets.terrain,
+      geographic_ground_color: materialLibrary.stats.ground_color,
+      vertex_color_variation: materialLibrary.stats.ground_color.mode === 'generic-pbr-diffuse-fallback',
+      normal_map: profile.normalMaps !== false,
+      pbr_microdetail: 'poly-haven-normal-and-roughness',
+      geometry_displacement: false,
+    },
     building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: materialLibrary.stats.assets.building_walls, roof: materialLibrary.stats.assets.building_roofs }, unresolved: { wall: `${materialLibrary.stats.assets.building_walls}:fallback-tint`, roof: `${materialLibrary.stats.assets.building_roofs}:fallback-tint` }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
     character: characterSnapshot,
     timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, material_load_cpu_ms: materialLoadCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
