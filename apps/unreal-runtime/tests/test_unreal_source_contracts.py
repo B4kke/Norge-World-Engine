@@ -91,8 +91,54 @@ def test_visual_pipeline_uses_verified_local_pbr_assets_and_pc_quality_ceiling()
     assert "SAMPLERTYPE_NORMAL" in level_script
     assert "GeneratedVisuals/Materials" in level_script
     assert "GeneratedVisuals/Materials" in bootstrap
+    assert "M_Terrain_Imagery" in bootstrap
+    assert "building_wall_white" in bootstrap
+    assert "building_wall_red" in bootstrap
+    assert "building_roof_dark" in bootstrap
+    assert "LoadVegetationLayer" in bootstrap
+    assert "UHierarchicalInstancedStaticMeshComponent" in bootstrap
+    assert "GeneratedVisuals/Vegetation" in bootstrap
+    assert "AssetRegistry" in bootstrap
     assert "SetIntensity(75000.0f)" in bootstrap
     assert "[ShadowQuality@Cine]" in scalability
     assert "r.MaxAnisotropy=16" in scalability
     assert "r.MotionBlurQuality=0" in scalability
     assert "sg.GlobalIlluminationQuality=3" in user_settings
+
+
+def test_nannestad_visual_authoring_contracts_are_local_and_truth_bounded() -> None:
+    level_script = (PROJECT_ROOT / "Content" / "Python" / "create_nannestad_level.py").read_text(
+        encoding="utf-8"
+    )
+    imagery_tool = (PROJECT_ROOT / "Tools" / "prepare_ground_imagery.py").read_text(
+        encoding="utf-8"
+    )
+    asset_tool = (PROJECT_ROOT / "Tools" / "acquire_visual_assets.py").read_text(
+        encoding="utf-8"
+    )
+    visual_catalog = json.loads(
+        (PROJECT_ROOT / "Config" / "nannestad-visual-assets.json").read_text(encoding="utf-8")
+    )
+    gitignore = (PROJECT_ROOT.parents[1] / ".gitignore").read_text(encoding="utf-8")
+
+    assert 'PRIVATE_GROUND_SCHEMA = "nwe.private-ground-imagery/0.1"' in level_script
+    assert "M_Terrain_Imagery" in level_script
+    assert "GroundColorTexture" in level_script
+    assert "NWE_PRIVATE_GROUND_IMAGERY_ABSENT" in level_script
+    assert "VEGETATION_ASSET_ROOT" in level_script
+    assert "vegetation-assets.lock.json" in level_script
+    assert "Selected" in level_script
+
+    assert 'SCHEMA = "nwe.private-ground-imagery/0.1"' in imagery_tool
+    assert "rasterio-reproject-epsg25832-exact-1km-tile-bilinear-rgb-v0.1" in imagery_tool
+    assert "private-only" in imagery_tool
+    assert "rights_basis" in imagery_tool
+    assert "source-value-max" in imagery_tool
+
+    assert 'LOCK_SCHEMA = "nwe.unreal-visual-asset-lock/0.1"' in asset_tool
+    assert 'ALLOWED_HOST = "dl.polyhaven.org"' in asset_tool
+    assert "runtime_network_calls" in asset_tool
+    assert visual_catalog["license"] == "CC0-1.0"
+    assert set(visual_catalog["assets"]) == {"spruce", "pine", "deciduous"}
+    assert "presentation proxy" in visual_catalog["assets"]["spruce"]["truth"]
+    assert "apps/unreal-runtime/Saved/" in gitignore
