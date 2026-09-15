@@ -277,7 +277,10 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     wall_z = wall.positions_m[2::3]
     assert max(roof_z) - min(roof_z) == pytest.approx(1.5)
     assert max(roof_z) == pytest.approx(106.03)
-    assert max(wall_z) == pytest.approx(104.53)
+    # The rectangular wall reaches the eave; the gable-fill triangles belong
+    # to the wall material and correctly continue to the source total height.
+    assert any(z == pytest.approx(104.53) for z in wall_z)
+    assert max(wall_z) == pytest.approx(106.03)
     assert roof.truth["source_roof_shape_count"] == 1
     assert roof.truth["source_roof_height_count"] == 1
     assert roof.truth["roof_shape_counts"]["gabled"] == 1
