@@ -2414,6 +2414,7 @@ def build_unreal_package(
     provenance_verifier: Callable[[Path], None] = verify_runtime_provenance,
     vegetation_artifact_path: Path | None = None,
     building_surface_artifact_path: Path | None = None,
+    roof_orientation_artifact_path: Path | None = None,
 ) -> dict[str, Any]:
     snapshot_dir = snapshot_dir.resolve()
     output_dir = output_dir.resolve()
@@ -2497,6 +2498,26 @@ def build_unreal_package(
             expected_building_sha256=manifest["buildings"]["artifact_sha256"],
         )
 
+    roof_orientation_artifact = None
+    roof_orientation_sha = None
+    roof_orientation_verification = None
+    roof_orientation_transport = None
+    if roof_orientation_artifact_path is not None:
+        if building_surface_artifact is None:
+            raise PipelineError(
+                "roof-orientation derivative requires the matching building-surface derivative"
+            )
+        (
+            roof_orientation_artifact,
+            roof_orientation_sha,
+            roof_orientation_verification,
+            roof_orientation_transport,
+        ) = load_verified_roof_orientation_artifact(
+            roof_orientation_artifact_path,
+            expected_building_sha256=manifest["buildings"]["artifact_sha256"],
+            expected_surface_source=building_surface_artifact.get("source"),
+        )
+
     building_packets = building_mesh_packets(
         buildings_artifact,
         terrain,
@@ -2508,6 +2529,8 @@ def build_unreal_package(
         origin_up_m=origin_up_m,
         building_surface_artifact=building_surface_artifact,
         building_surface_sha256=building_surface_sha,
+        roof_orientation_artifact=roof_orientation_artifact,
+        roof_orientation_sha256=roof_orientation_sha,
     )
     for name, packet in building_packets:
         persist_mesh(name, packet, manifest["buildings"]["artifact_sha256"], True)
@@ -2601,8 +2624,9 @@ def build_unreal_package(
             "buildings": (
                 "source-backed OSM footprints/heights; unresolved heights may use "
                 "verified NHM DOM-DTM p90 presentation derivatives under guarded "
-                "sample/plausibility policy; roof shape remains source-backed only "
-                "where OSM provides it and otherwise stays an explicit presentation profile"
+                "sample/plausibility policy; strong DOM ridge direction may orient "
+                "only an existing presentation pitched profile; roof shape remains source-backed "
+                "only where OSM provides it and otherwise stays an explicit presentation profile"
                 if building_surface_artifact is not None
                 else "source-backed OSM footprints/heights/selected roof tags where present; missing height/roof geometry uses explicit presentation profiles"
             ),
@@ -2646,6 +2670,25 @@ def build_unreal_package(
         dom_attribution = "NHM DOM building-surface measurements: © Kartverket, CC BY 4.0."
         if dom_attribution not in package["attribution"]:
             package["attribution"].append(dom_attribution)
+    if roof_orientation_artifact is not None:
+        package["building_roof_orientation"] = {
+            "schema": ROOF_ORIENTATION_ARTIFACT_SCHEMA,
+            "status": "VERIFIED_DERIVED_PRESENTATION_INPUT",
+            "artifact_sha256": roof_orientation_sha,
+            "artifact_semantic_sha256": roof_orientation_verification["artifact_semantic_sha256"],
+            "compiler_config_id": ROOF_ORIENTATION_COMPILER_CONFIG_ID,
+            "building_artifact_sha256": manifest["buildings"]["artifact_sha256"],
+            "transport_commit": roof_orientation_transport["transport_commit"],
+            "candidate_count": int(roof_orientation_artifact["stats"]["strong_direction_count"]),
+            "applied_count": int(building_truth.get("derived_roof_orientation_applied_count") or 0),
+            "gabled_applied_count": int(building_truth.get("derived_gabled_orientation_count") or 0),
+            "hipped_ridge_applied_count": int(building_truth.get("derived_hipped_ridge_count") or 0),
+            "policy": building_truth.get("derived_roof_orientation_policy"),
+            "truth": (
+                "direction is a high-confidence DOM-DTM fit used only to orient an "
+                "already-presentation-classified pitched roof; no roof-shape or surveyed-ridge claim"
+            ),
+        }
     if vegetation_layer is not None:
         package["vegetation"] = vegetation_layer
         if "Kilde: NIBIO" not in package["attribution"]:
@@ -2743,6 +2786,33 @@ def verify_unreal_package(output_dir: Path) -> dict[str, Any]:
             raise PipelineError(
                 "derived building-surface package is bound to the wrong building artifact"
             )
+
+    roof_orientation = package.get("building_roof_orientation")
+    if roof_orientation is not None:
+        if (
+            not isinstance(roof_orientation, dict)
+            or roof_orientation.get("schema") != ROOF_ORIENTATION_ARTIFACT_SCHEMA
+            or roof_orientation.get("status") != "VERIFIED_DERIVED_PRESENTATION_INPUT"
+            or roof_orientation.get("compiler_config_id") != ROOF_ORIENTATION_COMPILER_CONFIG_ID
+            or not isinstance(roof_orientation.get("artifact_sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", roof_orientation["artifact_sha256"])
+            or not isinstance(roof_orientation.get("artifact_semantic_sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", roof_orientation["artifact_semantic_sha256"])
+            or not isinstance(roof_orientation.get("transport_commit"), str)
+            or not re.fullmatch(r"[a-f0-9]{40}", roof_orientation["transport_commit"])
+            or int(roof_orientation.get("candidate_count") or 0) <= 0
+            or int(roof_orientation.get("applied_count") or 0) <= 0
+        ):
+            raise PipelineError("derived roof-orientation package contract is invalid")
+        source_building_sha = (
+            source.get("artifact_sha256", {}).get("buildings")
+            if isinstance(source.get("artifact_sha256"), dict)
+            else None
+        )
+        if roof_orientation.get("building_artifact_sha256") != source_building_sha:
+            raise PipelineError("derived roof-orientation package is bound to the wrong building artifact")
+        if int(roof_orientation.get("applied_count")) > int(roof_orientation.get("candidate_count")):
+            raise PipelineError("derived roof-orientation applied count exceeds candidates")
 
     vegetation = package.get("vegetation")
     if vegetation is not None:
@@ -2872,6 +2942,15 @@ def _parser() -> argparse.ArgumentParser:
                     "The sibling verification + immutable transport lock are required."
                 ),
             )
+            subparser.add_argument(
+                "--roof-orientation-artifact",
+                type=Path,
+                default=None,
+                help=(
+                    "Optional verified nwe.building-roof-orientation-artifact/0.1-candidate JSON. "
+                    "It requires the matching building-surface derivative."
+                ),
+            )
     return parser
 
 
@@ -2944,12 +3023,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 elif DEFAULT_BUILDING_SURFACE_ARTIFACT.is_file():
                     building_surface_path = DEFAULT_BUILDING_SURFACE_ARTIFACT
 
+            roof_orientation_path = args.roof_orientation_artifact
+            if roof_orientation_path is None and building_surface_path is not None:
+                if DEFAULT_ROOF_ORIENTATION_ARTIFACT.is_file():
+                    roof_orientation_path = DEFAULT_ROOF_ORIENTATION_ARTIFACT
+
             package = build_unreal_package(
                 args.snapshot_dir,
                 args.output_dir,
                 provenance_verifier=lambda _snapshot: None,
                 vegetation_artifact_path=vegetation_path,
                 building_surface_artifact_path=building_surface_path,
+                roof_orientation_artifact_path=roof_orientation_path,
             )
     except PipelineError as exc:
         print(f"NWE_UNREAL_PIPELINE_REJECTED: {exc}", file=sys.stderr)
@@ -2975,6 +3060,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         "building_fallback_heights": (
             int(package.get("building_surface", {}).get("fallback_height_count", 0))
+            if package is not None
+            else None
+        ),
+        "dom_roof_orientations": (
+            int(package.get("building_roof_orientation", {}).get("applied_count", 0))
+            if package is not None
+            else None
+        ),
+        "dom_hipped_ridges": (
+            int(package.get("building_roof_orientation", {}).get("hipped_ridge_applied_count", 0))
             if package is not None
             else None
         ),
