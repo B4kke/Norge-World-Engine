@@ -7,6 +7,7 @@
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/VolumetricCloudComponent.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "Engine/StaticMesh.h"
 #include "HAL/FileManager.h"
@@ -14,6 +15,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
 #include "NweMeshPacket.h"
 #include "ProceduralMeshComponent.h"
 #include "Serialization/JsonReader.h"
@@ -290,7 +292,9 @@ bool ANweWorldBootstrap::LoadVegetationLayer(const TSharedPtr<FJsonObject>& Pack
         return false;
     }
 
-    TMap<FString, UHierarchicalInstancedStaticMeshComponent*> ComponentsByClass;
+    TMap<FString, TArray<UHierarchicalInstancedStaticMeshComponent*>> ComponentsByClass;
+    TMap<FString, double> NativeHeightByClass;
+    TMap<FString, double> NativeBottomByClass;
     int32 AcceptedInstances = 0;
     int32 MissingAssetInstances = 0;
 
@@ -336,81 +340,133 @@ bool ANweWorldBootstrap::LoadVegetationLayer(const TSharedPtr<FJsonObject>& Pack
             LocationCm[Axis] = Coordinate;
         }
 
-        UHierarchicalInstancedStaticMeshComponent** Existing = ComponentsByClass.Find(AssetClass);
-        UHierarchicalInstancedStaticMeshComponent* Component = Existing ? *Existing : nullptr;
-        if (!Component)
+        TArray<UHierarchicalInstancedStaticMeshComponent*>* ExistingComponents =
+            ComponentsByClass.Find(AssetClass);
+        if (!ExistingComponents)
         {
-            UStaticMesh* StaticMesh = ResolveVegetationMesh(AssetClass);
-            if (!StaticMesh)
+            const TArray<UStaticMesh*> MeshParts = ResolveVegetationMeshes(AssetClass);
+            if (MeshParts.IsEmpty())
             {
                 ++MissingAssetInstances;
                 continue;
             }
 
-            Component = NewObject<UHierarchicalInstancedStaticMeshComponent>(
-                this,
-                *FString::Printf(TEXT("NweVegetation_%s"), *AssetClass));
-            Component->SetupAttachment(SceneRoot);
-            Component->SetMobility(EComponentMobility::Static);
-            Component->SetStaticMesh(StaticMesh);
-            Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-            Component->SetCastShadow(true);
-            Component->SetCullDistances(30000, 220000);
-            Component->RegisterComponent();
-            ComponentsByClass.Add(AssetClass, Component);
-            RuntimeVegetation.Add(Component);
+            FBox CombinedBounds(EForceInit::ForceInit);
+            for (UStaticMesh* StaticMesh : MeshParts)
+            {
+                const FBoxSphereBounds Bounds = StaticMesh->GetBounds();
+                CombinedBounds += FBox::BuildAABB(Bounds.Origin, Bounds.BoxExtent);
+            }
+            const double NativeHeightCm = CombinedBounds.GetSize().Z;
+            if (!(NativeHeightCm > 1.0) || !FMath::IsFinite(NativeHeightCm))
+            {
+                OutError = FString::Printf(TEXT("vegetation mesh class '%s' has invalid combined bounds"), *AssetClass);
+                return false;
+            }
+
+            TArray<UHierarchicalInstancedStaticMeshComponent*> NewComponents;
+            NewComponents.Reserve(MeshParts.Num());
+            for (int32 PartIndex = 0; PartIndex < MeshParts.Num(); ++PartIndex)
+            {
+                UHierarchicalInstancedStaticMeshComponent* Component =
+                    NewObject<UHierarchicalInstancedStaticMeshComponent>(
+                        this,
+                        *FString::Printf(TEXT("NweVegetation_%s_%02d"), *AssetClass, PartIndex));
+                Component->SetupAttachment(SceneRoot);
+                Component->SetMobility(EComponentMobility::Static);
+                Component->SetStaticMesh(MeshParts[PartIndex]);
+                Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Component->SetCastShadow(true);
+                Component->SetCullDistances(30000, 220000);
+                Component->RegisterComponent();
+                NewComponents.Add(Component);
+                RuntimeVegetation.Add(Component);
+            }
+            ComponentsByClass.Add(AssetClass, NewComponents);
+            NativeHeightByClass.Add(AssetClass, NativeHeightCm);
+            NativeBottomByClass.Add(AssetClass, CombinedBounds.Min.Z);
+            ExistingComponents = ComponentsByClass.Find(AssetClass);
         }
 
-        UStaticMesh* StaticMesh = Component->GetStaticMesh();
-        const FBoxSphereBounds Bounds = StaticMesh->GetBounds();
-        const double NativeHeightCm = Bounds.BoxExtent.Z * 2.0;
-        if (!(NativeHeightCm > 1.0) || !FMath::IsFinite(NativeHeightCm))
+        const double* NativeHeightCm = NativeHeightByClass.Find(AssetClass);
+        const double* NativeBottomCm = NativeBottomByClass.Find(AssetClass);
+        if (!ExistingComponents || !NativeHeightCm || !NativeBottomCm)
         {
-            OutError = FString::Printf(TEXT("vegetation mesh '%s' has invalid bounds"), *AssetClass);
+            OutError = FString::Printf(TEXT("vegetation class '%s' failed to initialize"), *AssetClass);
             return false;
         }
 
-        const double Scale = TargetHeightM * 100.0 / NativeHeightCm;
-        const double NativeBottomCm = Bounds.Origin.Z - Bounds.BoxExtent.Z;
-        LocationCm.Z -= NativeBottomCm * Scale;
+        const double Scale = TargetHeightM * 100.0 / *NativeHeightCm;
+        LocationCm.Z -= *NativeBottomCm * Scale;
         const FTransform Transform(
             FRotator(0.0, YawDegrees, 0.0),
             LocationCm,
             FVector(Scale));
-        Component->AddInstance(Transform, false);
+        for (UHierarchicalInstancedStaticMeshComponent* Component : *ExistingComponents)
+        {
+            Component->AddInstance(Transform, false);
+        }
         ++AcceptedInstances;
     }
 
-    for (const TPair<FString, UHierarchicalInstancedStaticMeshComponent*>& Pair : ComponentsByClass)
+    for (const TPair<FString, TArray<UHierarchicalInstancedStaticMeshComponent*>>& Pair : ComponentsByClass)
     {
-        Pair.Value->BuildTreeIfOutdated(true, false);
+        for (UHierarchicalInstancedStaticMeshComponent* Component : Pair.Value)
+        {
+            Component->BuildTreeIfOutdated(true, false);
+        }
     }
 
     UE_LOG(
         LogNweWorld,
         Display,
-        TEXT("Vegetation presentation: %d SR16V representative instances realized; %d skipped because authored tree proxy assets are not installed."),
+        TEXT("Vegetation presentation: %d SR16V representative instances realized through %d HISM mesh parts; %d skipped because authored tree proxy assets are not installed."),
         AcceptedInstances,
+        RuntimeVegetation.Num(),
         MissingAssetInstances);
     return true;
 }
 
-UStaticMesh* ANweWorldBootstrap::ResolveVegetationMesh(const FString& AssetClass) const
+TArray<UStaticMesh*> ANweWorldBootstrap::ResolveVegetationMeshes(const FString& AssetClass) const
 {
-    const TSoftObjectPtr<UStaticMesh>* Mesh = VegetationMeshOverrides.Find(FName(*AssetClass));
-    if (Mesh)
+    TArray<UStaticMesh*> Result;
+    if (const TSoftObjectPtr<UStaticMesh>* Override = VegetationMeshOverrides.Find(FName(*AssetClass)))
     {
-        if (UStaticMesh* Loaded = Mesh->LoadSynchronous())
+        if (UStaticMesh* Loaded = Override->LoadSynchronous())
         {
-            return Loaded;
+            Result.Add(Loaded);
+            return Result;
         }
     }
-    UE_LOG(
-        LogNweWorld,
-        Warning,
-        TEXT("No authored vegetation proxy for SR16V presentation class '%s'. Install private/CC0 visual assets; source forest semantics remain packaged."),
+
+    const FString Folder = FString::Printf(
+        TEXT("/Game/Nannestad/GeneratedVisuals/Vegetation/%s/Selected"),
         *AssetClass);
-    return nullptr;
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    TArray<FAssetData> Assets;
+    AssetRegistryModule.Get().GetAssetsByPath(FName(*Folder), Assets, true, false);
+    Assets.Sort([](const FAssetData& A, const FAssetData& B)
+    {
+        return A.AssetName.LexicalLess(B.AssetName);
+    });
+    for (const FAssetData& Asset : Assets)
+    {
+        if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(Asset.GetAsset()))
+        {
+            Result.Add(StaticMesh);
+        }
+    }
+    if (Result.IsEmpty())
+    {
+        UE_LOG(
+            LogNweWorld,
+            Warning,
+            TEXT("No authored vegetation proxy for SR16V presentation class '%s'. Expected StaticMesh assets below %s; source forest semantics remain packaged."),
+            *AssetClass,
+            *Folder);
+    }
+    return Result;
 }
 
 UMaterialInterface* ANweWorldBootstrap::ResolveMaterial(const FString& MaterialId) const
