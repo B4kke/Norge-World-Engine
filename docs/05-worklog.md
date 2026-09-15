@@ -470,3 +470,36 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `P1-BUILDINGS-01-ROOF-SURFACE`: measure whether the spatial NHM DOM samples inside high-confidence footprints can support a conservative renderer-neutral ridge/orientation candidate; fail closed to the existing presentation roof profile when the signal is ambiguous.
 
+## 2026-09-15 16:20 CEST — LUMEN — P1-BUILDINGS-01-ROOF-SURFACE
+
+**What**
+- Measured spatial NHM DOM-DTM roof-direction signal across the accepted Nannestad building footprints with a bounded tent-vs-plane experiment.
+- Added a separately versioned strong roof-direction candidate and immutable derived transport bound to the exact OSM building, DTM and DOM hashes.
+- Integrated only strong direction evidence into Unreal presentation pitched roofs. Source roof shape always wins; flat presentation roofs remain flat; complex/concave hipped footprints fail closed to the existing apex fallback.
+- Fixed candidate determinism after detecting machine-epsilon `np.linalg.lstsq` drift: fit metrics are now quantized to 9 decimals before admission and RFC8785 artifact hashing.
+
+**Why**
+- Height enrichment materially reduced box-height fallback, but roof orientation remained generic.
+- A renderer-visible improvement is useful only if the fitted direction is reproducible and cannot silently turn inferred geometry into world truth.
+
+**Result / evidence**
+- FACT: 118/135 buildings provide enough spatial DOM samples for orientation analysis; broad fit accepts 53 gable-like signals and the strict compiler admits 30 strong direction candidates.
+- FACT: two independent hosted compiles over identical source hashes now produce identical roof candidate artifact SHA-256 `0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3` and semantic SHA-256 `87b54808e77a62e52b4f8dce2d3c584679922daccdf5df89dc505bbeb384dce6`.
+- FACT: compiler config is `325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682`.
+- FACT: exact head `88fba398a08b632d253fd5c53030d2ca1ce7dfe6` passes Unreal deterministic unit regressions and real Nannestad package integration in baseline run `34981973005`; `all` and `build` both report 105 DOM heights, 15 height fallbacks, 10 applied DOM roof orientations, 0 hipped ridge replacements and 819 vegetation instances.
+- FACT: all 11 strong candidates currently falling into the presentation-hipped class have concave/complex OSM footprints; forcing a convex-hull ridge roof was rejected as invented geometry.
+- FACT: exact Web reference screenshot run `34981972867` PASS; artifact `10401029189`; screenshot SHA-256 `c3d36f082d7cd448e0f29a0b92f8dcaad59c9e423745b0e9ce79f003cef77f1c`.
+- PRE-EXISTING/NON-ACTIVE: overall baseline remains red only at the historical Cesium 3D Tiles prototype dependency build after the active Unreal/world/streaming gates pass.
+- TRUTH BOUNDARY: roof directions are fitted source-derived presentation evidence, not surveyed ridge/roof-shape/eave truth.
+
+**Changed**
+- `tools/geo/probe_nhm_dom_roof_orientation.py`.
+- `tools/geo/compile_nhm_dom_roof_orientation.py` and compiler regressions.
+- `.github/workflows/nhm-dom-building-height-proof.yml`.
+- `apps/unreal-runtime/Tools/nwe_unreal_pipeline.py` and Unreal regressions.
+- `building-surface-runtime` now transports the verified roof-direction candidate alongside building-surface measurements.
+- DOM building proof, worklog, queue and Unreal plan.
+
+**Next**
+- `P1-IMAGERY-01`: prove one license-safe imagery/orthophoto ingestion path for the same Nannestad tile and bake it into a renderer-neutral ground-texture derivative; do not ship private/token-gated imagery publicly.
+
