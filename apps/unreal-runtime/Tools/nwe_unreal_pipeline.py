@@ -449,6 +449,47 @@ def fetch_pinned_building_surface_artifact(
     return destination
 
 
+def load_verified_building_surface_artifact(
+    artifact_path: Path,
+    *,
+    expected_building_sha256: str,
+) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any]]:
+    artifact_path = artifact_path.resolve()
+    if not artifact_path.is_file():
+        raise PipelineError(f"building-surface artifact is missing: {artifact_path}")
+    verification_path = artifact_path.with_name("building-surface-verification.json")
+    transport_path = artifact_path.with_suffix(artifact_path.suffix + ".transport.json")
+    if not verification_path.is_file():
+        raise PipelineError(
+            f"building-surface verification is missing: {verification_path}"
+        )
+    if not transport_path.is_file():
+        raise PipelineError(f"building-surface transport lock is missing: {transport_path}")
+    artifact_bytes = artifact_path.read_bytes()
+    verification = _read_json(verification_path)
+    transport = _read_json(transport_path)
+    if not isinstance(verification, dict) or not isinstance(transport, dict):
+        raise PipelineError("building-surface verification/transport must be objects")
+    artifact = validate_pinned_building_surface_transport(
+        artifact_bytes,
+        verification,
+        expected_building_sha256=expected_building_sha256,
+    )
+    actual_sha = _sha256_bytes(artifact_bytes)
+    if (
+        transport.get("schema") != "nwe.unreal-building-surface-transport-lock/0.1"
+        or not isinstance(transport.get("transport_commit"), str)
+        or not re.fullmatch(r"[a-f0-9]{40}", transport["transport_commit"])
+        or transport.get("artifact_sha256") != actual_sha
+        or transport.get("artifact_semantic_sha256")
+        != verification.get("artifact_semantic_sha256")
+        or transport.get("compiler_config_id") != BUILDING_SURFACE_COMPILER_CONFIG_ID
+        or transport.get("building_artifact_sha256") != expected_building_sha256
+    ):
+        raise PipelineError("building-surface immutable transport lock is invalid")
+    return artifact, actual_sha, verification, transport
+
+
 def validate_snapshot_manifest(manifest: dict[str, Any]) -> None:
     if manifest.get("schema") != "nwe.world-preview-manifest/0.1":
         raise PipelineError("unsupported snapshot manifest schema")
@@ -2022,6 +2063,7 @@ def build_unreal_package(
     *,
     provenance_verifier: Callable[[Path], None] = verify_runtime_provenance,
     vegetation_artifact_path: Path | None = None,
+    building_surface_artifact_path: Path | None = None,
 ) -> dict[str, Any]:
     snapshot_dir = snapshot_dir.resolve()
     output_dir = output_dir.resolve()
@@ -2089,7 +2131,23 @@ def build_unreal_package(
     buildings_artifact = _read_json(buildings_path)
     if not isinstance(buildings_artifact, dict):
         raise PipelineError("building artifact must be an object")
-    for name, packet in building_mesh_packets(
+
+    building_surface_artifact = None
+    building_surface_sha = None
+    building_surface_verification = None
+    building_surface_transport = None
+    if building_surface_artifact_path is not None:
+        (
+            building_surface_artifact,
+            building_surface_sha,
+            building_surface_verification,
+            building_surface_transport,
+        ) = load_verified_building_surface_artifact(
+            building_surface_artifact_path,
+            expected_building_sha256=manifest["buildings"]["artifact_sha256"],
+        )
+
+    building_packets = building_mesh_packets(
         buildings_artifact,
         terrain,
         expected_count=_positive_integer(
@@ -2098,8 +2156,12 @@ def build_unreal_package(
         origin_e=origin_e,
         origin_n=origin_n,
         origin_up_m=origin_up_m,
-    ):
+        building_surface_artifact=building_surface_artifact,
+        building_surface_sha256=building_surface_sha,
+    )
+    for name, packet in building_packets:
         persist_mesh(name, packet, manifest["buildings"]["artifact_sha256"], True)
+    building_truth = building_packets[0][1].truth if building_packets else {}
 
     vegetation_layer = None
     if vegetation_artifact_path is not None:
@@ -2186,7 +2248,14 @@ def build_unreal_package(
         "truth_boundaries": {
             "terrain": "source-backed DTM1 / EPSG:25832 / NN2000",
             "roads": "source-backed NVDB centerlines; widths remain presentation fallbacks",
-            "buildings": "source-backed OSM footprints/heights/selected roof tags where present; missing roof geometry uses explicit presentation profiles",
+            "buildings": (
+                "source-backed OSM footprints/heights; unresolved heights may use "
+                "verified NHM DOM-DTM p90 presentation derivatives under guarded "
+                "sample/plausibility policy; roof shape remains source-backed only "
+                "where OSM provides it and otherwise stays an explicit presentation profile"
+                if building_surface_artifact is not None
+                else "source-backed OSM footprints/heights/selected roof tags where present; missing height/roof geometry uses explicit presentation profiles"
+            ),
             "vegetation": (
                 "source-backed SR16V forest semantics with deterministic representative positions and presentation-only grounding/filtering"
                 if vegetation_layer is not None
@@ -2196,6 +2265,37 @@ def build_unreal_package(
         },
         "attribution": manifest["attribution"],
     }
+    if building_surface_artifact is not None:
+        package["building_surface"] = {
+            "schema": BUILDING_SURFACE_ARTIFACT_SCHEMA,
+            "status": "VERIFIED_DERIVED_PRESENTATION_INPUT",
+            "artifact_sha256": building_surface_sha,
+            "artifact_semantic_sha256": building_surface_verification["artifact_semantic_sha256"],
+            "compiler_config_id": BUILDING_SURFACE_COMPILER_CONFIG_ID,
+            "building_artifact_sha256": manifest["buildings"]["artifact_sha256"],
+            "transport_commit": building_surface_transport["transport_commit"],
+            "feature_count": int(building_surface_artifact["stats"]["feature_count"]),
+            "height_policy": building_truth.get("building_surface_height_policy"),
+            "derived_height_count": int(building_truth.get("derived_surface_height_count") or 0),
+            "fallback_height_count": int(building_truth.get("fallback_height_count") or 0),
+            "rejected_candidate_count": int(
+                building_truth.get("building_surface_rejected_count") or 0
+            ),
+            "missing_candidate_count": int(
+                building_truth.get("building_surface_missing_count") or 0
+            ),
+            "derived_roof_relief_count": int(
+                building_truth.get("derived_surface_roof_relief_count") or 0
+            ),
+            "truth": (
+                "DOM-DTM distributions are source-derived measurements; p90 height and "
+                "p95-p25 roof relief are renderer presentation policies, not surveyed "
+                "roof planes/ridges/eaves"
+            ),
+        }
+        dom_attribution = "NHM DOM building-surface measurements: © Kartverket, CC BY 4.0."
+        if dom_attribution not in package["attribution"]:
+            package["attribution"].append(dom_attribution)
     if vegetation_layer is not None:
         package["vegetation"] = vegetation_layer
         if "Kilde: NIBIO" not in package["attribution"]:
@@ -2263,6 +2363,36 @@ def verify_unreal_package(output_dir: Path) -> dict[str, Any]:
         raise PipelineError("derived Landscape byte size does not match its resolution")
     if _sha256_file(landscape_path) != landscape.get("sha256"):
         raise PipelineError("derived Landscape SHA-256 mismatch")
+
+    building_surface = package.get("building_surface")
+    if building_surface is not None:
+        if (
+            not isinstance(building_surface, dict)
+            or building_surface.get("schema") != BUILDING_SURFACE_ARTIFACT_SCHEMA
+            or building_surface.get("status") != "VERIFIED_DERIVED_PRESENTATION_INPUT"
+            or building_surface.get("compiler_config_id")
+            != BUILDING_SURFACE_COMPILER_CONFIG_ID
+            or not isinstance(building_surface.get("artifact_sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", building_surface["artifact_sha256"])
+            or not isinstance(building_surface.get("artifact_semantic_sha256"), str)
+            or not re.fullmatch(
+                r"[a-f0-9]{64}", building_surface["artifact_semantic_sha256"]
+            )
+            or not isinstance(building_surface.get("transport_commit"), str)
+            or not re.fullmatch(r"[a-f0-9]{40}", building_surface["transport_commit"])
+            or int(building_surface.get("feature_count") or 0) <= 0
+            or int(building_surface.get("derived_height_count") or 0) <= 0
+        ):
+            raise PipelineError("derived building-surface package contract is invalid")
+        source_building_sha = (
+            source.get("artifact_sha256", {}).get("buildings")
+            if isinstance(source.get("artifact_sha256"), dict)
+            else None
+        )
+        if building_surface.get("building_artifact_sha256") != source_building_sha:
+            raise PipelineError(
+                "derived building-surface package is bound to the wrong building artifact"
+            )
 
     vegetation = package.get("vegetation")
     if vegetation is not None:
