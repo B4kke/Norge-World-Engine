@@ -9,6 +9,11 @@ param(
     [string]$GroundImageryRedistribution = "private-only",
     [double]$GroundImagerySourceValueMax = 0,
 
+    [ValidateRange(0, 100)]
+    [double]$SentinelMaxCloudPercent = 20,
+    [switch]$SkipSentinelGroundFallback,
+    [switch]$RefreshSentinelGround,
+
     [switch]$SkipDataDownload,
     [switch]$SkipVisualAssetDownload,
     [switch]$SkipLevelCreation
@@ -28,10 +33,25 @@ if (-not (Test-Path $Build)) {
     throw "Build.bat was not found below $UnrealEngineRoot"
 }
 
+$SystemPython = (Get-Command python -ErrorAction Stop).Source
+$ToolPython = $SystemPython
+$NeedsGroundTooling = [bool]$GroundImageryPath -or (-not $SkipSentinelGroundFallback)
+if ($NeedsGroundTooling) {
+    $VenvRoot = Join-Path $ProjectRoot ".venv"
+    $VenvPython = Join-Path $VenvRoot "Scripts\python.exe"
+    if (-not (Test-Path $VenvPython)) {
+        & $SystemPython -m venv $VenvRoot
+        if ($LASTEXITCODE -ne 0) { throw "Could not create Unreal authoring Python venv" }
+    }
+    & $VenvPython -m pip install --disable-pip-version-check -r "apps\unreal-runtime\requirements-authoring.txt"
+    if ($LASTEXITCODE -ne 0) { throw "Could not install Unreal authoring Python dependencies" }
+    $ToolPython = $VenvPython
+}
+
 Push-Location $RepositoryRoot
 try {
     if (-not $SkipVisualAssetDownload) {
-        python "apps\unreal-runtime\Tools\acquire_visual_assets.py"
+        & $ToolPython "apps\unreal-runtime\Tools\acquire_visual_assets.py"
         if ($LASTEXITCODE -ne 0) { throw "Nannestad CC0 vegetation asset acquisition failed" }
     }
 
@@ -49,12 +69,26 @@ try {
         if ($GroundImagerySourceValueMax -gt 0) {
             $ImageryArgs += @("--source-value-max", $GroundImagerySourceValueMax.ToString([System.Globalization.CultureInfo]::InvariantCulture))
         }
-        & python $ImageryArgs
+        & $ToolPython $ImageryArgs
         if ($LASTEXITCODE -ne 0) { throw "Nannestad ground imagery bake failed" }
+    }
+    elseif (-not $SkipSentinelGroundFallback) {
+        $SentinelArgs = @(
+            "apps\unreal-runtime\Tools\fetch_sentinel_ground_imagery.py",
+            "--max-cloud-percent",
+            $SentinelMaxCloudPercent.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+        )
+        if ($RefreshSentinelGround) {
+            $SentinelArgs += "--refresh"
+        }
+        & $ToolPython $SentinelArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Automatic Sentinel-2 Nannestad ground fallback failed. Supply -GroundImageryPath or use -SkipSentinelGroundFallback explicitly."
+        }
     }
 
     if (-not $SkipDataDownload) {
-        python "apps\unreal-runtime\Tools\nwe_unreal_pipeline.py" all
+        & $ToolPython "apps\unreal-runtime\Tools\nwe_unreal_pipeline.py" all
         if ($LASTEXITCODE -ne 0) { throw "Nannestad data/vegetation verification and build failed" }
     }
 
@@ -74,6 +108,12 @@ finally {
 }
 
 Write-Host "NWE_UNREAL_SETUP_PASS: Open $ProjectFile and press Play."
-if (-not $GroundImageryPath) {
-    Write-Warning "No private ground imagery was supplied. Generic terrain PBR remains active. Re-run with -GroundImageryPath <georeferenced RGB GeoTIFF> for Nannestad ground color."
+if ($GroundImageryPath) {
+    Write-Host "NWE_GROUND_IMAGERY: using user-supplied georeferenced imagery."
+}
+elseif (-not $SkipSentinelGroundFallback) {
+    Write-Host "NWE_GROUND_IMAGERY: using verified local Sentinel-2 fallback. A lawful local orthophoto remains the preferred high-detail path."
+}
+else {
+    Write-Warning "Ground imagery fallback was explicitly skipped; generic terrain PBR remains active."
 }
