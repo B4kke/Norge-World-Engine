@@ -211,7 +211,7 @@ def test_building_wall_winding_is_outward_for_both_source_orientations() -> None
             origin_n=6677001.0,
             origin_up_m=0.0,
         )
-        wall = next(packet for name, packet in packets if name.startswith("building_walls"))
+        wall = next(packet for name, packet in packets if name.startswith("building_wall_"))
         a = wall.positions_m[0:3]
         b = wall.positions_m[3:6]
         top = wall.positions_m[6:9]
@@ -270,8 +270,8 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
         origin_n=6677001.0,
         origin_up_m=0.0,
     )
-    roof = next(packet for name, packet in packets if name == "building_roofs_source.nwemesh")
-    wall = next(packet for name, packet in packets if name == "building_walls_source.nwemesh")
+    roof = next(packet for name, packet in packets if name == "building_roof_red.nwemesh")
+    wall = next(packet for name, packet in packets if name.startswith("building_wall_"))
     roof_z = roof.positions_m[2::3]
     wall_z = wall.positions_m[2::3]
     assert max(roof_z) - min(roof_z) == pytest.approx(1.5)
@@ -279,6 +279,9 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     assert roof.truth["source_roof_shape_count"] == 1
     assert roof.truth["source_roof_height_count"] == 1
     assert roof.truth["roof_shape_counts"]["gabled"] == 1
+    assert roof.material_id == "building_roof_red"
+    assert roof.truth["source_surface_semantic_count"] == 1
+    assert roof.truth["material_class_counts"]["building_roof_red"] == 1
 
     fallback_artifact = {
         "schema": "nwe.building-footprint-artifact/0.1",
@@ -295,7 +298,7 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
         origin_up_m=0.0,
     )
     fallback_roof = next(
-        packet for name, packet in fallback_packets if name == "building_roofs_fallback.nwemesh"
+        packet for name, packet in fallback_packets if name.startswith("building_roof_")
     )
     assert max(fallback_roof.positions_m[2::3]) > min(fallback_roof.positions_m[2::3])
     assert fallback_roof.truth["fallback_roof_shape_count"] == 1
