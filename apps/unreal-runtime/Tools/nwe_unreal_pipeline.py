@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -794,10 +795,11 @@ def _presentation_building_height_m(building_type: str) -> float:
     return {
         "garage": 3.0,
         "garages": 3.0,
-        "farm_auxiliary": 4.0,
+        "farm_auxiliary": 4.2,
         "shed": 2.8,
         "house": 6.2,
         "detached": 6.2,
+        "residential": 6.2,
         "terrace": 7.0,
         "farm": 7.0,
         "barn": 7.5,
@@ -805,6 +807,228 @@ def _presentation_building_height_m(building_type: str) -> float:
         "industrial": 8.0,
         "civic": 9.0,
     }.get(building_type.casefold(), 5.5)
+
+
+def _positive_measurement_m(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        result = float(value)
+    elif isinstance(value, str):
+        match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)?\s*", value, flags=re.IGNORECASE)
+        if not match:
+            return None
+        result = float(match.group(1))
+    else:
+        return None
+    return result if math.isfinite(result) and 0.0 < result <= 100.0 else None
+
+
+def _normalized_roof_shape(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip().casefold().replace("-", "_")
+    aliases = {
+        "gable": "gabled",
+        "gable_roof": "gabled",
+        "hip": "hipped",
+        "hipped_roof": "hipped",
+        "pyramid": "pyramidal",
+        "pyramid_roof": "pyramidal",
+        "mono_pitch": "skillion",
+        "shed": "skillion",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in {"flat", "gabled", "hipped", "pyramidal", "skillion"} else None
+
+
+def _fallback_roof_shape(building_type: str, vertex_count: int, area_m2: float) -> str:
+    kind = building_type.casefold()
+    if kind in {"garage", "garages", "warehouse", "industrial"}:
+        return "flat"
+    if vertex_count == 4 and (
+        kind in {"house", "detached", "residential", "farm", "barn", "farm_auxiliary", "terrace"}
+        or area_m2 <= 650.0
+    ):
+        return "gabled"
+    if area_m2 <= 300.0:
+        return "hipped"
+    return "flat"
+
+
+def _roof_profile(
+    feature: dict[str, Any],
+    *,
+    building_type: str,
+    local_xy: Sequence[tuple[float, float, float]],
+    total_height_m: float,
+) -> dict[str, Any]:
+    source_shape = _normalized_roof_shape(feature.get("roof_shape"))
+    shape = source_shape or _fallback_roof_shape(
+        building_type,
+        len(local_xy),
+        float(feature.get("area_m2") or 0.0),
+    )
+    source_rise = _positive_measurement_m(feature.get("roof_height"))
+    roof_levels = _positive_measurement_m(feature.get("roof_levels"))
+    if source_rise is None and roof_levels is not None:
+        source_rise = min(8.0, roof_levels * 2.4)
+
+    xs = [point[0] for point in local_xy]
+    ys = [point[1] for point in local_xy]
+    short_span = max(1.0, min(max(xs) - min(xs), max(ys) - min(ys)))
+    fallback_rise = min(4.0, max(0.8, short_span * 0.28))
+    if shape == "flat":
+        rise = 0.0
+        rise_source = "flat-roof"
+    else:
+        rise = source_rise if source_rise is not None else fallback_rise
+        rise_source = "source-roof-height" if source_rise is not None else "presentation-footprint-proportion"
+
+    if rise > 0.0:
+        rise = min(rise, max(0.6, total_height_m - 2.2))
+        eave_height = max(2.2, total_height_m - rise)
+    else:
+        eave_height = total_height_m
+
+    return {
+        "shape": shape,
+        "shape_source": "source-osm-roof:shape" if source_shape else "presentation-building-profile",
+        "rise_m": rise,
+        "rise_source": rise_source,
+        "eave_height_m": eave_height,
+    }
+
+
+def _append_triangle(
+    bucket: dict[str, list[Any]],
+    a: tuple[float, float, float],
+    b: tuple[float, float, float],
+    c: tuple[float, float, float],
+    *,
+    roof_uv: bool,
+    prefer_up: bool = False,
+) -> None:
+    ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+    vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    nx = uy * vz - uz * vy
+    ny = uz * vx - ux * vz
+    nz = ux * vy - uy * vx
+    if prefer_up and nz < 0.0:
+        b, c = c, b
+        ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+        vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+        nx = uy * vz - uz * vy
+        ny = uz * vx - ux * vz
+        nz = ux * vy - uy * vx
+    length = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if length <= 1e-9:
+        return
+    normal = (nx / length, ny / length, nz / length)
+    base = len(bucket["positions"]) // 3
+    for point in (a, b, c):
+        bucket["positions"].extend(point)
+        bucket["normals"].extend(normal)
+        bucket["uv0"].extend(
+            (point[0] / 4.0, point[1] / 4.0)
+            if roof_uv
+            else (point[0] / 4.0, point[2] / 3.0)
+        )
+    bucket["indices"].extend((base, base + 1, base + 2))
+
+
+def _append_flat_roof(
+    roof: dict[str, list[Any]],
+    local_xy: Sequence[tuple[float, float, float]],
+    eave_z: float,
+) -> None:
+    points_2d = [(point[0], point[1]) for point in local_xy]
+    triangles = triangulate_polygon(points_2d)
+    vertices = [(point[0], point[1], eave_z) for point in local_xy]
+    for index in range(0, len(triangles), 3):
+        _append_triangle(
+            roof,
+            vertices[triangles[index]],
+            vertices[triangles[index + 1]],
+            vertices[triangles[index + 2]],
+            roof_uv=True,
+            prefer_up=True,
+        )
+
+
+def _append_gabled_roof(
+    roof: dict[str, list[Any]],
+    wall: dict[str, list[Any]],
+    local_xy: Sequence[tuple[float, float, float]],
+    eave_z: float,
+    ridge_z: float,
+) -> bool:
+    if len(local_xy) != 4:
+        return False
+    corners = [(point[0], point[1], eave_z) for point in local_xy]
+    lengths = [
+        math.hypot(
+            corners[(index + 1) % 4][0] - corners[index][0],
+            corners[(index + 1) % 4][1] - corners[index][1],
+        )
+        for index in range(4)
+    ]
+    if lengths[0] + lengths[2] >= lengths[1] + lengths[3]:
+        ridge_a = (
+            (corners[3][0] + corners[0][0]) / 2.0,
+            (corners[3][1] + corners[0][1]) / 2.0,
+            ridge_z,
+        )
+        ridge_b = (
+            (corners[1][0] + corners[2][0]) / 2.0,
+            (corners[1][1] + corners[2][1]) / 2.0,
+            ridge_z,
+        )
+        roof_quads = (
+            (corners[0], corners[1], ridge_b, ridge_a),
+            (corners[2], corners[3], ridge_a, ridge_b),
+        )
+        gables = ((corners[3], corners[0], ridge_a), (corners[1], corners[2], ridge_b))
+    else:
+        ridge_a = (
+            (corners[0][0] + corners[1][0]) / 2.0,
+            (corners[0][1] + corners[1][1]) / 2.0,
+            ridge_z,
+        )
+        ridge_b = (
+            (corners[2][0] + corners[3][0]) / 2.0,
+            (corners[2][1] + corners[3][1]) / 2.0,
+            ridge_z,
+        )
+        roof_quads = (
+            (corners[1], corners[2], ridge_b, ridge_a),
+            (corners[3], corners[0], ridge_a, ridge_b),
+        )
+        gables = ((corners[0], corners[1], ridge_a), (corners[2], corners[3], ridge_b))
+
+    for q0, q1, q2, q3 in roof_quads:
+        _append_triangle(roof, q0, q1, q2, roof_uv=True, prefer_up=True)
+        _append_triangle(roof, q0, q2, q3, roof_uv=True, prefer_up=True)
+    for a, b, apex in gables:
+        _append_triangle(wall, a, b, apex, roof_uv=False)
+    return True
+
+
+def _append_apex_roof(
+    roof: dict[str, list[Any]],
+    local_xy: Sequence[tuple[float, float, float]],
+    eave_z: float,
+    apex_z: float,
+) -> None:
+    center = (
+        sum(point[0] for point in local_xy) / len(local_xy),
+        sum(point[1] for point in local_xy) / len(local_xy),
+        apex_z,
+    )
+    corners = [(point[0], point[1], eave_z) for point in local_xy]
+    for index, a in enumerate(corners):
+        b = corners[(index + 1) % len(corners)]
+        _append_triangle(roof, a, b, center, roof_uv=True, prefer_up=True)
 
 
 def building_mesh_packets(
