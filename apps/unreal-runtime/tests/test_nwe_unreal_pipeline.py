@@ -226,6 +226,82 @@ def test_building_wall_winding_is_outward_for_both_source_orientations() -> None
         assert sum(a * b for a, b in zip(geometric_normal, declared_normal, strict=True)) > 0.0
 
 
+def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
+    elevations = array("f", [100.0] * 4)
+    terrain = pipeline.HeightGrid(
+        tile_id=pipeline.EXPECTED_TILE_ID,
+        horizontal_crs=pipeline.EXPECTED_HORIZONTAL_CRS,
+        vertical_datum=pipeline.EXPECTED_VERTICAL_DATUM,
+        bounds=(611000.0, 6677000.0, 611002.0, 6677002.0),
+        width=2,
+        height=2,
+        pixel_size_m=1.0,
+        elevation_min_m=100.0,
+        elevation_max_m=100.0,
+        elevations=elevations,
+    )
+    polygon = [
+        [611000.2, 6677000.2],
+        [611001.8, 6677000.2],
+        [611001.8, 6677001.2],
+        [611000.2, 6677001.2],
+        [611000.2, 6677000.2],
+    ]
+
+    source_artifact = {
+        "schema": "nwe.building-footprint-artifact/0.1",
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "features": [{
+            "polygon": polygon,
+            "building": "house",
+            "height_m": 6.0,
+            "height_source": "osm:height",
+            "roof_shape": "gabled",
+            "roof_height": "1.5",
+            "roof_material": "tile",
+        }],
+    }
+    packets = pipeline.building_mesh_packets(
+        source_artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611001.0,
+        origin_n=6677001.0,
+        origin_up_m=0.0,
+    )
+    roof = next(packet for name, packet in packets if name == "building_roofs_source.nwemesh")
+    wall = next(packet for name, packet in packets if name == "building_walls_source.nwemesh")
+    roof_z = roof.positions_m[2::3]
+    wall_z = wall.positions_m[2::3]
+    assert max(roof_z) - min(roof_z) == pytest.approx(1.5)
+    assert max(wall_z) == pytest.approx(106.03)
+    assert roof.truth["source_roof_shape_count"] == 1
+    assert roof.truth["source_roof_height_count"] == 1
+    assert roof.truth["roof_shape_counts"]["gabled"] == 1
+
+    fallback_artifact = {
+        "schema": "nwe.building-footprint-artifact/0.1",
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "features": [{"polygon": polygon, "building": "detached"}],
+    }
+    fallback_packets = pipeline.building_mesh_packets(
+        fallback_artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611001.0,
+        origin_n=6677001.0,
+        origin_up_m=0.0,
+    )
+    fallback_roof = next(
+        packet for name, packet in fallback_packets if name == "building_roofs_fallback.nwemesh"
+    )
+    assert max(fallback_roof.positions_m[2::3]) > min(fallback_roof.positions_m[2::3])
+    assert fallback_roof.truth["fallback_roof_shape_count"] == 1
+    assert fallback_roof.truth["roof_shape_counts"]["gabled"] == 1
+
+
 def test_derived_package_verifier_rejects_mesh_tampering(tmp_path: Path) -> None:
     packet = pipeline.MeshPacket(
         material_id="terrain",
