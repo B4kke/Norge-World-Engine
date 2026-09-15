@@ -28,6 +28,8 @@ jobs:
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
           python -m py_compile apps/unreal-runtime/Tools/nwe_unreal_pipeline.py
+          python -m py_compile apps/unreal-runtime/Tools/acquire_visual_assets.py
+          python -m py_compile apps/unreal-runtime/Tools/prepare_ground_imagery.py
           python -m py_compile apps/unreal-runtime/Content/Python/create_nannestad_level.py
 
       - name: Unreal adapter deterministic unit regressions
