@@ -298,3 +298,208 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-VEGETATION-01-RENDERER-HANDOFF`: LUMEN adapts PR #80 to consume the candidate FORGE artifact while keeping render-local conversion, accepted-DTM grounding, local road/building/spawn/slope filtering, asset mapping, visible-instance budgets and LOD as presentation/runtime concerns.
+
+## 2026-09-03 23:26 UTC — LUMEN — UE5-FOUNDATION
+
+**What**
+- Replaced the stale web-runtime product direction with a real Unreal Engine 5.8 Windows game project for a third-person Nannestad vertical slice.
+- Added a deterministic fail-closed adapter from the pinned, fully verified NWE snapshot to a 1009² Landscape `.r16`, chunked terrain, connected NVDB road strips and source/fallback-separated OSM building meshes.
+- Added explicit EPSG:25832/NN2000 → UE coordinates, runtime collision/lighting bootstrap, Quinn-based human character, Open World level authoring automation and setup/CI coverage.
+
+**Why**
+- The explicit product requirement is Unreal Engine 5, real Nannestad geometry/topography and realistic human-scale presentation. Reusing the verified engine-neutral world truth avoids repeating the old prototype's renderer-bound architecture while preserving its valid data work.
+
+**Result / evidence**
+- FACT: snapshot commit `42f94b63a9172b345d4500473a0aa1aff785fa43` reconstructs terrain, roads and building provenance as `READY_FOR_RUNTIME`; normal gameplay requires zero raw Kartverket/NVDB/OSM calls.
+- FACT: the real tile build emits 21 deterministic mesh packets (16 terrain, one connected road layer, four building source/fallback surface classes), 14,870,975 mesh bytes and a 2,036,162-byte Landscape heightmap.
+- FACT: all 246 road paths become 2,372 connected surface segments with capped miter joins; all 135 building footprints are represented, with 15 source-backed and 120 fallback heights kept separately classified.
+- FACT: independent package builds compare byte-identically. Package SHA-256 is `cda37d0c9a14daba65aa74645f989fc998c49ed84529bee6d6f0f535e3de9b37`; Landscape SHA-256 is `989b1d41d65e4f581c0ca5d5879e4b6553537e17f8d92c040a2d87d3b1db158c`; maximum declared height quantization error is 0.000218517 m.
+- FACT: 22 repo skills validate, 177 combined compiler/Unreal tests pass, the 11-case runtime verifier passes, cross-language RFC 8785/JCS passes and `git diff --check` passes.
+- NOT YET PROVEN: no Unreal installation exists in the current environment, so C++ Editor compilation, Python editor API execution, native Landscape import, Play-in-Editor, visual realism, performance and packaged Windows behavior remain open. Lumen/VSM settings and source checks are not substitutes for that evidence.
+
+**Changed**
+- `apps/unreal-runtime/**`: UE project/config/source, deterministic data tools, level/setup automation, tests and operator documentation.
+- `.github/workflows/baseline.yml`, `.gitignore` and `.gitattributes`.
+- `README.md`, `AGENTS.md`, LUMEN role, D-009, roadmap, active queue and `docs/09-unreal-game-plan.md`; the former web plan is marked historical.
+
+**Next**
+- `UE5-RUN-01`: run the clean setup on Windows with UE 5.8 + Third Person content, fix any compile/editor API failures, then retain PIE movement/collision/log/render/performance evidence before native Landscape authoring.
+
+## 2026-09-04 22:02 UTC — LUMEN — UE5-VISUAL-01-WEBGPU-QUALITY
+
+**What**
+- Added four local, pinned Poly Haven CC0 PBR surface sets for terrain, asphalt,
+  weathered timber walls and grey roof tiles, including separate OpenGL and
+  DirectX normal maps plus diffuse/roughness maps.
+- Replaced generated web detail textures with a hash-audited local material
+  library, meter-scaled building UVs and profile-gated normal maps/anisotropy.
+- Added low/balanced/high/ultra renderer profiles; high/ultra use Three TSL GTAO
+  and restrained bloom, larger bounded shadow maps, longer view/fog ranges and
+  higher terrain/DPR budgets.
+- Added Unreal Editor import/material automation over the same catalog, a
+  75,000 lux daylight baseline and Epic/Cinematic PC graphics configuration.
+
+**Why**
+- The existing world geometry was honest but visually baseline-grade. This is
+  the smallest shared Web/UE quality slice that materially improves surfaces
+  and light without inventing new geography or reviving rejected proxy trees.
+
+**Result / evidence**
+- FACT: all 16 retained JPG files match catalog byte size, official API MD5 and
+  locally recorded SHA-256; direct inspection confirms the four expected
+  photographic surface classes.
+- FACT: the full world-viewer test chain and Vite production build pass with 73
+  transformed modules; new profile, material, UV, visual-style and post-process
+  regressions pass.
+- FACT: Unreal Python syntax compilation and all five source/config contract
+  tests pass, including catalog hash enforcement, DirectX normal mapping,
+  generated material paths, renderer settings and daylight intensity.
+- ENVIRONMENT LIMIT: this runner has neither Chrome/Chromium/agent-browser nor
+  Unreal Engine 5.8, so live WebGPU/WebGL frames, Editor API execution, C++
+  compile, PIE and UE visual/performance acceptance are not claimed locally.
+- CI DIAGNOSIS: the first hosted visual-proof run exposed a stale
+  `--manifest-url` invocation after the capture harness moved to the checked-in,
+  same-origin snapshot; the workflow now supplies the required `--runtime-root`.
+- PRE-EXISTING CI: the baseline Cesium prototype build already failed on the
+  branch parent because Cesium 1.143 re-exports three shader symbols absent from
+  its resolved `@cesium/engine`; this unrelated prototype dependency drift is
+  not presented as a regression from this visual slice.
+- TRUTH BOUNDARY: the PBR maps are generic licensed presentation surfaces;
+  they are not source-backed claims about exact land cover, façade or roof at a
+  coordinate.
+
+**Changed**
+- Draft PR #84 / branch `agent/lumen-unreal-nannestad-foundation`.
+- `apps/world-viewer`: material catalog/assets, PBR loader, UVs, quality
+  profiles, TSL post processing, UI evidence, tests and browser proof gate.
+- `.github/workflows/preview1-visual-proof.yml`: exact checked-in runtime root
+  for the hosted same-origin screenshot gate.
+- `apps/unreal-runtime`: shared-catalog Editor import, generated PBR materials,
+  daylight/render/scalability configuration, tests and operator documentation.
+- `docs/05-worklog.md`, `docs/06-task-queue.md` and
+  `docs/09-unreal-game-plan.md`.
+
+**Next**
+- `UE5-RUN-01`: run the exact branch on Windows UE 5.8, correct any Editor/C++
+  integration issue, then retain a daylight PIE frame plus movement, collision,
+  GPU and memory evidence before promoting native Landscape or vegetation.
+
+## 2026-09-05 — LUMEN — WEB-PRESENTATION-REPAIR
+
+**What**
+- Added Three SkyMesh atmosphere with aligned sunlight and camera-following sky.
+- Split road triangles against the actual rendered terrain grid before draping; preserved horizontal path and UV interpolation.
+- Enabled first-person camera at 1.70 m with player mesh hidden and camera pan constrained to the player.
+
+**Why**
+- User reported road/terrain intersections and absent sky, and explicitly requested a mobile WebGPU first-person preview.
+
+**Result / evidence**
+- World-viewer regression chain and production build PASS. Ridge-crossing road regression PASS; source geometry remains unchanged.
+- Browser visual acceptance and physical mobile performance remain unverified. Generic buildings and missing source-backed vegetation remain unresolved; this is not a photorealistic completion claim.
+
+**Changed**
+- Ground lighting, renderer, camera controls, road draping, browser smoke contract and regression chain.
+
+**Next**
+- Visually verify the exact preview on WebGPU and complete source-backed buildings/vegetation.
+
+## 2026-09-15 — LUMEN — PREVIEW1-EXACT-VISUAL-GATE
+
+**What**
+- Repaired the exact Preview 1 screenshot workflow so it checks out the real PR head, materializes and re-verifies the pinned runtime snapshot, and uses explicit CI-only SwiftShader for trusted local WebGL2 visual evidence.
+- Used the repaired proof to expose and fix road drape triangulation artifacts: generated road triangles now drop degenerate slivers and normalize to positive-Y winding before Three derives normals.
+- Tested a road shadow-receiver workaround for the remaining dark asphalt, observed no material visual gain, and reverted it instead of keeping an unproven rendering tradeoff.
+
+**Why**
+- The previous “visual proof” failed before rendering because `/runtime/manifest.json` was absent and its checkout was GitHub's synthetic PR merge commit rather than the PR head.
+- Structural tests alone had missed large black triangular/saw-tooth artifacts visible in the real ground-level frame.
+
+**Result / evidence**
+- Exact final implementation head before documentation: `7e58e6dc9a63ac861638851bde82fa2125c0a4e6`.
+- `preview1-visual-proof` run `34907793193`: PASS; build, pinned snapshot/provenance verification, `REAL WORLD READY`, screenshot and artifact upload all passed.
+- Artifact `10373132469`; extracted PNG SHA-256 `709b3c444a6ab009c0dfce82b085ff0068707b43f19fc833e043f99c052dc2ea`.
+- `world-viewer-vite` run `34907793094`: PASS.
+- `viewer-benchmark` run `34907793188`: PASS.
+- Manual inspection confirms the former road-triangle artifacts are gone. Asphalt is still too dark in the high-profile WebGL2 proof; generic building presentation and missing source-backed rendered vegetation remain open.
+- Baseline run `34907793138` still fails only at the Cesium 3D Tiles baseline build after all preceding compiler/Unreal/world/streaming/viewer-boundary steps pass. Old run `33963144232` failed at the same Cesium step, so this is not attributed to this session.
+
+**Changed**
+- `.github/workflows/preview1-visual-proof.yml`.
+- `apps/world-viewer/capture_preview1_screenshot.mjs`.
+- `apps/world-viewer/src/roadTerrainDrape.mjs`.
+- `apps/world-viewer/test_road_terrain_drape.mjs`.
+- `docs/proofs/2026-09-15-preview1-exact-visual-proof.md`.
+- Project worklog/task queue.
+
+**Next**
+- Primary gate remains `UE5-RUN-01`: run the exact branch on Windows with Unreal Engine 5.8 and retain compile, PIE, collision, movement, frame, GPU and memory evidence.
+- Web follow-up is presentation-only and secondary: calibrate the overly dark asphalt from measured screenshots, render the already-admitted source-backed vegetation, improve source-backed building semantics, then obtain real WebGPU/mobile evidence. Do not weaken world truth to improve appearance.
+
+## 2026-09-15 14:43 CEST — LUMEN — P1-BUILDINGS-01-DOM-HANDOFF
+
+**What**
+- Added a fail-closed Kartverket NHM DOM source probe and exact 1 m Nannestad DOM-DTM calibration over the accepted 135 OSM building footprints.
+- Compiled the measured per-footprint DOM-DTM distributions into the renderer-neutral candidate `nwe.building-surface-artifact/0.1-candidate` and published only the derived measurements/provenance on `building-surface-runtime`; raw DOM/DTM raster bytes remain outside Git/runtime transport.
+- Integrated the verified candidate into the Unreal adapter. OSM source height always wins; otherwise guarded DOM-DTM p90 may replace the old class fallback. DOM p95-p25 relief may drive presentation roof rise, but roof shape/ridge/eave direction remains explicitly non-authoritative.
+- Fixed the Unreal CLI derived-layer determinism regression: `all` materializes vegetation + building surface, and subsequent `build` reuses the verified local derivatives instead of silently dropping vegetation.
+
+**Why**
+- The active Nannestad slice still looked generic because 120/135 buildings used fixed presentation heights and the current OSM snapshot contains zero roof-shape/material fields.
+- NHM DOM provides a public 1 m surface model on the exact EPSG:25832 tile grid, allowing a measurable source-derived improvement without pretending FKB access or inventing world truth.
+
+**Result / evidence**
+- FACT: live Kartverket WCS advertises raw surface coverage `nhm_dom_topo_25832` separately from hillshade; `nhm-dom-source-probe` passes.
+- FACT: DTM and DOM align exactly as 1000 × 1000 1 m EPSG:25832 grids for the accepted Nannestad tile.
+- FACT: the candidate is bound to building artifact SHA-256 `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`, compiler-config `d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15`, artifact SHA-256 `7b07c587cbbf3e42685cc53d9751fa04471d247e2ab9601daa26e75a2e13721a` and semantic SHA-256 `c3297f444d8227ca09897a712d5e34b780fc3999df6f4d4674e529a7b6384488`.
+- FACT: 132/135 buildings have usable DOM-DTM measurements. The 15 existing OSM `building:levels × 3 m` heights provide the only current coarse calibration reference; p90 has MAE 1.048 m, p90 absolute error 1.816 m and 93.3% within 2 m.
+- FACT: guarded Unreal policy yields **15 OSM source heights + 105 DOM-derived presentation heights + 15 explicit fallbacks**, versus the previous 15 + 120 fallbacks.
+- FACT: exact code head `d4dcfb77850e13eff0d276498657c65988795ece` passes `nhm-dom-building-height-proof` run `34971239381` and the active Unreal integration step inside baseline run `34971239525`.
+- FACT: baseline `all` and subsequent `build` both report 105 DOM heights, 15 fallbacks, 819 vegetation instances and 25 mesh packets; `diff -qr` passes.
+- PRE-EXISTING/NON-ACTIVE: the overall baseline workflow remains red only at the historical Cesium 3D Tiles prototype dependency build after the active compiler/Unreal/world/streaming gates pass.
+- TRUTH BOUNDARY: DOM-DTM distributions are source-derived measurements. Choosing p90, plausibility ceilings, p95-p25 roof rise and fallback roof shape is renderer presentation policy. No surveyed ridge/eave/roof-shape claim is made.
+
+**Changed**
+- `engine/compiler/src/nwe_compiler/nhm_dom_wcs_source_candidate.py` and tests.
+- `tools/geo/probe_nhm_dom_wcs.py`, `probe_nhm_dom_building_heights.py`, `compile_nhm_dom_building_surface.py`.
+- `.github/workflows/nhm-dom-source-probe.yml` and `nhm-dom-building-height-proof.yml`.
+- `apps/unreal-runtime/Tools/nwe_unreal_pipeline.py` and Unreal adapter regressions.
+- `building-surface-runtime` replaceable derived transport; current publish commit `1d2aaada9ccead75e22c4fd1ed2f85a79ad16207`.
+- `docs/proofs/2026-09-15-nhm-dom-building-surface-unreal.md`.
+
+**Next**
+- `P1-BUILDINGS-01-ROOF-SURFACE`: measure whether the spatial NHM DOM samples inside high-confidence footprints can support a conservative renderer-neutral ridge/orientation candidate; fail closed to the existing presentation roof profile when the signal is ambiguous.
+
+## 2026-09-15 16:20 CEST — LUMEN — P1-BUILDINGS-01-ROOF-SURFACE
+
+**What**
+- Measured spatial NHM DOM-DTM roof-direction signal across the accepted Nannestad building footprints with a bounded tent-vs-plane experiment.
+- Added a separately versioned strong roof-direction candidate and immutable derived transport bound to the exact OSM building, DTM and DOM hashes.
+- Integrated only strong direction evidence into Unreal presentation pitched roofs. Source roof shape always wins; flat presentation roofs remain flat; complex/concave hipped footprints fail closed to the existing apex fallback.
+- Fixed candidate determinism after detecting machine-epsilon `np.linalg.lstsq` drift: fit metrics are now quantized to 9 decimals before admission and RFC8785 artifact hashing.
+
+**Why**
+- Height enrichment materially reduced box-height fallback, but roof orientation remained generic.
+- A renderer-visible improvement is useful only if the fitted direction is reproducible and cannot silently turn inferred geometry into world truth.
+
+**Result / evidence**
+- FACT: 118/135 buildings provide enough spatial DOM samples for orientation analysis; broad fit accepts 53 gable-like signals and the strict compiler admits 30 strong direction candidates.
+- FACT: two independent hosted compiles over identical source hashes now produce identical roof candidate artifact SHA-256 `0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3` and semantic SHA-256 `87b54808e77a62e52b4f8dce2d3c584679922daccdf5df89dc505bbeb384dce6`.
+- FACT: compiler config is `325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682`.
+- FACT: exact head `88fba398a08b632d253fd5c53030d2ca1ce7dfe6` passes Unreal deterministic unit regressions and real Nannestad package integration in baseline run `34981973005`; `all` and `build` both report 105 DOM heights, 15 height fallbacks, 10 applied DOM roof orientations, 0 hipped ridge replacements and 819 vegetation instances.
+- FACT: all 11 strong candidates currently falling into the presentation-hipped class have concave/complex OSM footprints; forcing a convex-hull ridge roof was rejected as invented geometry.
+- FACT: exact Web reference screenshot run `34981972867` PASS; artifact `10401029189`; screenshot SHA-256 `c3d36f082d7cd448e0f29a0b92f8dcaad59c9e423745b0e9ce79f003cef77f1c`.
+- PRE-EXISTING/NON-ACTIVE: overall baseline remains red only at the historical Cesium 3D Tiles prototype dependency build after the active Unreal/world/streaming gates pass.
+- TRUTH BOUNDARY: roof directions are fitted source-derived presentation evidence, not surveyed ridge/roof-shape/eave truth.
+
+**Changed**
+- `tools/geo/probe_nhm_dom_roof_orientation.py`.
+- `tools/geo/compile_nhm_dom_roof_orientation.py` and compiler regressions.
+- `.github/workflows/nhm-dom-building-height-proof.yml`.
+- `apps/unreal-runtime/Tools/nwe_unreal_pipeline.py` and Unreal regressions.
+- `building-surface-runtime` now transports the verified roof-direction candidate alongside building-surface measurements.
+- DOM building proof, worklog, queue and Unreal plan.
+
+**Next**
+- `P1-IMAGERY-01`: prove one license-safe imagery/orthophoto ingestion path for the same Nannestad tile and bake it into a renderer-neutral ground-texture derivative; do not ship private/token-gated imagery publicly.
+

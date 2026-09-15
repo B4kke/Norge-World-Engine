@@ -1,0 +1,30 @@
+{
+  "schema": "nwe.unreal-visual-asset-catalog/0.1",
+  "runtime_policy": "download-during-authoring-import-local-runtime-only",
+  "provider": "Poly Haven",
+  "license": "CC0-1.0",
+  "attribution_note": "Poly Haven attribution is not required by CC0; retained for provenance.",
+  "assets": {
+    "spruce": {
+      "slug": "fir_tree_01",
+      "source_page": "https://polyhaven.com/a/fir_tree_01",
+      "gltf_1k_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf",
+      "truth": "presentation proxy for SR16V spruce-dominated/conifer classes; fir model is not botanical spruce truth",
+      "selection_policy": "highest-numbered-authored-LOD-if-marked"
+    },
+    "pine": {
+      "slug": "pine_tree_01",
+      "source_page": "https://polyhaven.com/a/pine_tree_01",
+      "gltf_1k_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/pine_tree_01/pine_tree_01_1k.gltf",
+      "truth": "presentation proxy for SR16V pine-dominated/conifer classes",
+      "selection_policy": "highest-numbered-authored-LOD-if-marked"
+    },
+    "deciduous": {
+      "slug": "tree_small_02",
+      "source_page": "https://polyhaven.com/a/tree_small_02",
+      "gltf_1k_url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_small_02/tree_small_02_1k.gltf",
+      "truth": "generic broadleaf presentation proxy for SR16V deciduous/mixed classes; not species identity",
+      "selection_policy": "highest-numbered-authored-LOD-if-marked"
+    }
+  }
+}
