@@ -209,6 +209,7 @@ def main() -> int:
         default=project_root / "Saved" / "NWE" / "PrivateVisual",
     )
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--refresh", action="store_true")
     args = parser.parse_args()
 
     catalog = require_catalog(args.catalog.resolve())
@@ -218,6 +219,32 @@ def main() -> int:
         lock = verify_lock(lock_path, cache_root)
         print(json.dumps({"status": "PASS", "mode": "verify-only", "lock": lock}, indent=2))
         return 0
+    if lock_path.is_file() and not args.refresh:
+        try:
+            lock = verify_lock(lock_path, cache_root)
+            locked_sources = {
+                key: value.get("source_page")
+                for key, value in lock.get("assets", {}).items()
+                if isinstance(value, dict)
+            }
+            catalog_sources = {
+                key: value["source_page"] for key, value in catalog["assets"].items()
+            }
+            if locked_sources == catalog_sources:
+                print(
+                    json.dumps(
+                        {
+                            "status": "PASS",
+                            "mode": "verified-cache-hit",
+                            "lock_path": str(lock_path),
+                            "asset_count": len(lock["assets"]),
+                        },
+                        indent=2,
+                    )
+                )
+                return 0
+        except VisualAssetError:
+            pass
 
     cache_root.mkdir(parents=True, exist_ok=True)
     assets: dict[str, Any] = {}
