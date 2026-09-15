@@ -302,6 +302,71 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     assert fallback_roof.truth["roof_shape_counts"]["gabled"] == 1
 
 
+def test_source_backed_vegetation_is_grounded_filtered_and_class_mapped() -> None:
+    terrain = pipeline.HeightGrid(
+        tile_id=pipeline.EXPECTED_TILE_ID,
+        horizontal_crs=pipeline.EXPECTED_HORIZONTAL_CRS,
+        vertical_datum=pipeline.EXPECTED_VERTICAL_DATUM,
+        bounds=(611000.0, 6677000.0, 611100.0, 6677100.0),
+        width=2,
+        height=2,
+        pixel_size_m=50.0,
+        elevation_min_m=100.0,
+        elevation_max_m=100.0,
+        elevations=array("f", [100.0] * 4),
+    )
+    artifact = {
+        "schema": pipeline.VEGETATION_ARTIFACT_SCHEMA,
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "authority": {
+            "representative_positions": "deterministic-procedural-not-observed-individual-trees"
+        },
+        "segments": [
+            {"source_id": "spruce-a", "tree_class": 1, "mean_height_m": 18.0},
+            {"source_id": "pine-b", "tree_class": 2, "mean_height_m": 14.0},
+            {"source_id": "leaf-c", "tree_class": 5, "mean_height_m": 12.0},
+        ],
+        "instances": [
+            {"id": "spruce-1", "segment_index": 0, "easting_m": 611020.0, "northing_m": 6677020.0, "yaw_rad": 0.2, "represented_tree_weight": 4.0},
+            {"id": "pine-1", "segment_index": 1, "easting_m": 611060.0, "northing_m": 6677060.0, "yaw_rad": 1.2, "represented_tree_weight": 3.0},
+            {"id": "leaf-1", "segment_index": 2, "easting_m": 611080.0, "northing_m": 6677080.0, "yaw_rad": 2.2, "represented_tree_weight": 2.0},
+            {"id": "road-reject", "segment_index": 0, "easting_m": 611040.0, "northing_m": 6677040.0, "yaw_rad": 0.0, "represented_tree_weight": 5.0},
+        ],
+    }
+    roads = {
+        "paths": [{
+            "points": [
+                [611035.0, 6677040.0, 100.0],
+                [611045.0, 6677040.0, 100.0],
+            ]
+        }]
+    }
+    buildings = {"features": []}
+    layer = pipeline.compile_unreal_vegetation_layer(
+        artifact,
+        source_sha256="a" * 64,
+        terrain=terrain,
+        roads_artifact=roads,
+        buildings_artifact=buildings,
+        origin_e=611050.0,
+        origin_n=6677050.0,
+        origin_up_m=0.0,
+        spawn_e=612000.0,
+        spawn_n=6678000.0,
+    )
+    assert layer["schema"] == pipeline.VEGETATION_RUNTIME_SCHEMA
+    assert layer["stats"]["input_representatives"] == 4
+    assert layer["stats"]["render_representatives"] == 3
+    assert layer["stats"]["rejected"]["road"] == 1
+    assert {item["asset_class"] for item in layer["instances"]} == {"spruce", "pine", "deciduous"}
+    spruce = next(item for item in layer["instances"] if item["id"] == "spruce-1")
+    assert spruce["location_cm"] == pytest.approx([-3000.0, 3000.0, 10000.0])
+    assert 16.2 <= spruce["target_height_m"] <= 19.8
+    assert spruce["source_mean_height_m"] == 18.0
+    assert layer["truth_boundary"]["representative_positions"].startswith("deterministic-procedural")
+
+
 def test_derived_package_verifier_rejects_mesh_tampering(tmp_path: Path) -> None:
     packet = pipeline.MeshPacket(
         material_id="terrain",
