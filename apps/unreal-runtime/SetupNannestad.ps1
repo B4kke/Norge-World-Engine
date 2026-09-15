@@ -43,7 +43,8 @@ if ($NeedsGroundTooling) {
         & $SystemPython -m venv $VenvRoot
         if ($LASTEXITCODE -ne 0) { throw "Could not create Unreal authoring Python venv" }
     }
-    & $VenvPython -m pip install --disable-pip-version-check -r "apps\unreal-runtime\requirements-authoring.txt"
+    $AuthoringRequirements = Join-Path $ProjectRoot "requirements-authoring.txt"
+    & $VenvPython -m pip install --disable-pip-version-check -r $AuthoringRequirements
     if ($LASTEXITCODE -ne 0) { throw "Could not install Unreal authoring Python dependencies" }
     $ToolPython = $VenvPython
 }
