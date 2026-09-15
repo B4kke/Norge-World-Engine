@@ -88,10 +88,39 @@ configuration evidence, not a UE render or exact land-cover claim.
 ## UE5-GEO-01 — Road/building fidelity
 **Priority:** 4
 **Owner:** FORGE + LUMEN
-**Status:** OPEN
+**Status:** PARTIAL PASS — BUILDING HEIGHT ENRICHMENT PROVEN / ROAD WIDTH + ROOF SHAPE OPEN
 
-**Acceptance:** admitted road widths/lanes/surfaces and building heights/roofs
-replace fallbacks where sources support them; missing values remain explicit.
+**Building-height evidence — 2026-09-15:** Kartverket NHM DOM and DTM are admitted on the exact
+1 m EPSG:25832 Nannestad grid and compile into the renderer-neutral
+`nwe.building-surface-artifact/0.1-candidate`. The candidate is bound to the
+accepted OSM building artifact and carries only per-footprint DOM-DTM
+distributions; no raw raster or renderer geometry is promoted.
+
+The active Unreal adapter now resolves the derived transport to one immutable
+commit and fails closed on artifact SHA, semantic/config identity, building
+artifact SHA and calibration. Height priority is: OSM source height first;
+otherwise guarded DOM-DTM p90 with >=8 valid cells, >=2.2 m and conservative
+building-type plausibility ceiling; otherwise explicit fallback.
+
+**Exact current slice:** 135 footprints = **15 OSM source heights + 105 guarded
+DOM-derived presentation heights + 15 explicit fallbacks**. Current OSM roof
+shape/material coverage remains 0. Pitched presentation roofs may use DOM
+p95-p25 relief only for rise magnitude; roof shape/ridge/eave direction remains
+unproven.
+
+**Evidence:** `nhm-dom-building-height-proof` run `34971239381` PASS;
+baseline run `34971239525` passes the active Unreal real-snapshot integration
+and deterministic `all -> build` byte comparison with 105 DOM heights,
+15 fallback heights and 819 vegetation instances in both builds. Overall
+baseline remains red only at the historical non-active Cesium prototype build.
+
+**Acceptance remaining:** admitted road widths/lanes/surfaces; a measured
+high-confidence roof-orientation/shape source or inference candidate; exact
+missing values remain explicit.
+
+**Truth guard:** p90 height selection, plausibility thresholds, DOM relief roof
+rise and fallback roof shape are presentation policies, not surveyed building
+geometry.
 
 ## UE5-PACKAGE-01 — Windows packaged-build gate
 **Priority:** 5
@@ -198,7 +227,23 @@ the push/CI gate.
 # P1 — NEXT VISIBLE QUALITY
 
 ## P1-BUILDINGS-01 — Better building truth
-Multipolygon/relation ingestion, DOM-DTM/FKB capability-gated height enrichment and roof semantics. Keep source-backed vs procedural explicit.
+**Status:** DOM-DTM DERIVED HEIGHT HANDOFF PASS / ROOF ORIENTATION-SHAPE OPEN
+
+Kartverket NHM DOM-DTM candidate and Unreal handoff are proven for the accepted
+1 km tile. 132/135 footprints have usable source-derived surface distributions;
+the guarded adapter currently uses 105 of them for unresolved presentation
+height while preserving 15 OSM source heights and leaving 15 explicit
+fallbacks. Candidate artifact/config and exact evidence are recorded in
+`docs/proofs/2026-09-15-nhm-dom-building-surface-unreal.md`.
+
+**Next gate — `P1-BUILDINGS-01-ROOF-SURFACE`:** test whether spatial DOM
+samples can support a conservative ridge/orientation candidate for
+high-confidence footprints. Do not infer a roof shape when plane/ridge evidence
+is ambiguous. FKB remains a future richer source where access/licensing permits.
+
+**Truth guard:** DOM-DTM measurements are source-derived; p90 height, roof-rise
+proxy and any future fitted plane/ridge interpretation must remain separately
+identified from surveyed building truth.
 
 ## P1-ROADS-01 — Physical road semantics
 Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
