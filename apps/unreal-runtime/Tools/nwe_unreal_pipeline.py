@@ -46,6 +46,13 @@ LANDSCAPE_RESOLUTION = 1009
 RUNTIME_TERRAIN_RESOLUTION = 505
 TERRAIN_CHUNK_QUADS = 126
 
+VEGETATION_ARTIFACT_SCHEMA = "nwe.vegetation-representative-artifact/0.1-candidate"
+VEGETATION_RUNTIME_SCHEMA = "nwe.unreal-vegetation-layer/0.1"
+VEGETATION_ROAD_CLEARANCE_M = 6.0
+VEGETATION_BUILDING_CLEARANCE_M = 5.0
+VEGETATION_SPAWN_CLEARANCE_M = 15.0
+VEGETATION_MAX_GRADE = 0.75
+
 
 class PipelineError(RuntimeError):
     """A fail-closed input, provenance, geometry, or output error."""
@@ -1254,11 +1261,259 @@ def _artifact_path(snapshot_dir: Path, descriptor: dict[str, Any]) -> Path:
     return snapshot_dir / str(descriptor["compiled_path"])[2:]
 
 
+def _distance_to_segment_m(
+    easting: float,
+    northing: float,
+    a_e: float,
+    a_n: float,
+    b_e: float,
+    b_n: float,
+) -> float:
+    dx = b_e - a_e
+    dy = b_n - a_n
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return math.hypot(easting - a_e, northing - a_n)
+    t = max(0.0, min(1.0, ((easting - a_e) * dx + (northing - a_n) * dy) / length_sq))
+    return math.hypot(easting - (a_e + t * dx), northing - (a_n + t * dy))
+
+
+def _point_inside_polygon(
+    easting: float,
+    northing: float,
+    polygon: Sequence[Sequence[float]],
+) -> bool:
+    points = [(float(point[0]), float(point[1])) for point in polygon if len(point) >= 2]
+    if len(points) > 2 and points[0] == points[-1]:
+        points.pop()
+    if len(points) < 3:
+        return False
+    inside = False
+    previous = len(points) - 1
+    for current, (x_i, y_i) in enumerate(points):
+        x_j, y_j = points[previous]
+        if ((y_i > northing) != (y_j > northing)) and (
+            easting < (x_j - x_i) * (northing - y_i) / ((y_j - y_i) or 1e-15) + x_i
+        ):
+            inside = not inside
+        previous = current
+    return inside
+
+
+def _near_road(
+    easting: float,
+    northing: float,
+    roads_artifact: dict[str, Any],
+    clearance_m: float,
+) -> bool:
+    for path in roads_artifact.get("paths", []):
+        points = path.get("points") if isinstance(path, dict) else None
+        if not isinstance(points, list):
+            continue
+        for index in range(len(points) - 1):
+            a, b = points[index], points[index + 1]
+            if not (
+                isinstance(a, list)
+                and isinstance(b, list)
+                and len(a) >= 2
+                and len(b) >= 2
+            ):
+                continue
+            if _distance_to_segment_m(
+                easting,
+                northing,
+                float(a[0]),
+                float(a[1]),
+                float(b[0]),
+                float(b[1]),
+            ) <= clearance_m:
+                return True
+    return False
+
+
+def _near_building(
+    easting: float,
+    northing: float,
+    buildings_artifact: dict[str, Any],
+    clearance_m: float,
+) -> bool:
+    for feature in buildings_artifact.get("features", []):
+        polygon = feature.get("polygon") if isinstance(feature, dict) else None
+        if not isinstance(polygon, list) or len(polygon) < 3:
+            continue
+        if _point_inside_polygon(easting, northing, polygon):
+            return True
+        points = [(float(point[0]), float(point[1])) for point in polygon if len(point) >= 2]
+        if len(points) > 2 and points[0] == points[-1]:
+            points.pop()
+        for index, a in enumerate(points):
+            b = points[(index + 1) % len(points)]
+            if _distance_to_segment_m(easting, northing, a[0], a[1], b[0], b[1]) <= clearance_m:
+                return True
+    return False
+
+
+def _vegetation_asset_class(tree_class: int, instance_id: str) -> str:
+    if tree_class == 1:
+        return "spruce"
+    if tree_class == 2:
+        return "pine"
+    if tree_class == 5:
+        return "deciduous"
+    selector = int(hashlib.sha256(f"{instance_id}|asset-class".encode("utf-8")).hexdigest()[:8], 16)
+    if tree_class == 3:
+        return ("spruce", "pine")[selector % 2]
+    if tree_class == 4:
+        return ("spruce", "pine", "deciduous")[selector % 3]
+    raise PipelineError(f"unsupported vegetation tree class {tree_class}")
+
+
+def compile_unreal_vegetation_layer(
+    artifact: dict[str, Any],
+    *,
+    source_sha256: str,
+    terrain: HeightGrid,
+    roads_artifact: dict[str, Any],
+    buildings_artifact: dict[str, Any],
+    origin_e: float,
+    origin_n: float,
+    origin_up_m: float,
+    spawn_e: float,
+    spawn_n: float,
+) -> dict[str, Any]:
+    if artifact.get("schema") != VEGETATION_ARTIFACT_SCHEMA:
+        raise PipelineError(f"unsupported vegetation artifact schema: {artifact.get('schema')}")
+    if artifact.get("tile_id") != EXPECTED_TILE_ID or artifact.get("horizontal_crs") != EXPECTED_HORIZONTAL_CRS:
+        raise PipelineError("vegetation artifact does not match the accepted Nannestad tile/CRS")
+    if not re.fullmatch(r"[a-f0-9]{64}", source_sha256):
+        raise PipelineError("vegetation source artifact SHA-256 is invalid")
+    authority = artifact.get("authority")
+    if not isinstance(authority, dict) or authority.get("representative_positions") != "deterministic-procedural-not-observed-individual-trees":
+        raise PipelineError("vegetation artifact authority boundary is missing")
+    segments = artifact.get("segments")
+    instances = artifact.get("instances")
+    if not isinstance(segments, list) or not segments or not isinstance(instances, list) or not instances:
+        raise PipelineError("vegetation artifact has no segments/instances")
+
+    min_e, min_n, max_e, max_n = terrain.bounds
+    output: list[dict[str, Any]] = []
+    rejected = {"road": 0, "building": 0, "spawn": 0, "slope": 0}
+    class_counts: dict[str, int] = {}
+    represented_weight = 0.0
+    slope_sample_m = max(2.0, terrain.pixel_size_m * 2.0)
+
+    for instance_index, instance in enumerate(instances):
+        if not isinstance(instance, dict):
+            raise PipelineError(f"vegetation instance {instance_index} is invalid")
+        segment_index = instance.get("segment_index")
+        if isinstance(segment_index, bool) or not isinstance(segment_index, int) or not (0 <= segment_index < len(segments)):
+            raise PipelineError(f"vegetation instance {instance_index} has invalid segment_index")
+        segment = segments[segment_index]
+        if not isinstance(segment, dict):
+            raise PipelineError(f"vegetation segment {segment_index} is invalid")
+        instance_id = str(instance.get("id") or "")
+        if not instance_id:
+            raise PipelineError(f"vegetation instance {instance_index} lacks id")
+        easting = _finite(instance.get("easting_m"), "vegetation easting")
+        northing = _finite(instance.get("northing_m"), "vegetation northing")
+        if not (min_e <= easting <= max_e and min_n <= northing <= max_n):
+            raise PipelineError(f"vegetation instance {instance_id} lies outside the terrain tile")
+        if math.hypot(easting - spawn_e, northing - spawn_n) < VEGETATION_SPAWN_CLEARANCE_M:
+            rejected["spawn"] += 1
+            continue
+        if _near_road(easting, northing, roads_artifact, VEGETATION_ROAD_CLEARANCE_M):
+            rejected["road"] += 1
+            continue
+        if _near_building(easting, northing, buildings_artifact, VEGETATION_BUILDING_CLEARANCE_M):
+            rejected["building"] += 1
+            continue
+
+        elevation = sample_height(terrain, easting, northing)
+        sample_e = min(max_e, easting + slope_sample_m)
+        sample_n = min(max_n, northing + slope_sample_m)
+        grade = math.hypot(
+            sample_height(terrain, sample_e, northing) - elevation,
+            sample_height(terrain, easting, sample_n) - elevation,
+        ) / slope_sample_m
+        if not math.isfinite(grade) or grade > VEGETATION_MAX_GRADE:
+            rejected["slope"] += 1
+            continue
+
+        tree_class = int(segment.get("tree_class"))
+        asset_class = _vegetation_asset_class(tree_class, instance_id)
+        mean_height = _finite(segment.get("mean_height_m"), "vegetation mean_height_m")
+        height_selector = int(
+            hashlib.sha256(f"{instance_id}|height".encode("utf-8")).hexdigest()[:8],
+            16,
+        ) / 0xFFFFFFFF
+        target_height = max(2.0, min(35.0, mean_height * (0.90 + height_selector * 0.20)))
+        yaw_rad = _finite(instance.get("yaw_rad"), "vegetation yaw_rad")
+        local = projected_to_unreal_m(
+            easting,
+            northing,
+            elevation,
+            origin_e=origin_e,
+            origin_n=origin_n,
+            origin_up_m=origin_up_m,
+        )
+        weight = _finite(instance.get("represented_tree_weight"), "vegetation represented_tree_weight")
+        represented_weight += weight
+        class_counts[asset_class] = class_counts.get(asset_class, 0) + 1
+        output.append(
+            {
+                "id": instance_id,
+                "asset_class": asset_class,
+                "location_cm": [value * 100.0 for value in local],
+                "yaw_deg": math.degrees(yaw_rad) % 360.0,
+                "target_height_m": target_height,
+                "source_mean_height_m": mean_height,
+                "source_tree_class": tree_class,
+                "source_segment_id": str(segment.get("source_id") or ""),
+                "represented_tree_weight": weight,
+            }
+        )
+
+    if not output:
+        raise PipelineError("vegetation presentation filters rejected every representative instance")
+    return {
+        "schema": VEGETATION_RUNTIME_SCHEMA,
+        "status": "VERIFIED_DERIVED_PRESENTATION_LAYER",
+        "source_artifact": {
+            "schema": VEGETATION_ARTIFACT_SCHEMA,
+            "sha256": source_sha256,
+            "authority": authority,
+        },
+        "truth_boundary": {
+            "forest_structure": "source-backed-modelled-sr16v",
+            "representative_positions": "deterministic-procedural-not-observed-individual-trees",
+            "terrain_grounding": "derived-from-verified-dtm1",
+            "road_building_spawn_slope_filters": "presentation-only-runtime-adapter",
+            "asset_class": "presentation-proxy-derived-from-source-tree-class",
+            "target_height_variation": "presentation-only-plus-minus-10-percent-around-source-mean",
+        },
+        "filter_policy": {
+            "road_clearance_m": VEGETATION_ROAD_CLEARANCE_M,
+            "building_clearance_m": VEGETATION_BUILDING_CLEARANCE_M,
+            "spawn_clearance_m": VEGETATION_SPAWN_CLEARANCE_M,
+            "max_grade": VEGETATION_MAX_GRADE,
+        },
+        "instances": output,
+        "stats": {
+            "input_representatives": len(instances),
+            "render_representatives": len(output),
+            "rejected": rejected,
+            "asset_class_counts": {key: class_counts[key] for key in sorted(class_counts)},
+            "represented_tree_weight_sum_after_presentation_filters": represented_weight,
+        },
+    }
+
+
 def build_unreal_package(
     snapshot_dir: Path,
     output_dir: Path,
     *,
     provenance_verifier: Callable[[Path], None] = verify_runtime_provenance,
+    vegetation_artifact_path: Path | None = None,
 ) -> dict[str, Any]:
     snapshot_dir = snapshot_dir.resolve()
     output_dir = output_dir.resolve()
@@ -1338,6 +1593,31 @@ def build_unreal_package(
     ):
         persist_mesh(name, packet, manifest["buildings"]["artifact_sha256"], True)
 
+    vegetation_layer = None
+    if vegetation_artifact_path is not None:
+        vegetation_path = vegetation_artifact_path.resolve()
+        if not vegetation_path.is_file():
+            raise PipelineError(f"vegetation artifact is missing: {vegetation_path}")
+        vegetation_bytes = vegetation_path.read_bytes()
+        try:
+            vegetation_artifact = json.loads(vegetation_bytes.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise PipelineError(f"vegetation artifact is invalid JSON: {exc}") from exc
+        if not isinstance(vegetation_artifact, dict):
+            raise PipelineError("vegetation artifact must be an object")
+        vegetation_layer = compile_unreal_vegetation_layer(
+            vegetation_artifact,
+            source_sha256=_sha256_bytes(vegetation_bytes),
+            terrain=terrain,
+            roads_artifact=roads_artifact,
+            buildings_artifact=buildings_artifact,
+            origin_e=origin_e,
+            origin_n=origin_n,
+            origin_up_m=origin_up_m,
+            spawn_e=origin_e,
+            spawn_n=origin_n,
+        )
+
     spawn_up_m = sample_height(terrain, origin_e, origin_n) + 2.0
     spawn_unreal_m = projected_to_unreal_m(
         origin_e,
@@ -1398,11 +1678,20 @@ def build_unreal_package(
         "truth_boundaries": {
             "terrain": "source-backed DTM1 / EPSG:25832 / NN2000",
             "roads": "source-backed NVDB centerlines; widths remain presentation fallbacks",
-            "buildings": "source-backed OSM footprints; unresolved heights and flat roofs remain presentation fallbacks",
-            "photorealism": "not claimed until source-backed buildings, production materials, vegetation, and a real UE render pass exist",
+            "buildings": "source-backed OSM footprints/heights/selected roof tags where present; missing roof geometry uses explicit presentation profiles",
+            "vegetation": (
+                "source-backed SR16V forest semantics with deterministic representative positions and presentation-only grounding/filtering"
+                if vegetation_layer is not None
+                else "not packaged"
+            ),
+            "photorealism": "not claimed until ground imagery, richer building semantics, authored vegetation assets, and a real UE render acceptance pass exist",
         },
         "attribution": manifest["attribution"],
     }
+    if vegetation_layer is not None:
+        package["vegetation"] = vegetation_layer
+        if "Kilde: NIBIO" not in package["attribution"]:
+            package["attribution"].append("Kilde: NIBIO")
     package_bytes = _canonical_json_bytes(package)
     _write_atomic(output_dir / "world-package.json", package_bytes)
     _write_atomic(
@@ -1467,6 +1756,38 @@ def verify_unreal_package(output_dir: Path) -> dict[str, Any]:
     if _sha256_file(landscape_path) != landscape.get("sha256"):
         raise PipelineError("derived Landscape SHA-256 mismatch")
 
+    vegetation = package.get("vegetation")
+    if vegetation is not None:
+        if (
+            not isinstance(vegetation, dict)
+            or vegetation.get("schema") != VEGETATION_RUNTIME_SCHEMA
+            or vegetation.get("status") != "VERIFIED_DERIVED_PRESENTATION_LAYER"
+        ):
+            raise PipelineError("derived vegetation layer schema/status is invalid")
+        vegetation_source = vegetation.get("source_artifact")
+        vegetation_instances = vegetation.get("instances")
+        if (
+            not isinstance(vegetation_source, dict)
+            or vegetation_source.get("schema") != VEGETATION_ARTIFACT_SCHEMA
+            or not isinstance(vegetation_source.get("sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", vegetation_source["sha256"])
+            or not isinstance(vegetation_instances, list)
+            or not vegetation_instances
+        ):
+            raise PipelineError("derived vegetation source/instances are invalid")
+        for index, instance in enumerate(vegetation_instances):
+            if not isinstance(instance, dict) or instance.get("asset_class") not in {"spruce", "pine", "deciduous"}:
+                raise PipelineError(f"derived vegetation instance {index} has invalid asset class")
+            location = instance.get("location_cm")
+            if (
+                not isinstance(location, list)
+                or len(location) != 3
+                or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) for value in location)
+            ):
+                raise PipelineError(f"derived vegetation instance {index} has invalid location")
+            if not (0.5 <= _finite(instance.get("target_height_m"), f"vegetation[{index}].target_height_m") <= 60.0):
+                raise PipelineError(f"derived vegetation instance {index} has invalid target height")
+
     descriptors = package.get("mesh_packets")
     if not isinstance(descriptors, list) or not descriptors:
         raise PipelineError("derived world package contains no mesh packets")
@@ -1526,6 +1847,12 @@ def _parser() -> argparse.ArgumentParser:
                 / "Nannestad"
                 / "Generated",
             )
+            subparser.add_argument(
+                "--vegetation-artifact",
+                type=Path,
+                default=None,
+                help="Optional compiled nwe.vegetation-representative-artifact/0.1-candidate JSON.",
+            )
     return parser
 
 
@@ -1545,6 +1872,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.snapshot_dir,
                 args.output_dir,
                 provenance_verifier=lambda _snapshot: None,
+                vegetation_artifact_path=args.vegetation_artifact,
             )
     except PipelineError as exc:
         print(f"NWE_UNREAL_PIPELINE_REJECTED: {exc}", file=sys.stderr)
@@ -1558,6 +1886,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "provenance": "READY_FOR_RUNTIME",
         "output": str(args.output_dir.resolve()) if hasattr(args, "output_dir") else None,
         "mesh_packets": len(package["mesh_packets"]) if package is not None else None,
+        "vegetation_instances": (
+            len(package.get("vegetation", {}).get("instances", []))
+            if package is not None
+            else None
+        ),
     }
     print(json.dumps(result, sort_keys=True))
     return 0
