@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from array import array
+import hashlib
 import importlib.util
 import json
 import math
