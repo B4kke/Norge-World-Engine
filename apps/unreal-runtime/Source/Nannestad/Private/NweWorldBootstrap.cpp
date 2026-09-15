@@ -78,6 +78,31 @@ ANweWorldBootstrap::ANweWorldBootstrap()
         TEXT("building_roofs_fallback"),
         TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Fallback.M_Roof_Fallback"))));
 
+    MaterialOverrides.Add(
+        TEXT("building_wall_white"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_White.M_Wall_White"))));
+    MaterialOverrides.Add(
+        TEXT("building_wall_yellow"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Yellow.M_Wall_Yellow"))));
+    MaterialOverrides.Add(
+        TEXT("building_wall_red"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Red.M_Wall_Red"))));
+    MaterialOverrides.Add(
+        TEXT("building_wall_grey"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Grey.M_Wall_Grey"))));
+    MaterialOverrides.Add(
+        TEXT("building_wall_wood"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Wall_Wood.M_Wall_Wood"))));
+    MaterialOverrides.Add(
+        TEXT("building_roof_red"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Red.M_Roof_Red"))));
+    MaterialOverrides.Add(
+        TEXT("building_roof_dark"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Dark.M_Roof_Dark"))));
+    MaterialOverrides.Add(
+        TEXT("building_roof_grey"),
+        TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Materials/M_Roof_Grey.M_Roof_Grey"))));
+
     VegetationMeshOverrides.Add(
         TEXT("spruce"),
         TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Nannestad/GeneratedVisuals/Vegetation/SM_SpruceProxy.SM_SpruceProxy"))));
