@@ -113,6 +113,11 @@ def test_nannestad_visual_authoring_contracts_are_local_and_truth_bounded() -> N
     imagery_tool = (PROJECT_ROOT / "Tools" / "prepare_ground_imagery.py").read_text(
         encoding="utf-8"
     )
+    sentinel_tool = (PROJECT_ROOT / "Tools" / "fetch_sentinel_ground_imagery.py").read_text(
+        encoding="utf-8"
+    )
+    setup_script = (PROJECT_ROOT / "SetupNannestad.ps1").read_text(encoding="utf-8")
+    authoring_requirements = (PROJECT_ROOT / "requirements-authoring.txt").read_text(encoding="utf-8")
     asset_tool = (PROJECT_ROOT / "Tools" / "acquire_visual_assets.py").read_text(
         encoding="utf-8"
     )
@@ -134,6 +139,19 @@ def test_nannestad_visual_authoring_contracts_are_local_and_truth_bounded() -> N
     assert "private-only" in imagery_tool
     assert "rights_basis" in imagery_tool
     assert "source-value-max" in imagery_tool
+
+    assert 'STAC_ROOT = "https://earth-search.aws.element84.com/v1"' in sentinel_tool
+    assert "sentinel-2-c1-l2a" in sentinel_tool
+    assert "sentinel-2-l2a" in sentinel_tool
+    assert "Contains modified Copernicus Sentinel data" in sentinel_tool
+    assert "presentation-only-10m-satellite-ground-color-not-orthophoto" in sentinel_tool
+    assert "AWS_ACCESS_KEY" not in sentinel_tool
+    assert "AWS_SECRET" not in sentinel_tool
+    assert "GroundImageryPath" in setup_script
+    assert "SkipSentinelGroundFallback" in setup_script
+    assert setup_script.index("if ($GroundImageryPath)") < setup_script.index("elseif (-not $SkipSentinelGroundFallback)")
+    assert "rasterio==1.5.0" in authoring_requirements
+    assert "pyproj==3.7.2" in authoring_requirements
 
     assert 'LOCK_SCHEMA = "nwe.unreal-visual-asset-lock/0.1"' in asset_tool
     assert 'ALLOWED_HOST = "dl.polyhaven.org"' in asset_tool
