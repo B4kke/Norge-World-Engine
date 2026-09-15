@@ -235,7 +235,7 @@ def create_material(
     unreal.EditorAssetLibrary.save_loaded_asset(material, only_if_is_dirty=False)
 
 
-def ensure_polyhaven_materials() -> None:
+def ensure_polyhaven_materials() -> dict[str, dict]:
     catalog, asset_root = require_material_catalog()
     imported: dict[str, dict] = {}
     map_suffix = {"diffuse": "D", "normal_dx": "N", "roughness": "R"}
@@ -270,9 +270,42 @@ def ensure_polyhaven_materials() -> None:
     create_material(
         "M_Roof_Fallback", imported["building_roofs"], (0.54, 0.58, 0.60), two_sided=True
     )
+
+    # Nannestad presentation palette. These tints are explicitly presentation
+    # classes over the local CC0 PBR surfaces. When OSM colour/material tags
+    # exist the compiler selects the nearest class; otherwise class choice is
+    # deterministic by building type/id and never becomes world truth.
+    wall_tints = {
+        "White": (0.95, 0.93, 0.87),
+        "Yellow": (0.88, 0.70, 0.34),
+        "Red": (0.58, 0.20, 0.14),
+        "Grey": (0.52, 0.56, 0.55),
+        "Wood": (0.50, 0.34, 0.22),
+    }
+    roof_tints = {
+        "Red": (0.52, 0.16, 0.11),
+        "Dark": (0.19, 0.21, 0.21),
+        "Grey": (0.50, 0.52, 0.52),
+    }
+    for label, tint in wall_tints.items():
+        create_material(
+            f"M_Wall_{label}",
+            imported["building_walls"],
+            tint,
+            two_sided=True,
+        )
+    for label, tint in roof_tints.items():
+        create_material(
+            f"M_Roof_{label}",
+            imported["building_roofs"],
+            tint,
+            two_sided=True,
+        )
+
     unreal.log(
         "NWE_MATERIAL_IMPORT_PASS: verified local CC0 catalog, DirectX normals, "
-        "roughness maps, anisotropic filtering, and six PBR materials."
+        "roughness maps, anisotropic filtering, six compatibility PBR materials, "
+        "and eight Nannestad building presentation classes."
     )
     return imported
 
