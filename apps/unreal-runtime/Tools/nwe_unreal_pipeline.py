@@ -59,6 +59,31 @@ VEGETATION_BUILDING_CLEARANCE_M = 5.0
 VEGETATION_SPAWN_CLEARANCE_M = 15.0
 VEGETATION_MAX_GRADE = 0.75
 
+BUILDING_SURFACE_ARTIFACT_SCHEMA = "nwe.building-surface-artifact/0.1-candidate"
+BUILDING_SURFACE_VERIFICATION_SCHEMA = "nwe.building-surface-artifact-verification/0.1"
+BUILDING_SURFACE_COMPILER_CONFIG_ID = "d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15"
+BUILDING_SURFACE_TRANSPORT_BRANCH_API = (
+    "https://api.github.com/repos/B4kke/Norge-World-Engine/branches/building-surface-runtime"
+)
+BUILDING_SURFACE_TRANSPORT_ROOT = "nannestad-preview-1"
+BUILDING_SURFACE_MIN_SAMPLES = 8
+BUILDING_SURFACE_MIN_P90_M = 2.2
+
+DEFAULT_VEGETATION_ARTIFACT = (
+    Path(__file__).resolve().parents[1]
+    / "Saved"
+    / "NWE"
+    / "Vegetation"
+    / "vegetation-representatives.json"
+)
+DEFAULT_BUILDING_SURFACE_ARTIFACT = (
+    Path(__file__).resolve().parents[1]
+    / "Saved"
+    / "NWE"
+    / "BuildingSurface"
+    / "building-surface.json"
+)
+
 
 class PipelineError(RuntimeError):
     """A fail-closed input, provenance, geometry, or output error."""
@@ -277,6 +302,151 @@ def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
         _canonical_json_bytes(transport_lock),
     )
     return destination.resolve()
+
+
+
+def validate_pinned_building_surface_transport(
+    artifact_bytes: bytes,
+    verification: dict[str, Any],
+    *,
+    expected_building_sha256: str,
+) -> dict[str, Any]:
+    actual_sha = _sha256_bytes(artifact_bytes)
+    verified_sha = verification.get("artifact_sha256")
+    if (
+        not isinstance(verified_sha, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", verified_sha)
+        or actual_sha != verified_sha
+    ):
+        raise PipelineError(
+            "published building-surface bytes do not match the immutable verification record"
+        )
+    if (
+        verification.get("schema") != BUILDING_SURFACE_VERIFICATION_SCHEMA
+        or verification.get("status") != "PASS"
+        or verification.get("compiler_config_id") != BUILDING_SURFACE_COMPILER_CONFIG_ID
+        or verification.get("building_artifact_sha256") != expected_building_sha256
+        or int(verification.get("feature_count") or 0) <= 0
+        or int(verification.get("source_building_count") or 0) <= 0
+    ):
+        raise PipelineError("published building-surface verification identity is not accepted")
+    try:
+        value = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"published building-surface artifact is invalid JSON: {exc}") from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != BUILDING_SURFACE_ARTIFACT_SCHEMA
+        or value.get("tile_id") != EXPECTED_TILE_ID
+        or value.get("horizontal_crs") != EXPECTED_HORIZONTAL_CRS
+        or value.get("compiler_config_id") != BUILDING_SURFACE_COMPILER_CONFIG_ID
+    ):
+        raise PipelineError("published building-surface artifact contract is not accepted")
+    source = value.get("source")
+    stats = value.get("stats")
+    authority = value.get("authority")
+    if (
+        not isinstance(source, dict)
+        or source.get("building_artifact_sha256") != expected_building_sha256
+        or not isinstance(stats, dict)
+        or int(stats.get("feature_count") or 0) != int(verification["feature_count"])
+        or int(stats.get("source_building_count") or 0)
+        != int(verification["source_building_count"])
+        or not isinstance(authority, dict)
+        or authority.get("measurements")
+        != "derived-dom-minus-dtm-quantiles-inside-footprint"
+        or authority.get("roof_shape") != "not-contained"
+    ):
+        raise PipelineError("published building-surface artifact/verification contract disagrees")
+    calibration = value.get("calibration")
+    p90 = calibration.get("p90") if isinstance(calibration, dict) else None
+    if (
+        not isinstance(p90, dict)
+        or int(p90.get("count") or 0) < 10
+        or _finite(p90.get("mae_m"), "building-surface p90.mae_m") > 1.5
+        or _finite(
+            p90.get("within_2m_fraction"),
+            "building-surface p90.within_2m_fraction",
+        ) < 0.90
+    ):
+        raise PipelineError("published building-surface p90 calibration is below acceptance")
+    features = value.get("features")
+    if not isinstance(features, list) or len(features) != int(stats["feature_count"]):
+        raise PipelineError("published building-surface feature count is invalid")
+    seen: set[str] = set()
+    for index, feature in enumerate(features):
+        if not isinstance(feature, dict):
+            raise PipelineError(f"building-surface feature {index} must be an object")
+        source_id = feature.get("source_id")
+        if not isinstance(source_id, str) or not source_id or source_id in seen:
+            raise PipelineError(f"building-surface feature {index} has invalid source_id")
+        seen.add(source_id)
+        measurements = feature.get("height_delta_m")
+        if not isinstance(measurements, dict):
+            raise PipelineError(f"building-surface feature {source_id} lacks height_delta_m")
+        p90_m = _finite(measurements.get("p90"), f"{source_id}.height_delta_m.p90")
+        if p90_m <= 0.0:
+            raise PipelineError(f"building-surface feature {source_id} has non-positive p90")
+        samples = feature.get("sample_count")
+        if isinstance(samples, bool) or not isinstance(samples, int) or samples < 4:
+            raise PipelineError(f"building-surface feature {source_id} has invalid sample_count")
+    return value
+
+
+def fetch_pinned_building_surface_artifact(
+    destination: Path,
+    *,
+    expected_building_sha256: str,
+) -> Path:
+    try:
+        branch = json.loads(_download(BUILDING_SURFACE_TRANSPORT_BRANCH_API).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(
+            f"building-surface transport branch response is invalid JSON: {exc}"
+        ) from exc
+    commit_sha = branch.get("commit", {}).get("sha") if isinstance(branch, dict) else None
+    if not isinstance(commit_sha, str) or not re.fullmatch(r"[a-f0-9]{40}", commit_sha):
+        raise PipelineError(
+            "building-surface transport branch did not resolve to an immutable commit"
+        )
+    base = (
+        "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
+        f"{commit_sha}/{BUILDING_SURFACE_TRANSPORT_ROOT}"
+    )
+    verification_bytes = _download(f"{base}/building-surface-verification.json")
+    data = _download(f"{base}/building-surface.json")
+    try:
+        verification = json.loads(verification_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(
+            f"published building-surface verification is invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(verification, dict):
+        raise PipelineError("published building-surface verification must be an object")
+    validate_pinned_building_surface_transport(
+        data,
+        verification,
+        expected_building_sha256=expected_building_sha256,
+    )
+    destination = destination.resolve()
+    _write_atomic(destination, data)
+    _write_atomic(
+        destination.with_name("building-surface-verification.json"),
+        verification_bytes,
+    )
+    transport_lock = {
+        "schema": "nwe.unreal-building-surface-transport-lock/0.1",
+        "transport_commit": commit_sha,
+        "artifact_sha256": verification["artifact_sha256"],
+        "artifact_semantic_sha256": verification["artifact_semantic_sha256"],
+        "compiler_config_id": verification["compiler_config_id"],
+        "building_artifact_sha256": verification["building_artifact_sha256"],
+    }
+    _write_atomic(
+        destination.with_suffix(destination.suffix + ".transport.json"),
+        _canonical_json_bytes(transport_lock),
+    )
+    return destination
 
 
 def validate_snapshot_manifest(manifest: dict[str, Any]) -> None:
