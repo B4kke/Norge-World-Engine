@@ -1373,6 +1373,47 @@ def _building_surface_index(
     return index
 
 
+def _roof_orientation_index(
+    roof_artifact: dict[str, Any] | None,
+    buildings_artifact: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    if roof_artifact is None:
+        return {}
+    features = roof_artifact.get("features")
+    building_features = buildings_artifact.get("features")
+    if not isinstance(features, list) or not isinstance(building_features, list):
+        raise PipelineError("roof-orientation/building artifact features must be lists")
+    source_by_id = {
+        feature.get("source_id"): feature
+        for feature in building_features
+        if isinstance(feature, dict)
+        and isinstance(feature.get("source_id"), str)
+        and feature.get("source_id")
+    }
+    index: dict[str, dict[str, Any]] = {}
+    for candidate in features:
+        if not isinstance(candidate, dict):
+            raise PipelineError("roof-orientation feature must be an object")
+        source_id = candidate.get("source_id")
+        if not isinstance(source_id, str) or source_id not in source_by_id:
+            raise PipelineError(
+                f"roof-orientation source_id does not exist in accepted building artifact: {source_id!r}"
+            )
+        source_feature = source_by_id[source_id]
+        if str(candidate.get("building") or "yes") != str(source_feature.get("building") or "yes"):
+            raise PipelineError(f"roof-orientation building type mismatch for {source_id}")
+        if source_id in index:
+            raise PipelineError(f"duplicate roof-orientation source_id {source_id}")
+        angle = _finite(
+            candidate.get("ridge_orientation_deg_from_east_ccw"),
+            f"{source_id}.ridge_orientation",
+        )
+        if not (0.0 <= angle < 180.0):
+            raise PipelineError(f"roof-orientation angle is invalid for {source_id}")
+        index[source_id] = candidate
+    return index
+
+
 def _positive_measurement_m(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -1527,12 +1568,30 @@ def _append_flat_roof(
         )
 
 
+def _ridge_direction_local_xy(angle_deg_from_east_ccw: float) -> tuple[float, float]:
+    theta = math.radians(angle_deg_from_east_ccw)
+    # Projected north maps to Unreal-local -Y.
+    return math.cos(theta), -math.sin(theta)
+
+
+def _direction_alignment(
+    vector: tuple[float, float],
+    target: tuple[float, float],
+) -> float:
+    length = math.hypot(vector[0], vector[1])
+    if length <= 1e-9:
+        return -1.0
+    return abs((vector[0] * target[0] + vector[1] * target[1]) / length)
+
+
 def _append_gabled_roof(
     roof: dict[str, list[Any]],
     wall: dict[str, list[Any]],
     local_xy: Sequence[tuple[float, float, float]],
     eave_z: float,
     ridge_z: float,
+    *,
+    ridge_orientation_deg_from_east_ccw: float | None = None,
 ) -> bool:
     if len(local_xy) != 4:
         return False
@@ -1544,33 +1603,50 @@ def _append_gabled_roof(
         )
         for index in range(4)
     ]
-    if lengths[0] + lengths[2] >= lengths[1] + lengths[3]:
-        ridge_a = (
-            (corners[3][0] + corners[0][0]) / 2.0,
-            (corners[3][1] + corners[0][1]) / 2.0,
-            ridge_z,
+    first_a = (
+        (corners[3][0] + corners[0][0]) / 2.0,
+        (corners[3][1] + corners[0][1]) / 2.0,
+        ridge_z,
+    )
+    first_b = (
+        (corners[1][0] + corners[2][0]) / 2.0,
+        (corners[1][1] + corners[2][1]) / 2.0,
+        ridge_z,
+    )
+    second_a = (
+        (corners[0][0] + corners[1][0]) / 2.0,
+        (corners[0][1] + corners[1][1]) / 2.0,
+        ridge_z,
+    )
+    second_b = (
+        (corners[2][0] + corners[3][0]) / 2.0,
+        (corners[2][1] + corners[3][1]) / 2.0,
+        ridge_z,
+    )
+
+    use_first = lengths[0] + lengths[2] >= lengths[1] + lengths[3]
+    if ridge_orientation_deg_from_east_ccw is not None:
+        target = _ridge_direction_local_xy(ridge_orientation_deg_from_east_ccw)
+        first_score = _direction_alignment(
+            (first_b[0] - first_a[0], first_b[1] - first_a[1]),
+            target,
         )
-        ridge_b = (
-            (corners[1][0] + corners[2][0]) / 2.0,
-            (corners[1][1] + corners[2][1]) / 2.0,
-            ridge_z,
+        second_score = _direction_alignment(
+            (second_b[0] - second_a[0], second_b[1] - second_a[1]),
+            target,
         )
+        if abs(first_score - second_score) > 1e-6:
+            use_first = first_score > second_score
+
+    if use_first:
+        ridge_a, ridge_b = first_a, first_b
         roof_quads = (
             (corners[0], corners[1], ridge_b, ridge_a),
             (corners[2], corners[3], ridge_a, ridge_b),
         )
         gables = ((corners[3], corners[0], ridge_a), (corners[1], corners[2], ridge_b))
     else:
-        ridge_a = (
-            (corners[0][0] + corners[1][0]) / 2.0,
-            (corners[0][1] + corners[1][1]) / 2.0,
-            ridge_z,
-        )
-        ridge_b = (
-            (corners[2][0] + corners[3][0]) / 2.0,
-            (corners[2][1] + corners[3][1]) / 2.0,
-            ridge_z,
-        )
+        ridge_a, ridge_b = second_a, second_b
         roof_quads = (
             (corners[1], corners[2], ridge_b, ridge_a),
             (corners[3], corners[0], ridge_a, ridge_b),
@@ -1582,6 +1658,75 @@ def _append_gabled_roof(
         _append_triangle(roof, q0, q2, q3, roof_uv=True, prefer_up=True)
     for a, b, apex in gables:
         _append_triangle(wall, a, b, apex, roof_uv=False)
+    return True
+
+
+def _is_convex_polygon(points: Sequence[tuple[float, float, float]]) -> bool:
+    sign = 0
+    for index in range(len(points)):
+        a = (points[index][0], points[index][1])
+        b = (points[(index + 1) % len(points)][0], points[(index + 1) % len(points)][1])
+        d = (points[(index + 2) % len(points)][0], points[(index + 2) % len(points)][1])
+        cross = _cross(a, b, d)
+        if abs(cross) <= 1e-8:
+            continue
+        current = 1 if cross > 0.0 else -1
+        if sign and current != sign:
+            return False
+        sign = current
+    return sign != 0
+
+
+def _append_hipped_ridge_roof(
+    roof: dict[str, list[Any]],
+    local_xy: Sequence[tuple[float, float, float]],
+    eave_z: float,
+    ridge_z: float,
+    *,
+    ridge_orientation_deg_from_east_ccw: float,
+) -> bool:
+    if len(local_xy) < 4 or not _is_convex_polygon(local_xy):
+        return False
+    center_x = sum(point[0] for point in local_xy) / len(local_xy)
+    center_y = sum(point[1] for point in local_xy) / len(local_xy)
+    direction = _ridge_direction_local_xy(ridge_orientation_deg_from_east_ccw)
+    perpendicular = (-direction[1], direction[0])
+    projections = [
+        (
+            (point[0] - center_x) * direction[0] + (point[1] - center_y) * direction[1],
+            (point[0] - center_x) * perpendicular[0] + (point[1] - center_y) * perpendicular[1],
+        )
+        for point in local_xy
+    ]
+    along_values = [value[0] for value in projections]
+    cross_values = [value[1] for value in projections]
+    along_span = max(along_values) - min(along_values)
+    cross_span = max(cross_values) - min(cross_values)
+    # Equal-pitch rectangular hip geometry has ridge length ~= long-short.
+    ridge_half = max(0.0, (along_span - cross_span) / 2.0)
+    if ridge_half < 0.25:
+        return False
+
+    corners = [(point[0], point[1], eave_z) for point in local_xy]
+    ridge_targets: list[tuple[float, float, float]] = []
+    for along, _cross_value in projections:
+        clamped = max(-ridge_half, min(ridge_half, along))
+        ridge_targets.append(
+            (
+                center_x + direction[0] * clamped,
+                center_y + direction[1] * clamped,
+                ridge_z,
+            )
+        )
+    for index, a in enumerate(corners):
+        b = corners[(index + 1) % len(corners)]
+        ridge_a = ridge_targets[index]
+        ridge_b = ridge_targets[(index + 1) % len(ridge_targets)]
+        if math.hypot(ridge_b[0] - ridge_a[0], ridge_b[1] - ridge_a[1]) <= 1e-6:
+            _append_triangle(roof, a, b, ridge_a, roof_uv=True, prefer_up=True)
+        else:
+            _append_triangle(roof, a, b, ridge_b, roof_uv=True, prefer_up=True)
+            _append_triangle(roof, a, ridge_b, ridge_a, roof_uv=True, prefer_up=True)
     return True
 
 
@@ -1694,6 +1839,8 @@ def building_mesh_packets(
     origin_up_m: float,
     building_surface_artifact: dict[str, Any] | None = None,
     building_surface_sha256: str | None = None,
+    roof_orientation_artifact: dict[str, Any] | None = None,
+    roof_orientation_sha256: str | None = None,
 ) -> list[tuple[str, MeshPacket]]:
     features = _validate_vector_artifact(
         artifact,
@@ -1702,6 +1849,12 @@ def building_mesh_packets(
         expected_count=expected_count,
     )
     surface_by_id = _building_surface_index(building_surface_artifact, artifact)
+    roof_orientation_by_id = _roof_orientation_index(roof_orientation_artifact, artifact)
+    if roof_orientation_artifact is not None and (
+        not isinstance(roof_orientation_sha256, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", roof_orientation_sha256)
+    ):
+        raise PipelineError("roof-orientation SHA-256 is required when the artifact is present")
     if building_surface_artifact is not None and (
         not isinstance(building_surface_sha256, str)
         or not re.fullmatch(r"[a-f0-9]{64}", building_surface_sha256)
@@ -1721,6 +1874,9 @@ def building_mesh_packets(
     building_surface_rejected_count = 0
     building_surface_rejection_counts: dict[str, int] = {}
     derived_surface_roof_relief_count = 0
+    derived_roof_orientation_applied_count = 0
+    derived_gabled_orientation_count = 0
+    derived_hipped_ridge_count = 0
     source_roof_shape_count = 0
     fallback_roof_shape_count = 0
     source_roof_height_count = 0
@@ -1751,6 +1907,7 @@ def building_mesh_packets(
         source_backed = raw_height is not None and feature.get("height_source") != "unresolved"
         source_id = str(feature.get("source_id") or "")
         surface_measurement = surface_by_id.get(source_id)
+        roof_orientation_measurement = roof_orientation_by_id.get(source_id)
         derived_height, surface_roof_relief, surface_status = _building_surface_height_candidate(
             feature,
             surface_measurement,
@@ -1851,6 +2008,16 @@ def building_mesh_packets(
         base_z = local_xy[0][2]
         eave_z = base_z + wall_height
         ridge_z = eave_z + float(roof_profile["rise_m"])
+        derived_ridge_angle = None
+        if (
+            roof_orientation_measurement is not None
+            and roof_profile["shape_source"] == "presentation-building-profile"
+        ):
+            derived_ridge_angle = _finite(
+                roof_orientation_measurement.get("ridge_orientation_deg_from_east_ccw"),
+                f"{source_id}.derived ridge orientation",
+            )
+
         if roof_profile["shape"] == "flat" or roof_profile["rise_m"] <= 0.0:
             _append_flat_roof(roof, local_xy, eave_z)
         elif roof_profile["shape"] == "gabled" and _append_gabled_roof(
@@ -1859,13 +2026,28 @@ def building_mesh_packets(
             local_xy,
             eave_z,
             ridge_z,
+            ridge_orientation_deg_from_east_ccw=derived_ridge_angle,
         ):
-            pass
+            if derived_ridge_angle is not None:
+                derived_roof_orientation_applied_count += 1
+                derived_gabled_orientation_count += 1
+        elif (
+            roof_profile["shape"] == "hipped"
+            and derived_ridge_angle is not None
+            and _append_hipped_ridge_roof(
+                roof,
+                local_xy,
+                eave_z,
+                ridge_z,
+                ridge_orientation_deg_from_east_ccw=derived_ridge_angle,
+            )
+        ):
+            derived_roof_orientation_applied_count += 1
+            derived_hipped_ridge_count += 1
         else:
-            # Hipped/pyramidal and non-quadrilateral pitched roofs use a
-            # deterministic apex representation until richer ridge/eave
-            # semantics are admitted. The source shape identity remains in
-            # the packet truth and is never rewritten as surveyed geometry.
+            # Complex/concave or unmeasured presentation roofs remain on the
+            # deterministic apex representation. Derived ridge evidence never
+            # changes source roof shape or turns a flat roof into a pitched roof.
             _append_apex_roof(roof, local_xy, eave_z, ridge_z)
 
     packets: list[tuple[str, MeshPacket]] = []
@@ -1889,6 +2071,15 @@ def building_mesh_packets(
             "p90 >=2.2m and conservative building-type plausibility ceiling"
         ),
         "derived_surface_roof_relief_count": derived_surface_roof_relief_count,
+        "roof_orientation_artifact_sha256": roof_orientation_sha256,
+        "roof_orientation_candidate_count": len(roof_orientation_by_id),
+        "derived_roof_orientation_applied_count": derived_roof_orientation_applied_count,
+        "derived_gabled_orientation_count": derived_gabled_orientation_count,
+        "derived_hipped_ridge_count": derived_hipped_ridge_count,
+        "derived_roof_orientation_policy": (
+            "strong NHM DOM-DTM direction fit may orient only an existing presentation "
+            "gabled/hipped profile; it never changes source roof shape or flat roofs"
+        ),
         "source_roof_shape_count": source_roof_shape_count,
         "fallback_roof_shape_count": fallback_roof_shape_count,
         "source_roof_height_count": source_roof_height_count,
@@ -1897,7 +2088,11 @@ def building_mesh_packets(
         "material_class_semantics": "source OSM colour/material when recognized; otherwise deterministic presentation palette by building type/id",
         "roof_shape_counts": {key: roof_shape_counts[key] for key in sorted(roof_shape_counts)},
         "roofs": "source-osm-roof-shape-when-present; otherwise explicit-presentation-profile",
-        "pitched_roof_fallback": "gabled-for-small/residential/farm-quads; apex-for-other-small-pitched; flat-for-large/industrial",
+        "pitched_roof_fallback": (
+            "gabled-for-small/residential/farm-quads; strong DOM ridge candidates may "
+            "replace hipped apex with a ridge-segment roof for convex footprints; "
+            "otherwise apex-for-other-small-pitched; flat-for-large/industrial"
+        ),
         "derived_roof_relief_policy": (
             "accepted NHM DOM-DTM p95-p25 relief may set presentation roof rise; "
             "it does not claim surveyed ridge/eave geometry"
