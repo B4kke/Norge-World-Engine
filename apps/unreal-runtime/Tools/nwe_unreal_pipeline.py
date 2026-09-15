@@ -49,16 +49,11 @@ TERRAIN_CHUNK_QUADS = 126
 VEGETATION_ARTIFACT_SCHEMA = "nwe.vegetation-representative-artifact/0.1-candidate"
 VEGETATION_RUNTIME_SCHEMA = "nwe.unreal-vegetation-layer/0.1"
 VEGETATION_SEMANTIC_SHA256 = "320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f"
-VEGETATION_ARTIFACT_SHA256 = "032587efa9c3b7a4a32c95257118c8a7d947cd8e58ae48b18502532fac5d282e"
 VEGETATION_COMPILER_CONFIG_ID = "f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e"
-VEGETATION_ARTIFACT_URL = (
-    "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
-    "visual-runtime/nannestad-preview-1/vegetation-representatives.json"
+VEGETATION_TRANSPORT_BRANCH_API = (
+    "https://api.github.com/repos/B4kke/Norge-World-Engine/branches/visual-runtime"
 )
-VEGETATION_VERIFICATION_URL = (
-    "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
-    "visual-runtime/nannestad-preview-1/vegetation-verification.json"
-)
+VEGETATION_TRANSPORT_ROOT = "nannestad-preview-1"
 VEGETATION_ROAD_CLEARANCE_M = 6.0
 VEGETATION_BUILDING_CLEARANCE_M = 5.0
 VEGETATION_SPAWN_CLEARANCE_M = 15.0
@@ -200,15 +195,18 @@ def validate_pinned_vegetation_transport(
     verification: dict[str, Any],
 ) -> dict[str, Any]:
     actual_sha = _sha256_bytes(artifact_bytes)
-    if actual_sha != VEGETATION_ARTIFACT_SHA256:
+    verified_sha = verification.get("artifact_sha256")
+    if (
+        not isinstance(verified_sha, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", verified_sha)
+        or actual_sha != verified_sha
+    ):
         raise PipelineError(
-            "published vegetation artifact SHA-256 changed; "
-            f"{actual_sha} != {VEGETATION_ARTIFACT_SHA256}"
+            "published vegetation artifact bytes do not match the immutable verification record"
         )
     if (
         verification.get("schema") != "nwe.vegetation-representative-verification/0.1"
         or verification.get("status") != "PASS"
-        or verification.get("artifact_sha256") != VEGETATION_ARTIFACT_SHA256
         or verification.get("artifact_semantic_sha256") != VEGETATION_SEMANTIC_SHA256
         or verification.get("compiler_config_id") != VEGETATION_COMPILER_CONFIG_ID
         or verification.get("same_cache_byte_identical") is not True
@@ -242,8 +240,23 @@ def validate_pinned_vegetation_transport(
 
 
 def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
-    data = _download(VEGETATION_ARTIFACT_URL)
-    verification_bytes = _download(VEGETATION_VERIFICATION_URL)
+    try:
+        branch = json.loads(_download(VEGETATION_TRANSPORT_BRANCH_API).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"vegetation transport branch response is invalid JSON: {exc}") from exc
+    commit_sha = (
+        branch.get("commit", {}).get("sha")
+        if isinstance(branch, dict)
+        else None
+    )
+    if not isinstance(commit_sha, str) or not re.fullmatch(r"[a-f0-9]{40}", commit_sha):
+        raise PipelineError("vegetation transport branch did not resolve to an immutable commit")
+    base = (
+        "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
+        f"{commit_sha}/{VEGETATION_TRANSPORT_ROOT}"
+    )
+    verification_bytes = _download(f"{base}/vegetation-verification.json")
+    data = _download(f"{base}/vegetation-representatives.json")
     try:
         verification = json.loads(verification_bytes.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -252,6 +265,17 @@ def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
         raise PipelineError("published vegetation verification must be an object")
     validate_pinned_vegetation_transport(data, verification)
     _write_atomic(destination.resolve(), data)
+    transport_lock = {
+        "schema": "nwe.unreal-vegetation-transport-lock/0.1",
+        "transport_commit": commit_sha,
+        "artifact_sha256": verification["artifact_sha256"],
+        "artifact_semantic_sha256": verification["artifact_semantic_sha256"],
+        "compiler_config_id": verification["compiler_config_id"],
+    }
+    _write_atomic(
+        destination.resolve().with_suffix(destination.suffix + ".transport.json"),
+        _canonical_json_bytes(transport_lock),
+    )
     return destination.resolve()
 
 
