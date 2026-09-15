@@ -115,12 +115,17 @@ heights + 105 DOM-derived presentation heights + 15 explicit fallbacks.
 
 Roof shape remains open: this OSM snapshot contains zero admitted roof-shape
 fields. DOM p95-p25 relief may influence only the rise of an already
-presentation-classified pitched roof; it does not establish ridge direction,
-eave geometry or roof type.
+presentation-classified pitched roof. A separately versioned strong DOM-DTM
+direction candidate now exists for 30/135 buildings and is deterministic across
+hosted compiles; Unreal applies 10 of those directions to existing presentation
+gables. It never creates roof shape, overrides a source roof or claims surveyed
+ridge/eave geometry. Concave/complex hipped footprints remain on explicit apex
+fallback rather than being convex-hull simplified.
 
-Remaining gate: admitted road width/lane/surface semantics plus a measured
-roof-orientation/shape source or separately versioned high-confidence inference
-candidate. Missing values remain visibly classified, never silently guessed.
+Remaining gate: admitted road width/lane/surface semantics plus actual
+source/admitted roof-shape/ridge/eave semantics and richer building
+relations/façades. Missing values remain visibly classified, never silently
+guessed.
 
 ### UE5-PACKAGE-01
 
