@@ -348,6 +348,193 @@ def test_pinned_vegetation_transport_requires_full_and_semantic_identity(monkeyp
         pipeline.validate_pinned_vegetation_transport(artifact_bytes, changed)
 
 
+def test_pinned_building_surface_transport_requires_exact_building_identity_and_quality(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        pipeline,
+        "BUILDING_SURFACE_COMPILER_CONFIG_ID",
+        "fixture-building-surface-config",
+    )
+    building_sha = "b" * 64
+    artifact = {
+        "schema": pipeline.BUILDING_SURFACE_ARTIFACT_SCHEMA,
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "compiler_config_id": "fixture-building-surface-config",
+        "authority": {
+            "measurements": "derived-dom-minus-dtm-quantiles-inside-footprint",
+            "roof_shape": "not-contained",
+        },
+        "source": {"building_artifact_sha256": building_sha},
+        "stats": {"feature_count": 1, "source_building_count": 1},
+        "calibration": {
+            "p90": {
+                "count": 15,
+                "mae_m": 1.0,
+                "within_2m_fraction": 0.95,
+            }
+        },
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "building": "house",
+                "sample_count": 20,
+                "height_delta_m": {"p90": 6.5},
+                "roof_relief_p95_p25_m": 1.8,
+            }
+        ],
+    }
+    artifact_bytes = pipeline._canonical_json_bytes(artifact)
+    verification = {
+        "schema": pipeline.BUILDING_SURFACE_VERIFICATION_SCHEMA,
+        "status": "PASS",
+        "artifact_sha256": hashlib.sha256(artifact_bytes).hexdigest(),
+        "artifact_semantic_sha256": "c" * 64,
+        "compiler_config_id": "fixture-building-surface-config",
+        "building_artifact_sha256": building_sha,
+        "feature_count": 1,
+        "source_building_count": 1,
+    }
+    parsed = pipeline.validate_pinned_building_surface_transport(
+        artifact_bytes,
+        verification,
+        expected_building_sha256=building_sha,
+    )
+    assert parsed["features"][0]["height_delta_m"]["p90"] == 6.5
+
+    with pytest.raises(pipeline.PipelineError, match="verification identity"):
+        pipeline.validate_pinned_building_surface_transport(
+            artifact_bytes,
+            verification,
+            expected_building_sha256="d" * 64,
+        )
+
+    degraded = json.loads(json.dumps(artifact))
+    degraded["calibration"]["p90"]["within_2m_fraction"] = 0.5
+    degraded_bytes = pipeline._canonical_json_bytes(degraded)
+    degraded_verification = dict(
+        verification,
+        artifact_sha256=hashlib.sha256(degraded_bytes).hexdigest(),
+    )
+    with pytest.raises(pipeline.PipelineError, match="calibration"):
+        pipeline.validate_pinned_building_surface_transport(
+            degraded_bytes,
+            degraded_verification,
+            expected_building_sha256=building_sha,
+        )
+
+
+def test_dom_building_surface_replaces_only_safe_unresolved_height() -> None:
+    terrain = pipeline.HeightGrid(
+        tile_id=pipeline.EXPECTED_TILE_ID,
+        horizontal_crs=pipeline.EXPECTED_HORIZONTAL_CRS,
+        vertical_datum=pipeline.EXPECTED_VERTICAL_DATUM,
+        bounds=(611000.0, 6677000.0, 611004.0, 6677004.0),
+        width=2,
+        height=2,
+        pixel_size_m=2.0,
+        elevation_min_m=100.0,
+        elevation_max_m=100.0,
+        elevations=array("f", [100.0] * 4),
+    )
+    polygon = [
+        [611000.5, 6677000.5],
+        [611003.5, 6677000.5],
+        [611003.5, 6677003.5],
+        [611000.5, 6677003.5],
+        [611000.5, 6677000.5],
+    ]
+    artifact = {
+        "schema": "nwe.building-footprint-artifact/0.1",
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "polygon": polygon,
+                "building": "house",
+                "height_m": None,
+                "height_source": "unresolved",
+                "area_m2": 9.0,
+            }
+        ],
+    }
+    surface = {
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "building": "house",
+                "sample_count": 20,
+                "height_delta_m": {"p90": 7.0},
+                "roof_relief_p95_p25_m": 1.8,
+            }
+        ]
+    }
+    packets = pipeline.building_mesh_packets(
+        artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611002.0,
+        origin_n=6677002.0,
+        origin_up_m=0.0,
+        building_surface_artifact=surface,
+        building_surface_sha256="e" * 64,
+    )
+    roof = next(packet for name, packet in packets if name.startswith("building_roof_"))
+    assert max(roof.positions_m[2::3]) == pytest.approx(107.03)
+    assert roof.truth["derived_surface_height_count"] == 1
+    assert roof.truth["fallback_height_count"] == 0
+    assert roof.truth["derived_surface_roof_relief_count"] == 1
+    assert roof.truth["source_roof_shape_count"] == 0
+    assert roof.truth["fallback_roof_shape_count"] == 1
+    assert roof.truth["building_surface_artifact_sha256"] == "e" * 64
+
+    artifact["features"][0]["height_m"] = 6.0
+    artifact["features"][0]["height_source"] = "osm:height"
+    source_packets = pipeline.building_mesh_packets(
+        artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611002.0,
+        origin_n=6677002.0,
+        origin_up_m=0.0,
+        building_surface_artifact=surface,
+        building_surface_sha256="e" * 64,
+    )
+    source_roof = next(
+        packet for name, packet in source_packets if name.startswith("building_roof_")
+    )
+    assert max(source_roof.positions_m[2::3]) == pytest.approx(106.03)
+    assert source_roof.truth["source_height_count"] == 1
+    assert source_roof.truth["derived_surface_height_count"] == 0
+
+    artifact["features"][0]["height_m"] = None
+    artifact["features"][0]["height_source"] = "unresolved"
+    artifact["features"][0]["building"] = "garage"
+    surface["features"][0]["building"] = "garage"
+    surface["features"][0]["height_delta_m"]["p90"] = 20.0
+    rejected_packets = pipeline.building_mesh_packets(
+        artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611002.0,
+        origin_n=6677002.0,
+        origin_up_m=0.0,
+        building_surface_artifact=surface,
+        building_surface_sha256="e" * 64,
+    )
+    rejected_roof = next(
+        packet for name, packet in rejected_packets if name.startswith("building_roof_")
+    )
+    assert max(rejected_roof.positions_m[2::3]) == pytest.approx(103.03)
+    assert rejected_roof.truth["derived_surface_height_count"] == 0
+    assert rejected_roof.truth["fallback_height_count"] == 1
+    assert rejected_roof.truth["building_surface_rejection_counts"] == {
+        "above-type-plausibility": 1
+    }
+
+
 def test_source_backed_vegetation_is_grounded_filtered_and_class_mapped() -> None:
     terrain = pipeline.HeightGrid(
         tile_id=pipeline.EXPECTED_TILE_ID,
