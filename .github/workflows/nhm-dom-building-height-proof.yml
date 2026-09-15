@@ -13,8 +13,10 @@ on:
       - 'tools/geo/probe_nhm_dom_building_heights.py'
       - 'tools/geo/compile_nhm_dom_building_surface.py'
       - 'tools/geo/probe_nhm_dom_roof_orientation.py'
+      - 'tools/geo/compile_nhm_dom_roof_orientation.py'
       - 'engine/compiler/tests/test_building_surface_candidate.py'
       - 'engine/compiler/tests/test_nhm_dom_roof_orientation.py'
+      - 'engine/compiler/tests/test_roof_orientation_candidate.py'
       - '.github/workflows/nhm-dom-building-height-proof.yml'
       - 'requirements-dev.txt'
   workflow_dispatch:
@@ -45,7 +47,8 @@ jobs:
           python -m py_compile tools/geo/probe_nhm_dom_building_heights.py
           python -m py_compile tools/geo/compile_nhm_dom_building_surface.py
           python -m py_compile tools/geo/probe_nhm_dom_roof_orientation.py
-          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py engine/compiler/tests/test_building_surface_candidate.py engine/compiler/tests/test_nhm_dom_roof_orientation.py
+          python -m py_compile tools/geo/compile_nhm_dom_roof_orientation.py
+          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py engine/compiler/tests/test_building_surface_candidate.py engine/compiler/tests/test_nhm_dom_roof_orientation.py engine/compiler/tests/test_roof_orientation_candidate.py
 
       - name: Confirm live official DOM coverage identity
         run: |
@@ -95,6 +98,23 @@ jobs:
           assert value['decision']['runtime_roof_orientation_changed'] is False
           PY
 
+      - name: Compile strong roof-direction candidate
+        run: |
+          python tools/geo/compile_nhm_dom_roof_orientation.py \
+            --proof /tmp/nwe-dom-roof-orientation-proof.json \
+            --output /tmp/nwe-building-roof-orientation.json \
+            --verification /tmp/nwe-building-roof-orientation-verification.json
+          python - <<'PY'
+          import hashlib, json
+          artifact = open('/tmp/nwe-building-roof-orientation.json', 'rb').read()
+          verification = json.load(open('/tmp/nwe-building-roof-orientation-verification.json', encoding='utf-8'))
+          assert verification['schema'] == 'nwe.building-roof-orientation-verification/0.1'
+          assert verification['status'] == 'PASS'
+          assert verification['artifact_sha256'] == hashlib.sha256(artifact).hexdigest()
+          assert verification['feature_count'] >= 10
+          assert verification['feature_count'] < verification['source_building_count']
+          PY
+
       - name: Compile deterministic building-surface candidate
         run: |
           python tools/geo/compile_nhm_dom_building_surface.py \
@@ -124,8 +144,14 @@ jobs:
             /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface.json
           cp /tmp/nwe-building-surface-verification.json \
             /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface-verification.json
+          cp /tmp/nwe-building-roof-orientation.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-roof-orientation.json
+          cp /tmp/nwe-building-roof-orientation-verification.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-roof-orientation-verification.json
           cp /tmp/nwe-dom-building-height-proof.json \
             /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface-proof.json
+          cp /tmp/nwe-dom-roof-orientation-proof.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-roof-orientation-proof.json
           cd /tmp/nwe-building-surface-publish
           git init
           git checkout --orphan building-surface-runtime
@@ -153,5 +179,7 @@ jobs:
             /tmp/nwe-building-surface.json
             /tmp/nwe-building-surface-verification.json
             /tmp/nwe-dom-roof-orientation-proof.json
+            /tmp/nwe-building-roof-orientation.json
+            /tmp/nwe-building-roof-orientation-verification.json
           if-no-files-found: error
           retention-days: 14
