@@ -305,6 +305,41 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     assert fallback_roof.truth["roof_shape_counts"]["gabled"] == 1
 
 
+def test_pinned_vegetation_transport_requires_full_and_semantic_identity(monkeypatch) -> None:
+    artifact = {
+        "schema": pipeline.VEGETATION_ARTIFACT_SCHEMA,
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "compiler_config_id": "fixture-config",
+        "stats": {
+            "compiled_segment_count": 2,
+            "representative_instance_count": 3,
+        },
+    }
+    artifact_bytes = pipeline._canonical_json_bytes(artifact)
+    artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
+    monkeypatch.setattr(pipeline, "VEGETATION_ARTIFACT_SHA256", artifact_sha)
+    monkeypatch.setattr(pipeline, "VEGETATION_SEMANTIC_SHA256", "semantic-fixture")
+    monkeypatch.setattr(pipeline, "VEGETATION_COMPILER_CONFIG_ID", "fixture-config")
+    verification = {
+        "schema": "nwe.vegetation-representative-verification/0.1",
+        "status": "PASS",
+        "artifact_sha256": artifact_sha,
+        "artifact_semantic_sha256": "semantic-fixture",
+        "compiler_config_id": "fixture-config",
+        "same_cache_byte_identical": True,
+        "independent_ar50_semantic_equal": True,
+        "compiled_segment_count": 2,
+        "representative_instance_count": 3,
+    }
+    parsed = pipeline.validate_pinned_vegetation_transport(artifact_bytes, verification)
+    assert parsed["stats"]["representative_instance_count"] == 3
+
+    changed = dict(verification, artifact_semantic_sha256="drifted")
+    with pytest.raises(pipeline.PipelineError, match="verification identity"):
+        pipeline.validate_pinned_vegetation_transport(artifact_bytes, changed)
+
+
 def test_source_backed_vegetation_is_grounded_filtered_and_class_mapped() -> None:
     terrain = pipeline.HeightGrid(
         tile_id=pipeline.EXPECTED_TILE_ID,
