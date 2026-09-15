@@ -79,6 +79,33 @@ def test_strong_roof_direction_artifact_is_deterministic_and_truth_bounded() -> 
     )
 
 
+def test_machine_epsilon_fit_drift_keeps_candidate_bytes_identical() -> None:
+    first_proof = _proof()
+    second_proof = _proof()
+    second = second_proof["candidates"][1]
+    second["tent_r2"] += 2e-13
+    second["tent_rmse_m"] -= 3e-14
+    second["r2_improvement_over_plane"] += 4e-13
+    second["orthogonal_gap"] -= 2e-13
+    second["tent_roof_slope_m_per_m"] += 1e-13
+    second["footprint_long_axis_deg_from_east_ccw"] += 3e-13
+    second["ridge_vs_footprint_long_axis_deg"] -= 2e-13
+
+    first_artifact, first_verification, first_bytes = compiler.compile_artifact(
+        first_proof
+    )
+    second_artifact, second_verification, second_bytes = compiler.compile_artifact(
+        second_proof
+    )
+    assert first_bytes == second_bytes
+    assert first_artifact == second_artifact
+    assert first_verification == second_verification
+    assert (
+        first_artifact["compiler_config"]["fit_metric_quantization_decimals"]
+        == compiler.METRIC_DECIMALS
+    )
+
+
 def test_strong_roof_direction_compiler_rejects_source_online_proof() -> None:
     proof = _proof()
     proof["source"]["runtime_source_calls"] = 1
