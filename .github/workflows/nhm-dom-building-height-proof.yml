@@ -12,7 +12,9 @@ on:
       - 'tools/geo/probe_nhm_dom_wcs.py'
       - 'tools/geo/probe_nhm_dom_building_heights.py'
       - 'tools/geo/compile_nhm_dom_building_surface.py'
+      - 'tools/geo/probe_nhm_dom_roof_orientation.py'
       - 'engine/compiler/tests/test_building_surface_candidate.py'
+      - 'engine/compiler/tests/test_nhm_dom_roof_orientation.py'
       - '.github/workflows/nhm-dom-building-height-proof.yml'
       - 'requirements-dev.txt'
   workflow_dispatch:
@@ -42,7 +44,8 @@ jobs:
           python -m py_compile tools/geo/probe_nhm_dom_wcs.py
           python -m py_compile tools/geo/probe_nhm_dom_building_heights.py
           python -m py_compile tools/geo/compile_nhm_dom_building_surface.py
-          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py engine/compiler/tests/test_building_surface_candidate.py
+          python -m py_compile tools/geo/probe_nhm_dom_roof_orientation.py
+          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py engine/compiler/tests/test_building_surface_candidate.py engine/compiler/tests/test_nhm_dom_roof_orientation.py
 
       - name: Confirm live official DOM coverage identity
         run: |
@@ -70,6 +73,25 @@ jobs:
           assert value['decision']['runtime_building_heights_changed'] is False
           for estimator in ('p50', 'p75', 'p90', 'p95'):
               assert value['calibration'][estimator] is not None
+          PY
+
+      - name: Measure conservative DOM roof-orientation candidates
+        run: |
+          python tools/geo/probe_nhm_dom_roof_orientation.py \
+            --work-dir /tmp/nwe-dom-height-work \
+            --cache-root /tmp/nwe-dom-height-cache \
+            --output /tmp/nwe-dom-roof-orientation-proof.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-dom-roof-orientation-proof.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nhm-dom-roof-orientation-proof/0.1'
+          assert value['status'] == 'EXPERIMENT_PASS'
+          assert value['source']['runtime_source_calls'] == 0
+          assert value['stats']['compiled_buildings'] >= 100
+          assert value['stats']['spatially_analyzed'] >= 50
+          assert value['decision']['production_selected'] is False
+          assert value['decision']['runtime_roof_shape_changed'] is False
+          assert value['decision']['runtime_roof_orientation_changed'] is False
           PY
 
       - name: Compile deterministic building-surface candidate
@@ -129,5 +151,6 @@ jobs:
             /tmp/nwe-dom-building-height-proof.json
             /tmp/nwe-building-surface.json
             /tmp/nwe-building-surface-verification.json
+            /tmp/nwe-dom-roof-orientation-proof.json
           if-no-files-found: error
           retention-days: 14
