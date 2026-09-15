@@ -13,6 +13,7 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
   '.nwehgt': 'application/vnd.nwe.terrain-height-grid',
 };
 
@@ -165,6 +166,11 @@ async function main() {
     renderer: 'webgl2',
     graphics: 'high',
   });
+  if (args['ground-imagery-manifest']) {
+    const relative = args['ground-imagery-manifest'].replace(/^\/+/, '');
+    if (!relative || relative.includes('..')) throw new Error('--ground-imagery-manifest must be a safe runtime-relative path');
+    query.set('groundImagery', `${origin}/runtime/${relative}`);
+  }
   const url = `${origin}/?${query}`;
   const child = spawn(chrome, [
     '--headless=new', '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
@@ -203,6 +209,7 @@ async function main() {
       viewport: [1440, 900],
       renderer_request: 'webgl2',
       graphics_profile: 'high',
+      ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nChrome tail:\n${chromeLog.slice(-5000)}`);
