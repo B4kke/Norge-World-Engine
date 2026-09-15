@@ -274,8 +274,8 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     wall = next(packet for name, packet in packets if name.startswith("building_wall_"))
     roof_z = roof.positions_m[2::3]
     wall_z = wall.positions_m[2::3]
-    assert max(roof_z) - min(roof_z) == pytest.approx(1.5)
-    assert max(wall_z) == pytest.approx(106.03)
+    assert max(roof_z) - min(roof_z) == pytest.approx(1.5)\n    assert max(roof_z) == pytest.approx(106.03)
+    assert max(wall_z) == pytest.approx(104.53)
     assert roof.truth["source_roof_shape_count"] == 1
     assert roof.truth["source_roof_height_count"] == 1
     assert roof.truth["roof_shape_counts"]["gabled"] == 1
