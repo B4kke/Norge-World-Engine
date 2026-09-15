@@ -137,18 +137,27 @@ jobs:
             --evidence-b /tmp/nwe-vegetation-compiled/evidence-b.json \
             --output /tmp/nwe-vegetation-representative-verification.json
 
-      - name: Pin accepted vegetation artifact identity
+      - name: Verify accepted vegetation semantic identity
         run: |
-          expected="032587efa9c3b7a4a32c95257118c8a7d947cd8e58ae48b18502532fac5d282e"
           actual="$(sha256sum /tmp/nwe-vegetation-compiled/artifact-a1.json | awk '{print $1}')"
-          echo "expected=$expected"
-          echo "actual=$actual"
-          test "$actual" = "$expected"
+          verified="$(python -c 'import json; print(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["artifact_sha256"])')"
           expected_semantic="320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f"
-          actual_semantic="$(python -c 'import json; print(json.load(open("/tmp/nwe-vegetation-compiled/evidence-a1.json"))["artifact_semantic_sha256"])')"
-          echo "expected_semantic=$expected_semantic"
-          echo "actual_semantic=$actual_semantic"
+          actual_semantic="$(python -c 'import json; print(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["artifact_semantic_sha256"])')"
+          expected_config="f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e"
+          actual_config="$(python -c 'import json; print(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["compiler_config_id"])')"
+          status="$(python -c 'import json; print(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["status"])')"
+          same_cache="$(python -c 'import json; print(str(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["same_cache_byte_identical"]).lower())')"
+          independent="$(python -c 'import json; print(str(json.load(open("/tmp/nwe-vegetation-representative-verification.json"))["independent_ar50_semantic_equal"]).lower())')"
+          echo "artifact=$actual"
+          echo "verification_artifact=$verified"
+          echo "semantic=$actual_semantic"
+          echo "compiler_config=$actual_config"
+          test "$actual" = "$verified"
           test "$actual_semantic" = "$expected_semantic"
+          test "$actual_config" = "$expected_config"
+          test "$status" = "PASS"
+          test "$same_cache" = "true"
+          test "$independent" = "true"
 
       - name: Publish replaceable derived vegetation transport
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
