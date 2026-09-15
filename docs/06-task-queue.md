@@ -227,23 +227,38 @@ the push/CI gate.
 # P1 — NEXT VISIBLE QUALITY
 
 ## P1-BUILDINGS-01 — Better building truth
-**Status:** DOM-DTM DERIVED HEIGHT HANDOFF PASS / ROOF ORIENTATION-SHAPE OPEN
+**Status:** DOM-DTM HEIGHT + STRONG ROOF-DIRECTION HANDOFF PASS / SOURCE ROOF-SHAPE STILL OPEN
 
-Kartverket NHM DOM-DTM candidate and Unreal handoff are proven for the accepted
-1 km tile. 132/135 footprints have usable source-derived surface distributions;
-the guarded adapter currently uses 105 of them for unresolved presentation
-height while preserving 15 OSM source heights and leaving 15 explicit
-fallbacks. Candidate artifact/config and exact evidence are recorded in
-`docs/proofs/2026-09-15-nhm-dom-building-surface-unreal.md`.
+Kartverket NHM DOM-DTM enrichment is proven for the accepted 1 km tile:
+132/135 footprints have usable surface distributions; Unreal currently uses
+15 OSM source heights + 105 guarded DOM-derived presentation heights + 15
+explicit height fallbacks.
 
-**Next gate — `P1-BUILDINGS-01-ROOF-SURFACE`:** test whether spatial DOM
-samples can support a conservative ridge/orientation candidate for
-high-confidence footprints. Do not infer a roof shape when plane/ridge evidence
-is ambiguous. FKB remains a future richer source where access/licensing permits.
+Spatial roof analysis is also admitted as a separately versioned derived
+candidate. 118 buildings can be analyzed; 53 pass the broad gable-like model
+and 30 pass the strict strong-direction gate. Candidate compiler config is
+`325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682`;
+artifact SHA-256 is
+`0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3`.
+Repeated hosted compiles over identical source hashes are byte/semantic
+identical after explicit 9-decimal fit-metric quantization.
 
-**Truth guard:** DOM-DTM measurements are source-derived; p90 height, roof-rise
-proxy and any future fitted plane/ridge interpretation must remain separately
-identified from surveyed building truth.
+The Unreal adapter applies 10 strong directions to existing presentation
+gables. It applies **0** hipped ridge replacements because every strong
+candidate in the current presentation-hipped class has a concave/complex OSM
+footprint; convex-hull simplification is intentionally rejected.
+
+**Evidence:** `nhm-dom-building-height-proof` run `34981973095` PASS.
+Baseline run `34981973005` passes the active Unreal unit and real-package
+integration gates with deterministic `all -> build` output.
+
+**Remaining building gate:** source/admitted roof shape/ridge/eave geometry,
+multipolygon/relations and façade semantics where legal sources permit. Do not
+treat fitted DOM direction as FKB `Mønelinje` or surveyed roof truth.
+
+**Truth guard:** DOM-DTM distributions and fitted direction are source-derived;
+p90 height, roof-rise proxy, fitted direction and fallback roof shape remain
+explicit downstream presentation policies.
 
 ## P1-ROADS-01 — Physical road semantics
 Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
