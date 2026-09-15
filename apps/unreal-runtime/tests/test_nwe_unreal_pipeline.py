@@ -320,7 +320,6 @@ def test_pinned_vegetation_transport_requires_full_and_semantic_identity(monkeyp
     }
     artifact_bytes = pipeline._canonical_json_bytes(artifact)
     artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
-    monkeypatch.setattr(pipeline, "VEGETATION_ARTIFACT_SHA256", artifact_sha)
     monkeypatch.setattr(pipeline, "VEGETATION_SEMANTIC_SHA256", "semantic-fixture")
     monkeypatch.setattr(pipeline, "VEGETATION_COMPILER_CONFIG_ID", "fixture-config")
     verification = {
@@ -336,6 +335,10 @@ def test_pinned_vegetation_transport_requires_full_and_semantic_identity(monkeyp
     }
     parsed = pipeline.validate_pinned_vegetation_transport(artifact_bytes, verification)
     assert parsed["stats"]["representative_instance_count"] == 3
+
+    mismatched_bytes = artifact_bytes + b" "
+    with pytest.raises(pipeline.PipelineError, match="immutable verification record"):
+        pipeline.validate_pinned_vegetation_transport(mismatched_bytes, verification)
 
     changed = dict(verification, artifact_semantic_sha256="drifted")
     with pytest.raises(pipeline.PipelineError, match="verification identity"):
