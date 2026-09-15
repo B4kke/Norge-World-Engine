@@ -17,12 +17,16 @@ assert.match(renderer, /geometry\.setAttribute\('normal'/, 'worker-provided terr
 assert.match(renderer, /geometry\.setAttribute\('uv'/, 'worker-provided terrain UVs must reach Three geometry');
 assert.match(renderer, /geometry\.setAttribute\('color'/, 'renderer-only macro variation must use a dedicated vertex color attribute');
 assert.match(renderer, /createGroundMaterialLibrary/, 'renderer must load the pinned local material catalog');
+assert.match(renderer, /groundImagery/, 'renderer must accept only the already-verified optional geographic ground-color descriptor');
 assert.match(materialAssets, /new THREE\.MeshStandardMaterial/, 'ground renderer must use a lit PBR material path');
 assert.match(materialAssets, /roughnessMap:/, 'surfaces must carry measured roughness variation');
 assert.match(materialAssets, /normalMap:/, 'quality profiles must support tangent-space normal maps');
 assert.match(materialAssets, /THREE\.RepeatWrapping/, 'meter-scaled PBR textures must tile instead of stretch');
 assert.match(materialAssets, /same-origin-local-assets-only/, 'runtime materials must stay on the local static-asset boundary');
 assert.match(materialAssets, /vertexColors:\s*options\.vertexColors/, 'terrain material must consume renderer-only macro variation');
+assert.match(materialAssets, /ClampToEdgeWrapping/, 'geographic terrain color must not repeat outside the exact tile UV domain');
+assert.match(materialAssets, /geographicGroundColor \?\? terrainTextures\.diffuse/, 'source-derived ground color must replace generic terrain diffuse only when present');
+assert.match(materialAssets, /vertexColors:\s*geographicGroundColor == null/, 'macro tint must not distort source-derived geographic ground color');
 assert.match(renderer, /geometry_displacement:\s*false/, 'terrain styling must explicitly preserve accepted DTM geometry');
 assert.doesNotMatch(renderer, /displacementMap\s*:/, 'renderer must not visually displace accepted DTM geometry');
 assert.match(renderer, /resolvedWallMaterial/, 'source-backed building walls must have a dedicated material class');
