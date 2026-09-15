@@ -48,7 +48,8 @@ TERRAIN_CHUNK_QUADS = 126
 
 VEGETATION_ARTIFACT_SCHEMA = "nwe.vegetation-representative-artifact/0.1-candidate"
 VEGETATION_RUNTIME_SCHEMA = "nwe.unreal-vegetation-layer/0.1"
-VEGETATION_ARTIFACT_SHA256 = "9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636"
+VEGETATION_SEMANTIC_SHA256 = "320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f"
+VEGETATION_ARTIFACT_SHA256 = "032587efa9c3b7a4a32c95257118c8a7d947cd8e58ae48b18502532fac5d282e"
 VEGETATION_ARTIFACT_URL = (
     "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
     "visual-runtime/nannestad-preview-1/vegetation-representatives.json"
