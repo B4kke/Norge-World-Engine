@@ -48,6 +48,11 @@ TERRAIN_CHUNK_QUADS = 126
 
 VEGETATION_ARTIFACT_SCHEMA = "nwe.vegetation-representative-artifact/0.1-candidate"
 VEGETATION_RUNTIME_SCHEMA = "nwe.unreal-vegetation-layer/0.1"
+VEGETATION_ARTIFACT_SHA256 = "9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636"
+VEGETATION_ARTIFACT_URL = (
+    "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
+    "visual-runtime/nannestad-preview-1/vegetation-representatives.json"
+)
 VEGETATION_ROAD_CLEARANCE_M = 6.0
 VEGETATION_BUILDING_CLEARANCE_M = 5.0
 VEGETATION_SPAWN_CLEARANCE_M = 15.0
@@ -182,6 +187,29 @@ def _download(url: str) -> bytes:
         raise
     except Exception as exc:  # urllib exposes several transport exception types
         raise PipelineError(f"download failed: {url}: {exc}") from exc
+
+
+def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
+    data = _download(VEGETATION_ARTIFACT_URL)
+    actual_sha = _sha256_bytes(data)
+    if actual_sha != VEGETATION_ARTIFACT_SHA256:
+        raise PipelineError(
+            "published vegetation artifact SHA-256 changed; "
+            f"{actual_sha} != {VEGETATION_ARTIFACT_SHA256}"
+        )
+    try:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"published vegetation artifact is invalid JSON: {exc}") from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != VEGETATION_ARTIFACT_SCHEMA
+        or value.get("tile_id") != EXPECTED_TILE_ID
+        or value.get("horizontal_crs") != EXPECTED_HORIZONTAL_CRS
+    ):
+        raise PipelineError("published vegetation artifact contract is not accepted")
+    _write_atomic(destination.resolve(), data)
+    return destination.resolve()
 
 
 def validate_snapshot_manifest(manifest: dict[str, Any]) -> None:
@@ -1831,13 +1859,23 @@ def verify_unreal_package(output_dir: Path) -> dict[str, Any]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("fetch", "verify", "build", "all"):
+    for command in ("fetch", "verify", "build", "all", "fetch-vegetation"):
         subparser = subparsers.add_parser(command)
         subparser.add_argument(
             "--snapshot-dir",
             type=Path,
             default=Path(__file__).resolve().parents[1] / "Saved" / "NWE" / "Snapshot",
         )
+        if command == "fetch-vegetation":
+            subparser.add_argument(
+                "--vegetation-artifact",
+                type=Path,
+                default=Path(__file__).resolve().parents[1]
+                / "Saved"
+                / "NWE"
+                / "Vegetation"
+                / "vegetation-representatives.json",
+            )
         if command in ("build", "all"):
             subparser.add_argument(
                 "--output-dir",
@@ -1859,6 +1897,20 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "fetch-vegetation":
+            destination = fetch_pinned_vegetation_artifact(args.vegetation_artifact)
+            print(
+                json.dumps(
+                    {
+                        "status": "PASS",
+                        "command": args.command,
+                        "vegetation_artifact": str(destination),
+                        "sha256": VEGETATION_ARTIFACT_SHA256,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0
         if args.command in ("fetch", "all"):
             fetch_snapshot(args.snapshot_dir)
         manifest = _read_json(args.snapshot_dir / "manifest.json")
@@ -1868,11 +1920,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         verify_runtime_provenance(args.snapshot_dir)
         package = None
         if args.command in ("build", "all"):
+            vegetation_path = args.vegetation_artifact
+            if args.command == "all" and vegetation_path is None:
+                vegetation_path = (
+                    Path(__file__).resolve().parents[1]
+                    / "Saved"
+                    / "NWE"
+                    / "Vegetation"
+                    / "vegetation-representatives.json"
+                )
+                fetch_pinned_vegetation_artifact(vegetation_path)
             package = build_unreal_package(
                 args.snapshot_dir,
                 args.output_dir,
                 provenance_verifier=lambda _snapshot: None,
-                vegetation_artifact_path=args.vegetation_artifact,
+                vegetation_artifact_path=vegetation_path,
             )
     except PipelineError as exc:
         print(f"NWE_UNREAL_PIPELINE_REJECTED: {exc}", file=sys.stderr)
