@@ -80,6 +80,7 @@ jobs:
           python tools/geo/probe_nhm_dom_roof_orientation.py \
             --work-dir /tmp/nwe-dom-height-work \
             --cache-root /tmp/nwe-dom-height-cache \
+            --height-proof /tmp/nwe-dom-building-height-proof.json \
             --output /tmp/nwe-dom-roof-orientation-proof.json
           python - <<'PY'
           import json
