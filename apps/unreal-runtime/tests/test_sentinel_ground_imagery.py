@@ -37,10 +37,13 @@ def _item(item_id: str, captured: str, cloud: float, *, visual: bool = True) -> 
 
 def test_target_bbox_matches_nannestad_1km_tile() -> None:
     min_lon, min_lat, max_lon, max_lat = sentinel.target_bbox_wgs84()
+    # EPSG:25832 grid north/east axes are rotated relative to WGS84, so
+    # the geographic search bbox must envelope all four transformed corners,
+    # not merely reuse southwest/northeast corner coordinates.
     assert min_lon == pytest.approx(11.003239, abs=1e-5)
-    assert min_lat == pytest.approx(60.214641, abs=1e-5)
+    assert min_lat == pytest.approx(60.214367, abs=1e-5)
     assert max_lon == pytest.approx(11.021826, abs=1e-5)
-    assert max_lat == pytest.approx(60.223341, abs=1e-5)
+    assert max_lat == pytest.approx(60.223614, abs=1e-5)
 
 
 def test_default_search_window_covers_three_summers() -> None:
