@@ -5,8 +5,10 @@
 #include "NweWorldBootstrap.generated.h"
 
 class UDirectionalLightComponent;
+class UHierarchicalInstancedStaticMeshComponent;
 class UExponentialHeightFogComponent;
 class UMaterialInterface;
+class UStaticMesh;
 class UProceduralMeshComponent;
 class USceneComponent;
 class USkyAtmosphereComponent;
@@ -27,6 +29,10 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "NWE|World")
     TMap<FName, TSoftObjectPtr<UMaterialInterface>> MaterialOverrides;
+
+    /** Presentation proxies selected from source-backed SR16V tree classes. */
+    UPROPERTY(EditAnywhere, Category = "NWE|Vegetation")
+    TMap<FName, TSoftObjectPtr<UStaticMesh>> VegetationMeshOverrides;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "NWE|World")
     bool bWorldLoaded = false;
@@ -56,6 +62,11 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UProceduralMeshComponent>> RuntimeMeshes;
 
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> RuntimeVegetation;
+
     bool LoadWorldPackage(FString& OutError);
+    bool LoadVegetationLayer(const TSharedPtr<FJsonObject>& Package, FString& OutError);
     UMaterialInterface* ResolveMaterial(const FString& MaterialId) const;
+    UStaticMesh* ResolveVegetationMesh(const FString& AssetClass) const;
 };
