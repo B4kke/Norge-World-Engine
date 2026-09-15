@@ -75,19 +75,30 @@ def parse_coverages(raw: bytes) -> list[dict[str, str]]:
 
 
 def choose_dom_25832(coverages: list[dict[str, str]]) -> dict[str, str]:
-    matches = []
-    for coverage in coverages:
-        haystack = " ".join(
-            str(coverage.get(key, "")) for key in ("name", "label", "description")
-        ).casefold()
-        if "dom" in haystack and "25832" in haystack:
-            matches.append(coverage)
-    if len(matches) != 1:
+    # Live Kartverket capabilities advertise the elevation surface plus derived
+    # visualization coverages such as skyggerelieff. Only the raw/topographic
+    # surface may be admitted as height evidence.
+    exact = [
+        coverage
+        for coverage in coverages
+        if coverage.get("name") == "nhm_dom_topo_25832"
+    ]
+    if len(exact) != 1:
+        related = [
+            coverage
+            for coverage in coverages
+            if "dom" in " ".join(
+                str(coverage.get(key, "")) for key in ("name", "label", "description")
+            ).casefold()
+            and "25832" in " ".join(
+                str(coverage.get(key, "")) for key in ("name", "label", "description")
+            )
+        ]
         raise DomProbeError(
-            "expected exactly one DOM/25832 coverage, found "
-            + json.dumps(matches, ensure_ascii=False, sort_keys=True)
+            "expected exact topographic DOM coverage 'nhm_dom_topo_25832'; related="
+            + json.dumps(related, ensure_ascii=False, sort_keys=True)
         )
-    return matches[0]
+    return exact[0]
 
 
 def probe() -> dict:
