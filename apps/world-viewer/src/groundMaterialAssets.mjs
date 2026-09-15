@@ -68,6 +68,23 @@ function configureTexture(texture, { color = false, repeat = [1, 1], anisotropy 
   return texture;
 }
 
+function configureGeographicColorTexture(texture, { anisotropy = 1 } = {}) {
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.repeat.set(1, 1);
+  texture.offset.set(0, 0);
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.anisotropy = anisotropy;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  // Source rows are north-to-south and terrain UV v is south-to-north.
+  // TextureLoader's image flip maps the north row to v=1.
+  texture.flipY = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function maxSupportedAnisotropy(renderer, requested) {
   const supported = Number(
     renderer?.getMaxAnisotropy?.()
@@ -109,6 +126,7 @@ export async function createGroundMaterialLibrary({
   renderer,
   profile,
   terrainExtentM = [1000, 1000],
+  groundImagery = null,
   fetchImpl = globalThis.fetch,
   textureLoader = new THREE.TextureLoader(),
   manifestUrl = catalogUrl(),
@@ -140,11 +158,28 @@ export async function createGroundMaterialLibrary({
     loadSurfaceTextures(textureLoader, resolvedManifestUrl, catalog.assets.building_roofs, { anisotropy, normalMaps: profile.normalMaps }),
   ]);
 
+  let geographicGroundColor = null;
+  if (groundImagery?.textureUrl) {
+    try {
+      geographicGroundColor = configureGeographicColorTexture(
+        await textureLoader.loadAsync(groundImagery.textureUrl),
+        { anisotropy },
+      );
+      geographicGroundColor.name = `NWE:ground-color:${groundImagery.textureSha256}`;
+    } finally {
+      groundImagery.release?.();
+    }
+  }
+
+  const terrainMaterialTextures = {
+    ...terrainTextures,
+    diffuse: geographicGroundColor ?? terrainTextures.diffuse,
+  };
   const materials = {
-    terrain: new THREE.MeshStandardMaterial(materialOptions(terrainTextures, profile, {
+    terrain: new THREE.MeshStandardMaterial(materialOptions(terrainMaterialTextures, profile, {
       normalScale: 0.42,
       roughness: 0.98,
-      vertexColors: true,
+      vertexColors: geographicGroundColor == null,
     })),
     roadAsphalt: new THREE.MeshStandardMaterial(materialOptions(roadTextures, profile, {
       normalScale: 0.58,
@@ -184,6 +219,7 @@ export async function createGroundMaterialLibrary({
     ...Object.values(roadTextures),
     ...Object.values(wallTextures),
     ...Object.values(roofTextures),
+    ...(geographicGroundColor ? [geographicGroundColor] : []),
   ];
   const localTextureBytes = REQUIRED_SURFACES.reduce((sum, surfaceId) => (
     sum + ['diffuse', ...(profile.normalMaps === false ? [] : ['normal_gl']), 'roughness'].reduce(
@@ -205,6 +241,25 @@ export async function createGroundMaterialLibrary({
     normal_maps: profile.normalMaps !== false,
     normal_convention: 'OpenGL',
     terrain_repeat: Object.freeze(terrainRepeat),
+    ground_color: groundImagery ? Object.freeze({
+      schema: groundImagery.schema,
+      mode: 'source-derived-geographic-albedo',
+      texture_sha256: groundImagery.textureSha256,
+      texture_byte_size: groundImagery.textureByteSize,
+      native_ground_sample_distance_m: groundImagery.nativeGroundSampleDistanceM,
+      source_name: groundImagery.manifest?.source?.name ?? null,
+      provider: groundImagery.manifest?.source?.provider ?? null,
+      stac_item_id: groundImagery.manifest?.source?.stac_item_id ?? null,
+      redistribution: groundImagery.manifest?.source?.redistribution ?? null,
+      truth: groundImagery.truth,
+      uv_semantics: groundImagery.manifest?.texture?.uv_semantics ?? null,
+      pbr_microdetail: 'poly-haven-normal-and-roughness-only',
+      geometry_displacement: false,
+    }) : Object.freeze({
+      mode: 'generic-pbr-diffuse-fallback',
+      truth: 'presentation-only-no-geographic-ground-color',
+      geometry_displacement: false,
+    }),
     assets: Object.freeze(Object.fromEntries(REQUIRED_SURFACES.map((id) => [id, catalog.assets[id].asset_id]))),
   });
 
