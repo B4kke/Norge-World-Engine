@@ -1066,6 +1066,88 @@ def _append_apex_roof(
         _append_triangle(roof, a, b, center, roof_uv=True, prefer_up=True)
 
 
+def _colour_class(value: Any, *, roof: bool) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    normalized = value.strip().casefold().replace(" ", "")
+    named = {
+        "white": "white",
+        "ivory": "white",
+        "cream": "yellow",
+        "beige": "yellow",
+        "yellow": "yellow",
+        "red": "red",
+        "brown": "red" if roof else "wood",
+        "wood": "wood",
+        "timber": "wood",
+        "grey": "grey",
+        "gray": "grey",
+        "silver": "grey",
+        "black": "dark",
+        "anthracite": "dark",
+        "green": "dark" if roof else "grey",
+    }
+    if normalized in named:
+        result = named[normalized]
+        if roof and result in {"white", "yellow", "wood"}:
+            return None
+        return result
+    if re.fullmatch(r"#[0-9a-f]{6}", normalized):
+        rgb = tuple(int(normalized[index:index + 2], 16) for index in (1, 3, 5))
+        palette = (
+            {"red": (145, 60, 45), "dark": (45, 48, 50), "grey": (125, 125, 120)}
+            if roof
+            else {
+                "white": (220, 218, 205),
+                "yellow": (205, 180, 105),
+                "red": (150, 55, 45),
+                "grey": (130, 135, 132),
+                "wood": (120, 85, 58),
+            }
+        )
+        return min(
+            palette,
+            key=lambda key: sum((rgb[channel] - palette[key][channel]) ** 2 for channel in range(3)),
+        )
+    return None
+
+
+def _building_material_classes(feature: dict[str, Any], building_type: str) -> tuple[str, str, bool]:
+    wall_source = _colour_class(feature.get("building_colour"), roof=False)
+    if wall_source is None:
+        material = str(feature.get("building_material") or "").casefold()
+        if material in {"wood", "timber"}:
+            wall_source = "wood"
+        elif material in {"brick"}:
+            wall_source = "red"
+        elif material in {"concrete", "metal"}:
+            wall_source = "grey"
+    roof_source = _colour_class(feature.get("roof_colour"), roof=True)
+    if roof_source is None:
+        roof_material = str(feature.get("roof_material") or "").casefold()
+        if roof_material in {"tile", "roof_tiles", "clay", "brick"}:
+            roof_source = "red"
+        elif roof_material in {"metal", "slate", "asphalt", "tar_paper"}:
+            roof_source = "dark"
+
+    has_source = wall_source is not None or roof_source is not None
+    identity = str(feature.get("source_id") or feature.get("polygon") or building_type)
+    selector = int(hashlib.sha256(identity.encode("utf-8")).hexdigest()[:8], 16)
+    kind = building_type.casefold()
+    if kind in {"farm", "barn", "farm_auxiliary"}:
+        fallback_walls = ("red", "wood", "red", "yellow")
+        fallback_roofs = ("dark", "red", "grey")
+    elif kind in {"warehouse", "industrial", "garage", "garages"}:
+        fallback_walls = ("grey", "white")
+        fallback_roofs = ("dark", "grey")
+    else:
+        fallback_walls = ("white", "yellow", "red", "wood", "white", "grey")
+        fallback_roofs = ("dark", "red", "grey", "dark")
+    wall = wall_source or fallback_walls[selector % len(fallback_walls)]
+    roof = roof_source or fallback_roofs[(selector // 7) % len(fallback_roofs)]
+    return wall, roof, has_source
+
+
 def building_mesh_packets(
     artifact: dict[str, Any],
     terrain: HeightGrid,
@@ -1081,12 +1163,13 @@ def building_mesh_packets(
         count_field="features",
         expected_count=expected_count,
     )
-    buckets: dict[str, dict[str, list[Any]]] = {
-        "building_walls_source": {"positions": [], "normals": [], "uv0": [], "indices": []},
-        "building_roofs_source": {"positions": [], "normals": [], "uv0": [], "indices": []},
-        "building_walls_fallback": {"positions": [], "normals": [], "uv0": [], "indices": []},
-        "building_roofs_fallback": {"positions": [], "normals": [], "uv0": [], "indices": []},
-    }
+    buckets: dict[str, dict[str, list[Any]]] = {}
+
+    def bucket(material_id: str) -> dict[str, list[Any]]:
+        return buckets.setdefault(
+            material_id,
+            {"positions": [], "normals": [], "uv0": [], "indices": []},
+        )
     source_height_count = 0
     fallback_height_count = 0
     source_roof_shape_count = 0
@@ -1094,6 +1177,7 @@ def building_mesh_packets(
     source_roof_height_count = 0
     roof_shape_counts: dict[str, int] = {}
     source_surface_semantic_count = 0
+    material_class_counts: dict[str, int] = {}
 
     for feature_index, feature in enumerate(features):
         if not isinstance(feature, dict) or not isinstance(feature.get("polygon"), list):
@@ -1157,10 +1241,16 @@ def building_mesh_packets(
             fallback_roof_shape_count += 1
         if roof_profile["rise_source"] == "source-roof-height":
             source_roof_height_count += 1
-        if any(feature.get(field) for field in ("roof_material", "roof_colour", "building_material", "building_colour")):
+        building_type = str(feature.get("building", "unknown"))
+        wall_class, roof_class, has_source_material = _building_material_classes(feature, building_type)
+        if has_source_material:
             source_surface_semantic_count += 1
+        wall_material_id = f"building_wall_{wall_class}"
+        roof_material_id = f"building_roof_{roof_class}"
+        material_class_counts[wall_material_id] = material_class_counts.get(wall_material_id, 0) + 1
+        material_class_counts[roof_material_id] = material_class_counts.get(roof_material_id, 0) + 1
 
-        wall = buckets[f"building_walls_{suffix}"]
+        wall = bucket(wall_material_id)
         wall_height = float(roof_profile["eave_height_m"])
         perimeter_distance = 0.0
         for edge_index, a in enumerate(local_xy):
@@ -1191,7 +1281,7 @@ def building_mesh_packets(
             wall["indices"].extend((base, base + 1, base + 2, base + 1, base + 3, base + 2))
             perimeter_distance += edge_length
 
-        roof = buckets[f"building_roofs_{suffix}"]
+        roof = bucket(roof_material_id)
         base_z = local_xy[0][2]
         eave_z = base_z + wall_height
         ridge_z = eave_z + float(roof_profile["rise_m"])
@@ -1223,6 +1313,8 @@ def building_mesh_packets(
         "fallback_roof_shape_count": fallback_roof_shape_count,
         "source_roof_height_count": source_roof_height_count,
         "source_surface_semantic_count": source_surface_semantic_count,
+        "material_class_counts": {key: material_class_counts[key] for key in sorted(material_class_counts)},
+        "material_class_semantics": "source OSM colour/material when recognized; otherwise deterministic presentation palette by building type/id",
         "roof_shape_counts": {key: roof_shape_counts[key] for key in sorted(roof_shape_counts)},
         "roofs": "source-osm-roof-shape-when-present; otherwise explicit-presentation-profile",
         "pitched_roof_fallback": "gabled-for-small/residential/farm-quads; apex-for-other-small-pitched; flat-for-large/industrial",
