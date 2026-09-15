@@ -61,11 +61,34 @@ def test_building_artifact_drops_unneeded_tags_but_keeps_height_provenance():
     for i, (lon, lat) in enumerate(corners, start=1):
         ids.append(i)
         elements.append({"type": "node", "id": i, "lon": lon, "lat": lat})
-    elements.append({"type": "way", "id": 100, "nodes": ids, "tags": {"building": "yes", "building:levels": "2", "name": "fixture"}})
+    elements.append({"type": "way", "id": 100, "nodes": ids, "tags": {
+        "building": "house",
+        "building:levels": "2",
+        "roof:shape": "gabled",
+        "roof:height": "2.4",
+        "roof:direction": "92",
+        "roof:material": "tile",
+        "roof:colour": "#8b3d2e",
+        "building:material": "wood",
+        "building:colour": "white",
+        "name": "fixture",
+    }})
     source = _acquired(osm_contract(), {"elements": elements})
     result = compile_building_artifact(source, canonicalizer=_test_canonical)
     feature = result.artifact_payload["features"][0]
     assert feature["height_m"] == 6.0
     assert feature["height_source"] == "osm:building:levels*3m"
     assert "tags" not in feature
+    assert feature["building"] == "house"
+    assert feature["roof_shape"] == "gabled"
+    assert feature["roof_height"] == "2.4"
+    assert feature["roof_direction"] == "92"
+    assert feature["roof_material"] == "tile"
+    assert feature["roof_colour"] == "#8b3d2e"
+    assert feature["building_material"] == "wood"
+    assert feature["building_colour"] == "white"
     assert result.normalized_payload["features"][0]["tags"]["name"] == "fixture"
+    assert "name" not in feature
+    assert result.bundle["compiler_config"]["building_surface_semantics_policy"] == (
+        "selected-osm-roof-and-material-tags-pass-through-v0.1"
+    )
