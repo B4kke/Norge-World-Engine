@@ -347,6 +347,51 @@ def _valid_cached_ground(ground_root: Path) -> dict[str, Any] | None:
     return manifest
 
 
+def probe_selection(
+    *,
+    start_date: str,
+    end_date: str,
+    max_cloud_percent: float,
+    collections: tuple[str, ...],
+    fetch_json=_request_json,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    for collection in collections:
+        try:
+            items = search_items(
+                collection=collection,
+                start_date=start_date,
+                end_date=end_date,
+                fetch_json=fetch_json,
+            )
+            item, plan = select_item(items, max_cloud_percent=max_cloud_percent)
+        except SentinelGroundError as exc:
+            errors.append(f"{collection}: {exc}")
+            continue
+        captured = _item_datetime(item)
+        assets = plan["assets"]
+        return {
+            "schema": "nwe.sentinel-ground-source-probe/0.1",
+            "status": "PASS",
+            "stac_api": STAC_ROOT,
+            "stac_collection": collection,
+            "stac_item_id": item["id"],
+            "stac_datetime": captured.isoformat().replace("+00:00", "Z"),
+            "eo_cloud_cover_percent": float((item.get("properties") or {})["eo:cloud_cover"]),
+            "bbox_wgs84": list(target_bbox_wgs84()),
+            "search_window": {"start_date": start_date, "end_date": end_date},
+            "asset_mode": plan["mode"],
+            "asset_keys": sorted(assets),
+            "all_asset_hrefs_https": all(
+                isinstance(asset.get("href"), str) and asset["href"].startswith("https://")
+                for asset in assets.values()
+            ),
+            "copernicus_notice_template": f"Contains modified Copernicus Sentinel data {captured.year}",
+            "truth": "metadata-source-admission-only-no-imagery-bytes-downloaded",
+        }
+    raise SentinelGroundError("; ".join(errors) or "no Sentinel collection produced a metadata candidate")
+
+
 def acquire(
     *,
     project_root: Path,
@@ -496,19 +541,35 @@ def main() -> int:
     parser.add_argument("--collection", action="append", dest="collections")
     parser.add_argument("--item-id")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument(
+        "--probe-only",
+        action="store_true",
+        help="Search/select a real public scene but do not read COG imagery bytes.",
+    )
     args = parser.parse_args()
     if not (0.0 <= args.max_cloud_percent <= 100.0):
         parser.error("--max-cloud-percent must be between 0 and 100")
 
-    result = acquire(
-        project_root=project_root,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        max_cloud_percent=args.max_cloud_percent,
-        collections=tuple(args.collections or DEFAULT_COLLECTIONS),
-        refresh=args.refresh,
-        item_id=args.item_id,
-    )
+    collections = tuple(args.collections or DEFAULT_COLLECTIONS)
+    if args.probe_only:
+        if args.item_id:
+            parser.error("--item-id cannot be combined with --probe-only")
+        result = probe_selection(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            max_cloud_percent=args.max_cloud_percent,
+            collections=collections,
+        )
+    else:
+        result = acquire(
+            project_root=project_root,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            max_cloud_percent=args.max_cloud_percent,
+            collections=collections,
+            refresh=args.refresh,
+            item_id=args.item_id,
+        )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
