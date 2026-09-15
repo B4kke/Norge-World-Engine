@@ -9,6 +9,7 @@ materially outperforms a planar surface and the direction is discriminative.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -36,6 +37,14 @@ MAX_SLOPE_M_PER_M = 2.0
 
 class RoofOrientationProofError(RuntimeError):
     pass
+
+
+def sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _clamped_window(bounds, transform, width: int, height: int) -> Window | None:
@@ -270,6 +279,7 @@ def run(
     *,
     work_dir: Path,
     cache_root: Path,
+    height_proof: dict,
 ) -> dict:
     dtm_path = work_dir / "nannestad-dtm.tif"
     dom_path = work_dir / "nannestad-dom.tif"
@@ -277,6 +287,17 @@ def run(
         raise RoofOrientationProofError(
             "expected existing DTM/DOM rasters from the building-height proof"
         )
+    if (
+        height_proof.get("schema") != "nwe.nhm-dom-building-height-proof/0.1"
+        or height_proof.get("status") != "EXPERIMENT_PASS"
+        or height_proof.get("source", {}).get("grid_alignment") != "EXACT_1M_MATCH"
+    ):
+        raise RoofOrientationProofError("height proof identity/status is not accepted")
+    source_proof = height_proof["source"]
+    if sha256_path(dtm_path) != source_proof["dtm"]["raw_sha256"]:
+        raise RoofOrientationProofError("DTM raster bytes do not match height proof")
+    if sha256_path(dom_path) != source_proof["dom"]["raw_sha256"]:
+        raise RoofOrientationProofError("DOM raster bytes do not match height proof")
     with rasterio.open(dtm_path) as dtm_ds, rasterio.open(dom_path) as dom_ds:
         if (
             dtm_ds.crs != dom_ds.crs
@@ -291,6 +312,10 @@ def run(
         delta = _valid_delta(dtm, dom, dtm_ds.nodata, dom_ds.nodata)
 
     building_result, building_artifact = _offline_building_artifact(cache_root)
+    if building_result["artifact_sha256"] != source_proof["building_artifact_sha256"]:
+        raise RoofOrientationProofError(
+            "offline building artifact does not match the accepted height proof"
+        )
     candidates = []
     rejected_counts: dict[str, int] = {}
     accepted = []
@@ -344,6 +369,10 @@ def run(
         "horizontal_crs": building_artifact.get("horizontal_crs"),
         "source": {
             "building_artifact_sha256": building_result["artifact_sha256"],
+            "dtm_raw_sha256": source_proof["dtm"]["raw_sha256"],
+            "dtm_grid_sha256": source_proof["dtm"]["grid_sha256"],
+            "dom_raw_sha256": source_proof["dom"]["raw_sha256"],
+            "dom_grid_sha256": source_proof["dom"]["grid_sha256"],
             "dtm_path_role": "exact-1m-kartverket-nhm-dtm-proof-raster",
             "dom_path_role": "exact-1m-kartverket-nhm-dom-proof-raster",
             "runtime_source_calls": 0,
@@ -394,9 +423,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--cache-root", type=Path, required=True)
+    parser.add_argument("--height-proof", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    result = run(work_dir=args.work_dir, cache_root=args.cache_root)
+    height_proof = json.loads(args.height_proof.read_text(encoding="utf-8"))
+    result = run(
+        work_dir=args.work_dir,
+        cache_root=args.cache_root,
+        height_proof=height_proof,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(
