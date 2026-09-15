@@ -11,9 +11,14 @@ on:
       - 'engine/compiler/src/nwe_compiler/sources/osm_buildings.py'
       - 'tools/geo/probe_nhm_dom_wcs.py'
       - 'tools/geo/probe_nhm_dom_building_heights.py'
+      - 'tools/geo/compile_nhm_dom_building_surface.py'
+      - 'engine/compiler/tests/test_building_surface_candidate.py'
       - '.github/workflows/nhm-dom-building-height-proof.yml'
       - 'requirements-dev.txt'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   calibrate:
@@ -36,7 +41,8 @@ jobs:
         run: |
           python -m py_compile tools/geo/probe_nhm_dom_wcs.py
           python -m py_compile tools/geo/probe_nhm_dom_building_heights.py
-          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py
+          python -m py_compile tools/geo/compile_nhm_dom_building_surface.py
+          pytest -q engine/compiler/tests/test_nhm_dom_wcs_source_candidate.py engine/compiler/tests/test_vector_cli.py engine/compiler/tests/test_building_surface_candidate.py
 
       - name: Confirm live official DOM coverage identity
         run: |
@@ -66,11 +72,62 @@ jobs:
               assert value['calibration'][estimator] is not None
           PY
 
+      - name: Compile deterministic building-surface candidate
+        run: |
+          python tools/geo/compile_nhm_dom_building_surface.py \
+            --proof /tmp/nwe-dom-building-height-proof.json \
+            --output /tmp/nwe-building-surface.json \
+            --verification /tmp/nwe-building-surface-verification.json
+          python - <<'PY'
+          import hashlib, json
+          artifact = open('/tmp/nwe-building-surface.json', 'rb').read()
+          verification = json.load(open('/tmp/nwe-building-surface-verification.json', encoding='utf-8'))
+          proof = json.load(open('/tmp/nwe-dom-building-height-proof.json', encoding='utf-8'))
+          assert verification['status'] == 'PASS'
+          assert verification['artifact_sha256'] == hashlib.sha256(artifact).hexdigest()
+          assert verification['building_artifact_sha256'] == proof['source']['building_artifact_sha256']
+          assert verification['feature_count'] == proof['building_sampling']['usable_dom_dtm_candidates']
+          PY
+
+      - name: Publish replaceable building-surface transport
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          rm -rf /tmp/nwe-building-surface-publish
+          mkdir -p /tmp/nwe-building-surface-publish/nannestad-preview-1
+          cp /tmp/nwe-building-surface.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface.json
+          cp /tmp/nwe-building-surface-verification.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface-verification.json
+          cp /tmp/nwe-dom-building-height-proof.json \
+            /tmp/nwe-building-surface-publish/nannestad-preview-1/building-surface-proof.json
+          cd /tmp/nwe-building-surface-publish
+          git init
+          git checkout --orphan building-surface-runtime
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cat > README.md <<'TXT'
+          # Norge World Engine derived building-surface artifacts
+
+          Replaceable authoring transport for source-derived NHM DOM-DTM building
+          surface measurements. No raw Kartverket raster or OSM provider data is
+          committed here. The candidate artifact contains measured per-footprint
+          quantiles only; roof-shape and presentation geometry remain downstream.
+          TXT
+          git add README.md nannestad-preview-1
+          git commit -m "Publish Nannestad NHM DOM building-surface candidate"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin HEAD:building-surface-runtime
+
       - uses: actions/upload-artifact@v4
         with:
           name: nhm-dom-building-height-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             /tmp/nwe-nhm-dom-source-probe.json
             /tmp/nwe-dom-building-height-proof.json
+            /tmp/nwe-building-surface.json
+            /tmp/nwe-building-surface-verification.json
           if-no-files-found: error
           retention-days: 14
