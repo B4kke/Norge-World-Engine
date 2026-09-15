@@ -1054,6 +1054,11 @@ def building_mesh_packets(
     }
     source_height_count = 0
     fallback_height_count = 0
+    source_roof_shape_count = 0
+    fallback_roof_shape_count = 0
+    source_roof_height_count = 0
+    roof_shape_counts: dict[str, int] = {}
+    source_surface_semantic_count = 0
 
     for feature_index, feature in enumerate(features):
         if not isinstance(feature, dict) or not isinstance(feature.get("polygon"), list):
@@ -1104,7 +1109,24 @@ def building_mesh_packets(
         if _signed_area([(point[0], point[1]) for point in local_xy]) < 0.0:
             local_xy.reverse()
 
+        roof_profile = _roof_profile(
+            feature,
+            building_type=str(feature.get("building", "unknown")),
+            local_xy=local_xy,
+            total_height_m=building_height,
+        )
+        roof_shape_counts[roof_profile["shape"]] = roof_shape_counts.get(roof_profile["shape"], 0) + 1
+        if roof_profile["shape_source"].startswith("source-"):
+            source_roof_shape_count += 1
+        else:
+            fallback_roof_shape_count += 1
+        if roof_profile["rise_source"] == "source-roof-height":
+            source_roof_height_count += 1
+        if any(feature.get(field) for field in ("roof_material", "roof_colour", "building_material", "building_colour")):
+            source_surface_semantic_count += 1
+
         wall = buckets[f"building_walls_{suffix}"]
+        wall_height = float(roof_profile["eave_height_m"])
         perimeter_distance = 0.0
         for edge_index, a in enumerate(local_xy):
             b = local_xy[(edge_index + 1) % len(local_xy)]
@@ -1118,8 +1140,8 @@ def building_mesh_packets(
                 (
                     a[0], a[1], a[2],
                     b[0], b[1], b[2],
-                    a[0], a[1], a[2] + building_height,
-                    b[0], b[1], b[2] + building_height,
+                    a[0], a[1], a[2] + wall_height,
+                    b[0], b[1], b[2] + wall_height,
                 )
             )
             wall["normals"].extend((outward_x, outward_y, 0.0) * 4)
@@ -1127,21 +1149,33 @@ def building_mesh_packets(
                 (
                     perimeter_distance / 4.0, 0.0,
                     (perimeter_distance + edge_length) / 4.0, 0.0,
-                    perimeter_distance / 4.0, building_height / 3.0,
-                    (perimeter_distance + edge_length) / 4.0, building_height / 3.0,
+                    perimeter_distance / 4.0, wall_height / 3.0,
+                    (perimeter_distance + edge_length) / 4.0, wall_height / 3.0,
                 )
             )
             wall["indices"].extend((base, base + 1, base + 2, base + 1, base + 3, base + 2))
             perimeter_distance += edge_length
 
         roof = buckets[f"building_roofs_{suffix}"]
-        roof_base = len(roof["positions"]) // 3
-        for x_m, y_m, z_m in local_xy:
-            roof["positions"].extend((x_m, y_m, z_m + building_height))
-            roof["normals"].extend((0.0, 0.0, 1.0))
-            roof["uv0"].extend((x_m / 4.0, y_m / 4.0))
-        roof_points = [(point[0], point[1]) for point in local_xy]
-        roof["indices"].extend(roof_base + index for index in triangulate_polygon(roof_points))
+        base_z = local_xy[0][2]
+        eave_z = base_z + wall_height
+        ridge_z = eave_z + float(roof_profile["rise_m"])
+        if roof_profile["shape"] == "flat" or roof_profile["rise_m"] <= 0.0:
+            _append_flat_roof(roof, local_xy, eave_z)
+        elif roof_profile["shape"] == "gabled" and _append_gabled_roof(
+            roof,
+            wall,
+            local_xy,
+            eave_z,
+            ridge_z,
+        ):
+            pass
+        else:
+            # Hipped/pyramidal and non-quadrilateral pitched roofs use a
+            # deterministic apex representation until richer ridge/eave
+            # semantics are admitted. The source shape identity remains in
+            # the packet truth and is never rewritten as surveyed geometry.
+            _append_apex_roof(roof, local_xy, eave_z, ridge_z)
 
     packets: list[tuple[str, MeshPacket]] = []
     truth = {
@@ -1150,7 +1184,14 @@ def building_mesh_packets(
         "source_height_count": source_height_count,
         "fallback_height_count": fallback_height_count,
         "fallback_heights": "presentation-only-by-building-class",
-        "roofs": "presentation-only-flat-triangulation",
+        "source_roof_shape_count": source_roof_shape_count,
+        "fallback_roof_shape_count": fallback_roof_shape_count,
+        "source_roof_height_count": source_roof_height_count,
+        "source_surface_semantic_count": source_surface_semantic_count,
+        "roof_shape_counts": {key: roof_shape_counts[key] for key in sorted(roof_shape_counts)},
+        "roofs": "source-osm-roof-shape-when-present; otherwise explicit-presentation-profile",
+        "pitched_roof_fallback": "gabled-for-small/residential/farm-quads; apex-for-other-small-pitched; flat-for-large/industrial",
+        "source_material_tags": "preserved-in-compiled-building-artifact-but-not-yet-used-as-authoritative-texture-identity",
     }
     for material_id, bucket in buckets.items():
         if not bucket["indices"]:
