@@ -436,3 +436,37 @@ Every completed work session appends exactly one entry using this structure:
 - Primary gate remains `UE5-RUN-01`: run the exact branch on Windows with Unreal Engine 5.8 and retain compile, PIE, collision, movement, frame, GPU and memory evidence.
 - Web follow-up is presentation-only and secondary: calibrate the overly dark asphalt from measured screenshots, render the already-admitted source-backed vegetation, improve source-backed building semantics, then obtain real WebGPU/mobile evidence. Do not weaken world truth to improve appearance.
 
+## 2026-09-15 14:43 CEST — LUMEN — P1-BUILDINGS-01-DOM-HANDOFF
+
+**What**
+- Added a fail-closed Kartverket NHM DOM source probe and exact 1 m Nannestad DOM-DTM calibration over the accepted 135 OSM building footprints.
+- Compiled the measured per-footprint DOM-DTM distributions into the renderer-neutral candidate `nwe.building-surface-artifact/0.1-candidate` and published only the derived measurements/provenance on `building-surface-runtime`; raw DOM/DTM raster bytes remain outside Git/runtime transport.
+- Integrated the verified candidate into the Unreal adapter. OSM source height always wins; otherwise guarded DOM-DTM p90 may replace the old class fallback. DOM p95-p25 relief may drive presentation roof rise, but roof shape/ridge/eave direction remains explicitly non-authoritative.
+- Fixed the Unreal CLI derived-layer determinism regression: `all` materializes vegetation + building surface, and subsequent `build` reuses the verified local derivatives instead of silently dropping vegetation.
+
+**Why**
+- The active Nannestad slice still looked generic because 120/135 buildings used fixed presentation heights and the current OSM snapshot contains zero roof-shape/material fields.
+- NHM DOM provides a public 1 m surface model on the exact EPSG:25832 tile grid, allowing a measurable source-derived improvement without pretending FKB access or inventing world truth.
+
+**Result / evidence**
+- FACT: live Kartverket WCS advertises raw surface coverage `nhm_dom_topo_25832` separately from hillshade; `nhm-dom-source-probe` passes.
+- FACT: DTM and DOM align exactly as 1000 × 1000 1 m EPSG:25832 grids for the accepted Nannestad tile.
+- FACT: the candidate is bound to building artifact SHA-256 `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`, compiler-config `d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15`, artifact SHA-256 `7b07c587cbbf3e42685cc53d9751fa04471d247e2ab9601daa26e75a2e13721a` and semantic SHA-256 `c3297f444d8227ca09897a712d5e34b780fc3999df6f4d4674e529a7b6384488`.
+- FACT: 132/135 buildings have usable DOM-DTM measurements. The 15 existing OSM `building:levels × 3 m` heights provide the only current coarse calibration reference; p90 has MAE 1.048 m, p90 absolute error 1.816 m and 93.3% within 2 m.
+- FACT: guarded Unreal policy yields **15 OSM source heights + 105 DOM-derived presentation heights + 15 explicit fallbacks**, versus the previous 15 + 120 fallbacks.
+- FACT: exact code head `d4dcfb77850e13eff0d276498657c65988795ece` passes `nhm-dom-building-height-proof` run `34971239381` and the active Unreal integration step inside baseline run `34971239525`.
+- FACT: baseline `all` and subsequent `build` both report 105 DOM heights, 15 fallbacks, 819 vegetation instances and 25 mesh packets; `diff -qr` passes.
+- PRE-EXISTING/NON-ACTIVE: the overall baseline workflow remains red only at the historical Cesium 3D Tiles prototype dependency build after the active compiler/Unreal/world/streaming gates pass.
+- TRUTH BOUNDARY: DOM-DTM distributions are source-derived measurements. Choosing p90, plausibility ceilings, p95-p25 roof rise and fallback roof shape is renderer presentation policy. No surveyed ridge/eave/roof-shape claim is made.
+
+**Changed**
+- `engine/compiler/src/nwe_compiler/nhm_dom_wcs_source_candidate.py` and tests.
+- `tools/geo/probe_nhm_dom_wcs.py`, `probe_nhm_dom_building_heights.py`, `compile_nhm_dom_building_surface.py`.
+- `.github/workflows/nhm-dom-source-probe.yml` and `nhm-dom-building-height-proof.yml`.
+- `apps/unreal-runtime/Tools/nwe_unreal_pipeline.py` and Unreal adapter regressions.
+- `building-surface-runtime` replaceable derived transport; current publish commit `1d2aaada9ccead75e22c4fd1ed2f85a79ad16207`.
+- `docs/proofs/2026-09-15-nhm-dom-building-surface-unreal.md`.
+
+**Next**
+- `P1-BUILDINGS-01-ROOF-SURFACE`: measure whether the spatial NHM DOM samples inside high-confidence footprints can support a conservative renderer-neutral ridge/orientation candidate; fail closed to the existing presentation roof profile when the signal is ambiguous.
+
