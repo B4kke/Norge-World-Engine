@@ -50,9 +50,14 @@ VEGETATION_ARTIFACT_SCHEMA = "nwe.vegetation-representative-artifact/0.1-candida
 VEGETATION_RUNTIME_SCHEMA = "nwe.unreal-vegetation-layer/0.1"
 VEGETATION_SEMANTIC_SHA256 = "320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f"
 VEGETATION_ARTIFACT_SHA256 = "032587efa9c3b7a4a32c95257118c8a7d947cd8e58ae48b18502532fac5d282e"
+VEGETATION_COMPILER_CONFIG_ID = "f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e"
 VEGETATION_ARTIFACT_URL = (
     "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
     "visual-runtime/nannestad-preview-1/vegetation-representatives.json"
+)
+VEGETATION_VERIFICATION_URL = (
+    "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
+    "visual-runtime/nannestad-preview-1/vegetation-verification.json"
 )
 VEGETATION_ROAD_CLEARANCE_M = 6.0
 VEGETATION_BUILDING_CLEARANCE_M = 5.0
@@ -190,16 +195,30 @@ def _download(url: str) -> bytes:
         raise PipelineError(f"download failed: {url}: {exc}") from exc
 
 
-def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
-    data = _download(VEGETATION_ARTIFACT_URL)
-    actual_sha = _sha256_bytes(data)
+def validate_pinned_vegetation_transport(
+    artifact_bytes: bytes,
+    verification: dict[str, Any],
+) -> dict[str, Any]:
+    actual_sha = _sha256_bytes(artifact_bytes)
     if actual_sha != VEGETATION_ARTIFACT_SHA256:
         raise PipelineError(
             "published vegetation artifact SHA-256 changed; "
             f"{actual_sha} != {VEGETATION_ARTIFACT_SHA256}"
         )
+    if (
+        verification.get("schema") != "nwe.vegetation-representative-verification/0.1"
+        or verification.get("status") != "PASS"
+        or verification.get("artifact_sha256") != VEGETATION_ARTIFACT_SHA256
+        or verification.get("artifact_semantic_sha256") != VEGETATION_SEMANTIC_SHA256
+        or verification.get("compiler_config_id") != VEGETATION_COMPILER_CONFIG_ID
+        or verification.get("same_cache_byte_identical") is not True
+        or verification.get("independent_ar50_semantic_equal") is not True
+        or int(verification.get("compiled_segment_count") or 0) <= 0
+        or int(verification.get("representative_instance_count") or 0) <= 0
+    ):
+        raise PipelineError("published vegetation verification identity is not accepted")
     try:
-        value = json.loads(data.decode("utf-8"))
+        value = json.loads(artifact_bytes.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise PipelineError(f"published vegetation artifact is invalid JSON: {exc}") from exc
     if (
@@ -207,8 +226,31 @@ def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
         or value.get("schema") != VEGETATION_ARTIFACT_SCHEMA
         or value.get("tile_id") != EXPECTED_TILE_ID
         or value.get("horizontal_crs") != EXPECTED_HORIZONTAL_CRS
+        or value.get("compiler_config_id") != VEGETATION_COMPILER_CONFIG_ID
     ):
         raise PipelineError("published vegetation artifact contract is not accepted")
+    stats = value.get("stats")
+    if (
+        not isinstance(stats, dict)
+        or int(stats.get("compiled_segment_count") or 0)
+        != int(verification["compiled_segment_count"])
+        or int(stats.get("representative_instance_count") or 0)
+        != int(verification["representative_instance_count"])
+    ):
+        raise PipelineError("published vegetation artifact/verification stats disagree")
+    return value
+
+
+def fetch_pinned_vegetation_artifact(destination: Path) -> Path:
+    data = _download(VEGETATION_ARTIFACT_URL)
+    verification_bytes = _download(VEGETATION_VERIFICATION_URL)
+    try:
+        verification = json.loads(verification_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"published vegetation verification is invalid JSON: {exc}") from exc
+    if not isinstance(verification, dict):
+        raise PipelineError("published vegetation verification must be an object")
+    validate_pinned_vegetation_transport(data, verification)
     _write_atomic(destination.resolve(), data)
     return destination.resolve()
 
