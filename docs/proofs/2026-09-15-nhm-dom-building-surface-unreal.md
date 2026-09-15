@@ -98,3 +98,67 @@ height selection, plausibility thresholds, roof-rise proxy and fallback roof
 shape are explicitly renderer policies. Exact roof shape/ridge direction and
 façade identity remain open and require richer admitted source evidence or a
 separately validated geometric inference artifact.
+
+## Roof-direction follow-up
+
+The same exact DOM-DTM source grids were also evaluated spatially for ridge
+direction. A centered tent-surface model was compared against a simple plane
+across 2-degree direction steps. The broad experiment analyzed 118 buildings,
+accepted 53 gable-like directional fits, and the stricter deterministic compiler
+admitted 30 high-confidence direction candidates.
+
+The strong candidate is separately versioned:
+
+- schema: `nwe.building-roof-orientation-artifact/0.1-candidate`;
+- compiler config:
+  `325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682`;
+- artifact SHA-256:
+  `0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3`;
+- semantic SHA-256:
+  `87b54808e77a62e52b4f8dce2d3c584679922daccdf5df89dc505bbeb384dce6`;
+- 30/135 source buildings have a strong direction candidate.
+
+A repeat hosted acquisition/compile produced the **same artifact and semantic
+hashes**. The compiler rounds fit evidence to 9 decimal places before both
+admission and canonical hashing; this removes irrelevant ~1e-16 LAPACK/BLAS
+floating-point drift while leaving the 2-degree direction and strong-fit gate
+unchanged.
+
+Unreal uses this direction only when the roof is already a presentation-profile
+pitched roof. It may orient a presentation gable; it cannot alter a source
+roof-shape tag, create a pitched roof from a flat profile, or claim a surveyed
+ridge.
+
+Current real-package result on exact head
+`88fba398a08b632d253fd5c53030d2ca1ce7dfe6`:
+
+- 105 guarded DOM-derived building heights;
+- 15 explicit height fallbacks;
+- 10 strong DOM directions applied to existing presentation gables;
+- 0 derived hipped ridge segments;
+- 819 vegetation representatives;
+- 25 mesh packets;
+- repeated `all -> build` trees compare byte-identically.
+
+The zero hipped-ridge count is deliberate. All 11 strong candidates that are
+currently classified as presentation hipped roofs have concave/complex OSM
+footprints. The adapter refuses to replace those with a convex-hull roof because
+that would span real footprint recesses with invented geometry.
+
+Hosted evidence:
+
+- `nhm-dom-building-height-proof` run `34981973095`: PASS;
+- `baseline` run `34981973005`: Unreal unit regressions and real Nannestad
+  package integration PASS; the workflow is red only at the already-known
+  historical Cesium prototype dependency build;
+- exact Web reference screenshot run `34981972867`: PASS, artifact
+  `10401029189`, PNG SHA-256
+  `c3d36f082d7cd448e0f29a0b92f8dcaad59c9e423745b0e9ce79f003cef77f1c`.
+
+### Roof truth boundary
+
+The 30 directions are high-confidence interpretations of 1 m DOM-DTM samples,
+not FKB `Mønelinje`, surveyed ridge segments, roof-shape truth or eave
+geometry. Complex/concave roofs remain explicitly unresolved for richer source
+data rather than being visually forced into simple convex roofs.
+
