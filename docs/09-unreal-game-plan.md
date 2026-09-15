@@ -37,6 +37,9 @@ lighting and disposable runtime realization.
 - deterministic 1009 × 1009 16-bit Landscape heightmap with recorded import
   location/scale and quantization bound;
 - deterministic chunked terrain, NVDB road and OSM building mesh packets;
+- verified renderer-neutral NHM DOM-DTM building-surface handoff: current slice
+  resolves 15 OSM source heights + 105 guarded DOM-derived presentation heights
+  + 15 explicit fallbacks while preserving exact footprint/building identity;
 - collision on terrain/building bootstrap geometry;
 - code-owned third-person character using Epic's Quinn mesh and animation
   content, with keyboard/gamepad movement, jumping and follow camera;
@@ -54,7 +57,7 @@ immediately consumable. Native Landscape is the production terrain target.
 |---|---|---|---|
 | Terrain | DTM1 elevation, EPSG:25832, NN2000 | mesh resampling and r16 quantization | UE render/collision comparison |
 | Roads | NVDB centerline and elevation | class-based width, 5 cm lift | admitted width/lane/surface fields |
-| Buildings | OSM footprint/type; any admitted height remains separate | fallback height and flat roof | source-backed height/roof/relations |
+| Buildings | OSM footprint/type + 15 OSM heights; Kartverket NHM DOM-DTM distributions for 132 footprints | guarded p90 height for 105 unresolved buildings, 15 remaining height fallbacks, fallback roof shape/ridge orientation; DOM relief may only drive presentation roof rise | surveyed/admitted roof shape/ridge/eave or high-confidence separately versioned inference; richer relations/façades |
 | Materials | stable material roles; pinned CC0 map identity | generic Poly Haven surface mapping and tint | land-cover/façade semantics plus UE frame review |
 | People | Epic Quinn is a real skeletal human character asset | identity/wardrobe | authored cast/MetaHuman decision if required |
 
@@ -104,8 +107,20 @@ geographic art.
 
 ### UE5-GEO-01
 
-Replace road-width and building-height/roof fallbacks with admitted source
-semantics. Missing values remain visibly classified, never silently guessed.
+**Partial pass:** building-height enrichment is now materially advanced. The
+engine-neutral NHM DOM-DTM candidate is hash-bound to the exact accepted OSM
+building artifact and the Unreal adapter uses guarded p90 only for unresolved
+heights that pass sample/plausibility gates. Current result is 15 OSM source
+heights + 105 DOM-derived presentation heights + 15 explicit fallbacks.
+
+Roof shape remains open: this OSM snapshot contains zero admitted roof-shape
+fields. DOM p95-p25 relief may influence only the rise of an already
+presentation-classified pitched roof; it does not establish ridge direction,
+eave geometry or roof type.
+
+Remaining gate: admitted road width/lane/surface semantics plus a measured
+roof-orientation/shape source or separately versioned high-confidence inference
+candidate. Missing values remain visibly classified, never silently guessed.
 
 ### UE5-PACKAGE-01
 
