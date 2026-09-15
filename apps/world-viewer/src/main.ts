@@ -91,7 +91,7 @@ function shell(modeLabel: string, introTitle: string, introCopy: string, actionL
           <p class="section-label">Runtime / GPU</p>
           <div class="row"><span>Active renderer</span><strong id="metric-renderer">WAIT</strong></div>
           <div class="row"><span>Graphics profile</span><strong id="metric-graphics">${graphicsProfile.label.toUpperCase()}</strong></div>
-          <div class="row"><span>Local PBR surfaces</span><strong id="metric-pbr">WAIT</strong></div>
+          <div class="row"><span>Local textures</span><strong id="metric-pbr">WAIT</strong></div>
           <div class="row"><span>Texture quality</span><strong id="metric-texture-quality">WAIT</strong></div>
           <div class="row"><span>Light / shadows</span><strong id="metric-lighting">WAIT</strong></div>
           <div class="row"><span>Post effects</span><strong id="metric-post">WAIT</strong></div>
@@ -258,7 +258,14 @@ async function runDefaultPreview() {
       const materials = result.renderer.material_library;
       const visualStyle = result.renderer.renderer_visual_style;
       const post = result.renderer.post_processing;
-      setMetric('metric-pbr', `${materials.texture_count} LOCAL · CC0`, 'pass');
+      const geographicGroundColorActive = result.ground_imagery?.mode === 'source-derived-geographic-albedo';
+      setMetric(
+        'metric-pbr',
+        geographicGroundColorActive
+          ? `${materials.texture_count - 1} PBR CC0 + 1 GEO`
+          : `${materials.texture_count} PBR CC0`,
+        'pass',
+      );
       setMetric('metric-texture-quality', `${materials.anisotropy_active}× ANISO · NORMAL ${materials.normal_maps ? 'ON' : 'OFF'}`, materials.normal_maps ? 'pass' : 'neutral');
       setMetric('metric-lighting', `${visualStyle.shadow.filter.replace('ShadowMap', '').toUpperCase()} · ${visualStyle.shadow.map_size}²`, 'pass');
       setMetric('metric-post', post.enabled ? `${post.ambient_occlusion ? 'GTAO' : ''}${post.ambient_occlusion && post.bloom ? ' + ' : ''}${post.bloom ? 'BLOOM' : ''}` : 'DIRECT', post.enabled ? 'pass' : 'neutral');
