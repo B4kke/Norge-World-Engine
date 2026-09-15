@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from nwe_compiler.canonical import canonical_bytes, canonical_sha256
@@ -22,10 +23,20 @@ MIN_RELIEF_M = 1.0
 MAX_RELIEF_M = 5.0
 MIN_SLOPE = 0.12
 MAX_SLOPE = 1.2
+METRIC_DECIMALS = 9
 
 
 class RoofOrientationCompileError(RuntimeError):
     pass
+
+
+def _stable_metric(value: object, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RoofOrientationCompileError(f"{label} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise RoofOrientationCompileError(f"{label} must be finite")
+    return round(result, METRIC_DECIMALS)
 
 
 def compiler_config() -> dict:
@@ -39,6 +50,7 @@ def compiler_config() -> dict:
         "min_orthogonal_r2_gap": MIN_ORTHOGONAL_GAP,
         "relief_range_m": [MIN_RELIEF_M, MAX_RELIEF_M],
         "roof_slope_range_m_per_m": [MIN_SLOPE, MAX_SLOPE],
+        "fit_metric_quantization_decimals": METRIC_DECIMALS,
         "roof_shape_claim": "none",
         "surveyed_ridge_claim": False,
         "runtime_geometry": "not-contained",
@@ -46,19 +58,30 @@ def compiler_config() -> dict:
 
 
 def _admitted(candidate: dict) -> bool:
+    if candidate.get("status") != "ACCEPTED_GABLE_LIKE_DIRECTION":
+        return False
+    tent_r2 = _stable_metric(candidate.get("tent_r2"), "tent_r2")
+    tent_rmse = _stable_metric(candidate.get("tent_rmse_m"), "tent_rmse_m")
+    improvement = _stable_metric(
+        candidate.get("r2_improvement_over_plane"),
+        "r2_improvement_over_plane",
+    )
+    orthogonal_gap = _stable_metric(candidate.get("orthogonal_gap"), "orthogonal_gap")
+    relief = _stable_metric(
+        candidate.get("winsorized_p10_p95_relief_m"),
+        "winsorized_p10_p95_relief_m",
+    )
+    slope = _stable_metric(
+        candidate.get("tent_roof_slope_m_per_m"),
+        "tent_roof_slope_m_per_m",
+    )
     return (
-        candidate.get("status") == "ACCEPTED_GABLE_LIKE_DIRECTION"
-        and float(candidate.get("tent_r2", -1.0)) >= MIN_TENT_R2
-        and float(candidate.get("tent_rmse_m", 1e9)) <= MAX_TENT_RMSE_M
-        and float(candidate.get("r2_improvement_over_plane", -1.0))
-        >= MIN_R2_IMPROVEMENT
-        and float(candidate.get("orthogonal_gap", -1.0)) >= MIN_ORTHOGONAL_GAP
-        and MIN_RELIEF_M
-        <= float(candidate.get("winsorized_p10_p95_relief_m", -1.0))
-        <= MAX_RELIEF_M
-        and MIN_SLOPE
-        <= float(candidate.get("tent_roof_slope_m_per_m", -1.0))
-        <= MAX_SLOPE
+        tent_r2 >= MIN_TENT_R2
+        and tent_rmse <= MAX_TENT_RMSE_M
+        and improvement >= MIN_R2_IMPROVEMENT
+        and orthogonal_gap >= MIN_ORTHOGONAL_GAP
+        and MIN_RELIEF_M <= relief <= MAX_RELIEF_M
+        and MIN_SLOPE <= slope <= MAX_SLOPE
     )
 
 
@@ -94,7 +117,10 @@ def compile_artifact(proof: dict) -> tuple[dict, dict, bytes]:
         if not isinstance(source_id, str) or not source_id or source_id in seen:
             raise RoofOrientationCompileError("admitted roof candidate source_id is invalid")
         seen.add(source_id)
-        angle = float(candidate["ridge_orientation_deg_from_east_ccw"]) % 180.0
+        angle = _stable_metric(
+            candidate["ridge_orientation_deg_from_east_ccw"],
+            f"{source_id}.ridge_orientation_deg_from_east_ccw",
+        ) % 180.0
         if not 0.0 <= angle < 180.0:
             raise RoofOrientationCompileError(f"{source_id}: invalid ridge angle")
         features.append(
@@ -104,27 +130,42 @@ def compile_artifact(proof: dict) -> tuple[dict, dict, bytes]:
                 "ridge_orientation_deg_from_east_ccw": angle,
                 "sample_count": int(candidate["sample_count"]),
                 "fit": {
-                    "tent_r2": float(candidate["tent_r2"]),
-                    "tent_rmse_m": float(candidate["tent_rmse_m"]),
-                    "r2_improvement_over_plane": float(
-                        candidate["r2_improvement_over_plane"]
+                    "tent_r2": _stable_metric(candidate["tent_r2"], f"{source_id}.tent_r2"),
+                    "tent_rmse_m": _stable_metric(
+                        candidate["tent_rmse_m"],
+                        f"{source_id}.tent_rmse_m",
                     ),
-                    "orthogonal_gap": float(candidate["orthogonal_gap"]),
-                    "winsorized_p10_p95_relief_m": float(
-                        candidate["winsorized_p10_p95_relief_m"]
+                    "r2_improvement_over_plane": _stable_metric(
+                        candidate["r2_improvement_over_plane"],
+                        f"{source_id}.r2_improvement_over_plane",
                     ),
-                    "tent_roof_slope_m_per_m": float(
-                        candidate["tent_roof_slope_m_per_m"]
+                    "orthogonal_gap": _stable_metric(
+                        candidate["orthogonal_gap"],
+                        f"{source_id}.orthogonal_gap",
+                    ),
+                    "winsorized_p10_p95_relief_m": _stable_metric(
+                        candidate["winsorized_p10_p95_relief_m"],
+                        f"{source_id}.winsorized_p10_p95_relief_m",
+                    ),
+                    "tent_roof_slope_m_per_m": _stable_metric(
+                        candidate["tent_roof_slope_m_per_m"],
+                        f"{source_id}.tent_roof_slope_m_per_m",
                     ),
                 },
                 "footprint_context": {
                     "long_axis_deg_from_east_ccw": (
-                        float(candidate["footprint_long_axis_deg_from_east_ccw"])
+                        _stable_metric(
+                            candidate["footprint_long_axis_deg_from_east_ccw"],
+                            f"{source_id}.footprint_long_axis_deg_from_east_ccw",
+                        )
                         if candidate.get("footprint_long_axis_deg_from_east_ccw") is not None
                         else None
                     ),
                     "ridge_vs_long_axis_deg": (
-                        float(candidate["ridge_vs_footprint_long_axis_deg"])
+                        _stable_metric(
+                            candidate["ridge_vs_footprint_long_axis_deg"],
+                            f"{source_id}.ridge_vs_footprint_long_axis_deg",
+                        )
                         if candidate.get("ridge_vs_footprint_long_axis_deg") is not None
                         else None
                     ),
