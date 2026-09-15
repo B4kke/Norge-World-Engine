@@ -1081,6 +1081,102 @@ def _presentation_building_height_m(building_type: str) -> float:
     }.get(building_type.casefold(), 5.5)
 
 
+BUILDING_SURFACE_MAX_P90_BY_TYPE = {
+    "garage": 8.0,
+    "garages": 8.0,
+    "shed": 8.0,
+    "farm_auxiliary": 10.0,
+    "house": 18.0,
+    "detached": 18.0,
+    "residential": 18.0,
+    "terrace": 18.0,
+    "kindergarten": 18.0,
+    "yes": 18.0,
+    "apartments": 22.0,
+    "farm": 20.0,
+    "barn": 20.0,
+    "warehouse": 22.0,
+    "industrial": 22.0,
+    "civic": 25.0,
+    "school": 25.0,
+    "sports_centre": 25.0,
+    "office": 25.0,
+    "commercial": 25.0,
+    "retail": 25.0,
+}
+
+
+def _building_surface_height_candidate(
+    feature: dict[str, Any],
+    measurement: dict[str, Any] | None,
+) -> tuple[float | None, float | None, str]:
+    if measurement is None:
+        return None, None, "missing"
+    samples = measurement.get("sample_count")
+    if (
+        isinstance(samples, bool)
+        or not isinstance(samples, int)
+        or samples < BUILDING_SURFACE_MIN_SAMPLES
+    ):
+        return None, None, "insufficient-samples"
+    height_delta = measurement.get("height_delta_m")
+    if not isinstance(height_delta, dict):
+        return None, None, "missing-height-distribution"
+    p90 = _finite(height_delta.get("p90"), "building-surface p90")
+    kind = str(feature.get("building") or "yes").casefold()
+    maximum = BUILDING_SURFACE_MAX_P90_BY_TYPE.get(kind, 18.0)
+    if p90 < BUILDING_SURFACE_MIN_P90_M:
+        return None, None, "below-minimum-height"
+    if p90 > maximum:
+        return None, None, "above-type-plausibility"
+    relief = _finite(
+        measurement.get("roof_relief_p95_p25_m"),
+        "building-surface roof_relief_p95_p25_m",
+    )
+    if relief <= 0.0:
+        relief = None
+    return p90, relief, "accepted"
+
+
+def _building_surface_index(
+    surface_artifact: dict[str, Any] | None,
+    buildings_artifact: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    if surface_artifact is None:
+        return {}
+    features = surface_artifact.get("features")
+    if not isinstance(features, list):
+        raise PipelineError("building-surface artifact features must be a list")
+    building_features = buildings_artifact.get("features")
+    if not isinstance(building_features, list):
+        raise PipelineError("building artifact features must be a list")
+    source_by_id: dict[str, dict[str, Any]] = {}
+    for feature in building_features:
+        if not isinstance(feature, dict):
+            continue
+        source_id = feature.get("source_id")
+        if isinstance(source_id, str) and source_id:
+            source_by_id[source_id] = feature
+    index: dict[str, dict[str, Any]] = {}
+    for measurement in features:
+        if not isinstance(measurement, dict):
+            raise PipelineError("building-surface feature must be an object")
+        source_id = measurement.get("source_id")
+        if not isinstance(source_id, str) or source_id not in source_by_id:
+            raise PipelineError(
+                f"building-surface source_id does not exist in accepted building artifact: {source_id!r}"
+            )
+        source_feature = source_by_id[source_id]
+        if str(measurement.get("building") or "yes") != str(
+            source_feature.get("building") or "yes"
+        ):
+            raise PipelineError(f"building-surface type mismatch for {source_id}")
+        if source_id in index:
+            raise PipelineError(f"duplicate building-surface source_id {source_id}")
+        index[source_id] = measurement
+    return index
+
+
 def _positive_measurement_m(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -1134,6 +1230,7 @@ def _roof_profile(
     building_type: str,
     local_xy: Sequence[tuple[float, float, float]],
     total_height_m: float,
+    surface_roof_relief_m: float | None = None,
 ) -> dict[str, Any]:
     source_shape = _normalized_roof_shape(feature.get("roof_shape"))
     shape = source_shape or _fallback_roof_shape(
@@ -1153,9 +1250,15 @@ def _roof_profile(
     if shape == "flat":
         rise = 0.0
         rise_source = "flat-roof"
+    elif source_rise is not None:
+        rise = source_rise
+        rise_source = "source-roof-height"
+    elif surface_roof_relief_m is not None and math.isfinite(surface_roof_relief_m):
+        rise = min(4.0, max(0.6, surface_roof_relief_m))
+        rise_source = "derived-dom-dtm-relief-p95-p25-presentation-proxy"
     else:
-        rise = source_rise if source_rise is not None else fallback_rise
-        rise_source = "source-roof-height" if source_rise is not None else "presentation-footprint-proportion"
+        rise = fallback_rise
+        rise_source = "presentation-footprint-proportion"
 
     if rise > 0.0:
         rise = min(rise, max(0.6, total_height_m - 2.2))
@@ -1393,6 +1496,8 @@ def building_mesh_packets(
     origin_e: float,
     origin_n: float,
     origin_up_m: float,
+    building_surface_artifact: dict[str, Any] | None = None,
+    building_surface_sha256: str | None = None,
 ) -> list[tuple[str, MeshPacket]]:
     features = _validate_vector_artifact(
         artifact,
@@ -1400,6 +1505,12 @@ def building_mesh_packets(
         count_field="features",
         expected_count=expected_count,
     )
+    surface_by_id = _building_surface_index(building_surface_artifact, artifact)
+    if building_surface_artifact is not None and (
+        not isinstance(building_surface_sha256, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", building_surface_sha256)
+    ):
+        raise PipelineError("building-surface SHA-256 is required when the artifact is present")
     buckets: dict[str, dict[str, list[Any]]] = {}
 
     def bucket(material_id: str) -> dict[str, list[Any]]:
@@ -1408,7 +1519,12 @@ def building_mesh_packets(
             {"positions": [], "normals": [], "uv0": [], "indices": []},
         )
     source_height_count = 0
+    derived_surface_height_count = 0
     fallback_height_count = 0
+    building_surface_missing_count = 0
+    building_surface_rejected_count = 0
+    building_surface_rejection_counts: dict[str, int] = {}
+    derived_surface_roof_relief_count = 0
     source_roof_shape_count = 0
     fallback_roof_shape_count = 0
     source_roof_height_count = 0
@@ -1437,14 +1553,28 @@ def building_mesh_packets(
         base_height = sample_height(terrain, centroid_e, centroid_n) + 0.03
         raw_height = feature.get("height_m")
         source_backed = raw_height is not None and feature.get("height_source") != "unresolved"
+        source_id = str(feature.get("source_id") or "")
+        surface_measurement = surface_by_id.get(source_id)
+        derived_height, surface_roof_relief, surface_status = _building_surface_height_candidate(
+            feature,
+            surface_measurement,
+        )
         if source_backed:
             building_height = _finite(raw_height, "building height")
             source_height_count += 1
-            suffix = "source"
+        elif derived_height is not None:
+            building_height = derived_height
+            derived_surface_height_count += 1
         else:
             building_height = _presentation_building_height_m(str(feature.get("building", "unknown")))
             fallback_height_count += 1
-            suffix = "fallback"
+            if surface_status == "missing":
+                building_surface_missing_count += 1
+            else:
+                building_surface_rejected_count += 1
+                building_surface_rejection_counts[surface_status] = (
+                    building_surface_rejection_counts.get(surface_status, 0) + 1
+                )
         if building_height <= 0.0:
             raise PipelineError(f"building feature {feature_index} has a non-positive height")
 
@@ -1470,6 +1600,7 @@ def building_mesh_packets(
             building_type=str(feature.get("building", "unknown")),
             local_xy=local_xy,
             total_height_m=building_height,
+            surface_roof_relief_m=surface_roof_relief,
         )
         roof_shape_counts[roof_profile["shape"]] = roof_shape_counts.get(roof_profile["shape"], 0) + 1
         if roof_profile["shape_source"].startswith("source-"):
@@ -1478,6 +1609,8 @@ def building_mesh_packets(
             fallback_roof_shape_count += 1
         if roof_profile["rise_source"] == "source-roof-height":
             source_roof_height_count += 1
+        elif roof_profile["rise_source"].startswith("derived-dom-dtm-relief"):
+            derived_surface_roof_relief_count += 1
         building_type = str(feature.get("building", "unknown"))
         wall_class, roof_class, has_source_material = _building_material_classes(feature, building_type)
         if has_source_material:
@@ -1544,8 +1677,22 @@ def building_mesh_packets(
         "footprints": "verified-openstreetmap",
         "terrain_grounding": "presentation-derived-from-verified-dtm1",
         "source_height_count": source_height_count,
+        "derived_surface_height_count": derived_surface_height_count,
         "fallback_height_count": fallback_height_count,
         "fallback_heights": "presentation-only-by-building-class",
+        "building_surface_artifact_sha256": building_surface_sha256,
+        "building_surface_candidate_count": len(surface_by_id),
+        "building_surface_missing_count": building_surface_missing_count,
+        "building_surface_rejected_count": building_surface_rejected_count,
+        "building_surface_rejection_counts": {
+            key: building_surface_rejection_counts[key]
+            for key in sorted(building_surface_rejection_counts)
+        },
+        "building_surface_height_policy": (
+            "OSM source height wins; otherwise NHM DOM-DTM p90 only with >=8 samples, "
+            "p90 >=2.2m and conservative building-type plausibility ceiling"
+        ),
+        "derived_surface_roof_relief_count": derived_surface_roof_relief_count,
         "source_roof_shape_count": source_roof_shape_count,
         "fallback_roof_shape_count": fallback_roof_shape_count,
         "source_roof_height_count": source_roof_height_count,
@@ -1555,6 +1702,10 @@ def building_mesh_packets(
         "roof_shape_counts": {key: roof_shape_counts[key] for key in sorted(roof_shape_counts)},
         "roofs": "source-osm-roof-shape-when-present; otherwise explicit-presentation-profile",
         "pitched_roof_fallback": "gabled-for-small/residential/farm-quads; apex-for-other-small-pitched; flat-for-large/industrial",
+        "derived_roof_relief_policy": (
+            "accepted NHM DOM-DTM p95-p25 relief may set presentation roof rise; "
+            "it does not claim surveyed ridge/eave geometry"
+        ),
         "source_material_tags": "preserved-in-compiled-building-artifact-but-not-yet-used-as-authoritative-texture-identity",
     }
     for material_id, bucket in buckets.items():
