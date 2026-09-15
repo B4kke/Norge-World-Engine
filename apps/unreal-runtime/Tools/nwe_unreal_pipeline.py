@@ -26,8 +26,8 @@ from typing import Any, Callable, Sequence
 from urllib.request import Request, urlopen
 
 
-SNAPSHOT_COMMIT = "42f94b63a9172b345d4500473a0aa1aff785fa43"
-SNAPSHOT_GENERATOR_COMMIT = "20e0e4451b325e92879cc824149b744c006b1611"
+SNAPSHOT_COMMIT = "e827b37faad70639988c5258ecd9ae585597c1df"
+SNAPSHOT_GENERATOR_COMMIT = "d9dae54232f976be9e7e091d003dfea00b8d3264"
 SNAPSHOT_ROOT = "nannestad-preview-1"
 SNAPSHOT_BASE_URL = (
     "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
