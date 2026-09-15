@@ -15,6 +15,7 @@ const webcryptoAvailable = Boolean(globalThis.crypto?.subtle);
 const params = new URLSearchParams(location.search);
 const labMode = params.get('lab') === 'terrain';
 const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
+const groundImageryUrl = params.get('groundImagery');
 const previewReportUrl = params.get('previewReport');
 const sameOriginAudit = params.get('previewAuditOrigin') === '1';
 const defaultGraphicsProfileId = matchMedia('(max-width: 760px)').matches ? 'balanced' : 'high';
@@ -238,6 +239,7 @@ async function runDefaultPreview() {
       const { result } = await runPreview1({
         canvas,
         manifestUrl,
+        groundImageryUrl,
         fetchImpl: runtimeFetch.fetchImpl,
         graphicsProfile: graphicsProfile.id,
         rendererPreference,
@@ -268,7 +270,10 @@ async function runDefaultPreview() {
       const note = document.querySelector<HTMLElement>('#world-note');
       if (note) {
         const fallback = result.renderer.fallback ? ` Auto fallback: ${result.renderer.fallback.reason}.` : '';
-        note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale CC0-PBR-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${fallback}`;
+        const groundColor = result.ground_imagery?.mode === 'source-derived-geographic-albedo'
+          ? ` Ground color: ${result.ground_imagery.provider ?? result.ground_imagery.source_name ?? 'source imagery'} · ${result.ground_imagery.native_ground_sample_distance_m ?? '?'} m GSD · not orthophoto.`
+          : ' Ground color: generic PBR fallback.';
+        note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale PBR/ground-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${groundColor}${fallback}`;
       }
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
