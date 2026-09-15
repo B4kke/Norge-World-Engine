@@ -24,7 +24,9 @@ jobs:
           cache: pip
 
       - name: Install pinned authoring geospatial dependencies
-        run: python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+        run: |
+          python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+          python -m pip install --disable-pip-version-check pytest==9.1.1
 
       - name: Unit regressions
         run: pytest -q apps/unreal-runtime/tests/test_sentinel_ground_imagery.py
