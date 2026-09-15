@@ -12,6 +12,7 @@ public class Nannestad : ModuleRules
                 "Core",
                 "CoreUObject",
                 "Engine",
+                "AssetRegistry",
                 "InputCore",
                 "Json",
                 "JsonUtilities",
