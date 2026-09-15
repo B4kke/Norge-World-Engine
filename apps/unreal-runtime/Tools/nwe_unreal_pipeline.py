@@ -69,6 +69,10 @@ BUILDING_SURFACE_TRANSPORT_ROOT = "nannestad-preview-1"
 BUILDING_SURFACE_MIN_SAMPLES = 8
 BUILDING_SURFACE_MIN_P90_M = 2.2
 
+ROOF_ORIENTATION_ARTIFACT_SCHEMA = "nwe.building-roof-orientation-artifact/0.1-candidate"
+ROOF_ORIENTATION_VERIFICATION_SCHEMA = "nwe.building-roof-orientation-verification/0.1"
+ROOF_ORIENTATION_COMPILER_CONFIG_ID = "b82773aa6098081284d104da96ef40fb30f15c56167743c6fadf098f416cd073"
+
 DEFAULT_VEGETATION_ARTIFACT = (
     Path(__file__).resolve().parents[1]
     / "Saved"
@@ -82,6 +86,13 @@ DEFAULT_BUILDING_SURFACE_ARTIFACT = (
     / "NWE"
     / "BuildingSurface"
     / "building-surface.json"
+)
+DEFAULT_ROOF_ORIENTATION_ARTIFACT = (
+    Path(__file__).resolve().parents[1]
+    / "Saved"
+    / "NWE"
+    / "BuildingSurface"
+    / "building-roof-orientation.json"
 )
 
 
@@ -393,6 +404,80 @@ def validate_pinned_building_surface_transport(
     return value
 
 
+def validate_pinned_roof_orientation_transport(
+    artifact_bytes: bytes,
+    verification: dict[str, Any],
+    *,
+    expected_building_sha256: str,
+    expected_surface_source: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    actual_sha = _sha256_bytes(artifact_bytes)
+    if (
+        verification.get("schema") != ROOF_ORIENTATION_VERIFICATION_SCHEMA
+        or verification.get("status") != "PASS"
+        or verification.get("artifact_sha256") != actual_sha
+        or verification.get("compiler_config_id") != ROOF_ORIENTATION_COMPILER_CONFIG_ID
+        or verification.get("building_artifact_sha256") != expected_building_sha256
+        or int(verification.get("feature_count") or 0) <= 0
+    ):
+        raise PipelineError("published roof-orientation verification identity is not accepted")
+    try:
+        value = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(f"published roof-orientation artifact is invalid JSON: {exc}") from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("schema") != ROOF_ORIENTATION_ARTIFACT_SCHEMA
+        or value.get("tile_id") != EXPECTED_TILE_ID
+        or value.get("horizontal_crs") != EXPECTED_HORIZONTAL_CRS
+        or value.get("compiler_config_id") != ROOF_ORIENTATION_COMPILER_CONFIG_ID
+    ):
+        raise PipelineError("published roof-orientation artifact contract is not accepted")
+    source = value.get("source")
+    authority = value.get("authority")
+    stats = value.get("stats")
+    if (
+        not isinstance(source, dict)
+        or source.get("building_artifact_sha256") != expected_building_sha256
+        or not isinstance(authority, dict)
+        or authority.get("ridge_direction") != "derived-high-confidence-tent-fit-candidate"
+        or authority.get("roof_shape") != "not-contained"
+        or authority.get("surveyed_ridge") != "not-contained"
+        or not isinstance(stats, dict)
+        or int(stats.get("strong_direction_count") or 0) != int(verification["feature_count"])
+    ):
+        raise PipelineError("published roof-orientation authority/stats are invalid")
+    if expected_surface_source is not None:
+        for key in ("building_artifact_sha256", "dtm_raw_sha256", "dtm_grid_sha256", "dom_raw_sha256", "dom_grid_sha256"):
+            if source.get(key) != expected_surface_source.get(key):
+                raise PipelineError(f"roof-orientation source hash disagrees with building-surface source: {key}")
+    features = value.get("features")
+    if not isinstance(features, list) or len(features) != int(verification["feature_count"]):
+        raise PipelineError("published roof-orientation feature count is invalid")
+    seen: set[str] = set()
+    for index, feature in enumerate(features):
+        if not isinstance(feature, dict):
+            raise PipelineError(f"roof-orientation feature {index} is invalid")
+        source_id = feature.get("source_id")
+        if not isinstance(source_id, str) or not source_id or source_id in seen:
+            raise PipelineError(f"roof-orientation feature {index} has invalid source_id")
+        seen.add(source_id)
+        angle = _finite(feature.get("ridge_orientation_deg_from_east_ccw"), f"{source_id}.ridge_orientation")
+        if not (0.0 <= angle < 180.0):
+            raise PipelineError(f"roof-orientation feature {source_id} has invalid direction")
+        fit = feature.get("fit")
+        if not isinstance(fit, dict):
+            raise PipelineError(f"roof-orientation feature {source_id} lacks fit evidence")
+        if (
+            _finite(fit.get("tent_r2"), f"{source_id}.tent_r2") < 0.85
+            or _finite(fit.get("tent_rmse_m"), f"{source_id}.tent_rmse_m") > 0.5
+            or _finite(fit.get("r2_improvement_over_plane"), f"{source_id}.r2_improvement") < 0.30
+            or _finite(fit.get("orthogonal_gap"), f"{source_id}.orthogonal_gap") < 0.30
+        ):
+            raise PipelineError(f"roof-orientation feature {source_id} is below strong-fit admission")
+    return value
+
+
 def fetch_pinned_building_surface_artifact(
     destination: Path,
     *,
@@ -415,6 +500,8 @@ def fetch_pinned_building_surface_artifact(
     )
     verification_bytes = _download(f"{base}/building-surface-verification.json")
     data = _download(f"{base}/building-surface.json")
+    roof_verification_bytes = _download(f"{base}/building-roof-orientation-verification.json")
+    roof_data = _download(f"{base}/building-roof-orientation.json")
     try:
         verification = json.loads(verification_bytes.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -423,10 +510,24 @@ def fetch_pinned_building_surface_artifact(
         ) from exc
     if not isinstance(verification, dict):
         raise PipelineError("published building-surface verification must be an object")
-    validate_pinned_building_surface_transport(
+    surface_value = validate_pinned_building_surface_transport(
         data,
         verification,
         expected_building_sha256=expected_building_sha256,
+    )
+    try:
+        roof_verification = json.loads(roof_verification_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PipelineError(
+            f"published roof-orientation verification is invalid JSON: {exc}"
+        ) from exc
+    if not isinstance(roof_verification, dict):
+        raise PipelineError("published roof-orientation verification must be an object")
+    validate_pinned_roof_orientation_transport(
+        roof_data,
+        roof_verification,
+        expected_building_sha256=expected_building_sha256,
+        expected_surface_source=surface_value.get("source"),
     )
     destination = destination.resolve()
     _write_atomic(destination, data)
@@ -445,6 +546,24 @@ def fetch_pinned_building_surface_artifact(
     _write_atomic(
         destination.with_suffix(destination.suffix + ".transport.json"),
         _canonical_json_bytes(transport_lock),
+    )
+    roof_destination = destination.with_name("building-roof-orientation.json")
+    _write_atomic(roof_destination, roof_data)
+    _write_atomic(
+        roof_destination.with_name("building-roof-orientation-verification.json"),
+        roof_verification_bytes,
+    )
+    roof_transport_lock = {
+        "schema": "nwe.unreal-roof-orientation-transport-lock/0.1",
+        "transport_commit": commit_sha,
+        "artifact_sha256": roof_verification["artifact_sha256"],
+        "artifact_semantic_sha256": roof_verification["artifact_semantic_sha256"],
+        "compiler_config_id": roof_verification["compiler_config_id"],
+        "building_artifact_sha256": roof_verification["building_artifact_sha256"],
+    }
+    _write_atomic(
+        roof_destination.with_suffix(roof_destination.suffix + ".transport.json"),
+        _canonical_json_bytes(roof_transport_lock),
     )
     return destination
 
@@ -487,6 +606,42 @@ def load_verified_building_surface_artifact(
         or transport.get("building_artifact_sha256") != expected_building_sha256
     ):
         raise PipelineError("building-surface immutable transport lock is invalid")
+    return artifact, actual_sha, verification, transport
+
+
+def load_verified_roof_orientation_artifact(
+    artifact_path: Path,
+    *,
+    expected_building_sha256: str,
+    expected_surface_source: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, Any]]:
+    artifact_path = artifact_path.resolve()
+    verification_path = artifact_path.with_name("building-roof-orientation-verification.json")
+    transport_path = artifact_path.with_suffix(artifact_path.suffix + ".transport.json")
+    if not artifact_path.is_file() or not verification_path.is_file() or not transport_path.is_file():
+        raise PipelineError("roof-orientation artifact/verification/transport is incomplete")
+    artifact_bytes = artifact_path.read_bytes()
+    verification = _read_json(verification_path)
+    transport = _read_json(transport_path)
+    if not isinstance(verification, dict) or not isinstance(transport, dict):
+        raise PipelineError("roof-orientation verification/transport must be objects")
+    artifact = validate_pinned_roof_orientation_transport(
+        artifact_bytes,
+        verification,
+        expected_building_sha256=expected_building_sha256,
+        expected_surface_source=expected_surface_source,
+    )
+    actual_sha = _sha256_bytes(artifact_bytes)
+    if (
+        transport.get("schema") != "nwe.unreal-roof-orientation-transport-lock/0.1"
+        or not isinstance(transport.get("transport_commit"), str)
+        or not re.fullmatch(r"[a-f0-9]{40}", transport["transport_commit"])
+        or transport.get("artifact_sha256") != actual_sha
+        or transport.get("artifact_semantic_sha256") != verification.get("artifact_semantic_sha256")
+        or transport.get("compiler_config_id") != ROOF_ORIENTATION_COMPILER_CONFIG_ID
+        or transport.get("building_artifact_sha256") != expected_building_sha256
+    ):
+        raise PipelineError("roof-orientation immutable transport lock is invalid")
     return artifact, actual_sha, verification, transport
 
 
