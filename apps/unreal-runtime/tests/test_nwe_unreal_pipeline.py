@@ -310,6 +310,238 @@ def test_building_roof_uses_source_shape_and_pitched_fallback() -> None:
     assert fallback_roof.truth["roof_shape_counts"]["gabled"] == 1
 
 
+def test_pinned_roof_orientation_transport_is_source_bound_and_truth_bounded(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        pipeline,
+        "ROOF_ORIENTATION_COMPILER_CONFIG_ID",
+        "fixture-roof-orientation-config",
+    )
+    building_sha = "a" * 64
+    source = {
+        "building_artifact_sha256": building_sha,
+        "dtm_raw_sha256": "b" * 64,
+        "dtm_grid_sha256": "c" * 64,
+        "dom_raw_sha256": "d" * 64,
+        "dom_grid_sha256": "e" * 64,
+    }
+    artifact = {
+        "schema": pipeline.ROOF_ORIENTATION_ARTIFACT_SCHEMA,
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "compiler_config_id": "fixture-roof-orientation-config",
+        "authority": {
+            "ridge_direction": "derived-high-confidence-tent-fit-candidate",
+            "roof_shape": "not-contained",
+            "surveyed_ridge": "not-contained",
+        },
+        "source": source,
+        "stats": {"strong_direction_count": 1},
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "building": "house",
+                "ridge_orientation_deg_from_east_ccw": 90.0,
+                "fit": {
+                    "tent_r2": 0.95,
+                    "tent_rmse_m": 0.2,
+                    "r2_improvement_over_plane": 0.7,
+                    "orthogonal_gap": 0.8,
+                },
+            }
+        ],
+    }
+    artifact_bytes = pipeline._canonical_json_bytes(artifact)
+    verification = {
+        "schema": pipeline.ROOF_ORIENTATION_VERIFICATION_SCHEMA,
+        "status": "PASS",
+        "artifact_sha256": hashlib.sha256(artifact_bytes).hexdigest(),
+        "artifact_semantic_sha256": "f" * 64,
+        "compiler_config_id": "fixture-roof-orientation-config",
+        "building_artifact_sha256": building_sha,
+        "feature_count": 1,
+    }
+    parsed = pipeline.validate_pinned_roof_orientation_transport(
+        artifact_bytes,
+        verification,
+        expected_building_sha256=building_sha,
+        expected_surface_source=source,
+    )
+    assert parsed["features"][0]["ridge_orientation_deg_from_east_ccw"] == 90.0
+    assert parsed["authority"]["roof_shape"] == "not-contained"
+    assert parsed["authority"]["surveyed_ridge"] == "not-contained"
+
+    mismatched_surface = dict(source, dom_grid_sha256="0" * 64)
+    with pytest.raises(pipeline.PipelineError, match="source hash disagrees"):
+        pipeline.validate_pinned_roof_orientation_transport(
+            artifact_bytes,
+            verification,
+            expected_building_sha256=building_sha,
+            expected_surface_source=mismatched_surface,
+        )
+
+    degraded = json.loads(json.dumps(artifact))
+    degraded["features"][0]["fit"]["orthogonal_gap"] = 0.1
+    degraded_bytes = pipeline._canonical_json_bytes(degraded)
+    degraded_verification = dict(
+        verification,
+        artifact_sha256=hashlib.sha256(degraded_bytes).hexdigest(),
+    )
+    with pytest.raises(pipeline.PipelineError, match="below strong-fit admission"):
+        pipeline.validate_pinned_roof_orientation_transport(
+            degraded_bytes,
+            degraded_verification,
+            expected_building_sha256=building_sha,
+            expected_surface_source=source,
+        )
+
+
+def test_derived_roof_direction_only_orients_existing_presentation_roof() -> None:
+    terrain = pipeline.HeightGrid(
+        tile_id=pipeline.EXPECTED_TILE_ID,
+        horizontal_crs=pipeline.EXPECTED_HORIZONTAL_CRS,
+        vertical_datum=pipeline.EXPECTED_VERTICAL_DATUM,
+        bounds=(611000.0, 6677000.0, 611010.0, 6677010.0),
+        width=2,
+        height=2,
+        pixel_size_m=5.0,
+        elevation_min_m=100.0,
+        elevation_max_m=100.0,
+        elevations=array("f", [100.0] * 4),
+    )
+    polygon = [
+        [611001.0, 6677002.0],
+        [611009.0, 6677002.0],
+        [611009.0, 6677006.0],
+        [611001.0, 6677006.0],
+        [611001.0, 6677002.0],
+    ]
+    artifact = {
+        "schema": "nwe.building-footprint-artifact/0.1",
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "polygon": polygon,
+                "building": "house",
+                "height_m": 7.0,
+                "height_source": "osm:height",
+                "area_m2": 32.0,
+            }
+        ],
+    }
+    orientation = {
+        "features": [
+            {
+                "source_id": "osm:way:1",
+                "building": "house",
+                "ridge_orientation_deg_from_east_ccw": 90.0,
+            }
+        ]
+    }
+    packets = pipeline.building_mesh_packets(
+        artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611005.0,
+        origin_n=6677005.0,
+        origin_up_m=0.0,
+        roof_orientation_artifact=orientation,
+        roof_orientation_sha256="1" * 64,
+    )
+    roof = next(packet for name, packet in packets if name.startswith("building_roof_"))
+    assert roof.truth["derived_roof_orientation_applied_count"] == 1
+    assert roof.truth["derived_gabled_orientation_count"] == 1
+    assert roof.truth["derived_hipped_ridge_count"] == 0
+    assert roof.truth["fallback_roof_shape_count"] == 1
+    assert roof.truth["source_roof_shape_count"] == 0
+
+    source_artifact = json.loads(json.dumps(artifact))
+    source_artifact["features"][0]["roof_shape"] = "gabled"
+    source_packets = pipeline.building_mesh_packets(
+        source_artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611005.0,
+        origin_n=6677005.0,
+        origin_up_m=0.0,
+        roof_orientation_artifact=orientation,
+        roof_orientation_sha256="1" * 64,
+    )
+    source_roof = next(
+        packet for name, packet in source_packets if name.startswith("building_roof_")
+    )
+    assert source_roof.truth["derived_roof_orientation_applied_count"] == 0
+    assert source_roof.truth["source_roof_shape_count"] == 1
+
+
+def test_concave_hipped_presentation_roof_keeps_apex_fallback() -> None:
+    terrain = pipeline.HeightGrid(
+        tile_id=pipeline.EXPECTED_TILE_ID,
+        horizontal_crs=pipeline.EXPECTED_HORIZONTAL_CRS,
+        vertical_datum=pipeline.EXPECTED_VERTICAL_DATUM,
+        bounds=(611000.0, 6677000.0, 611012.0, 6677012.0),
+        width=2,
+        height=2,
+        pixel_size_m=6.0,
+        elevation_min_m=100.0,
+        elevation_max_m=100.0,
+        elevations=array("f", [100.0] * 4),
+    )
+    # L-shaped footprint: deliberately concave, matching the class of real
+    # Nannestad footprints that the hosted DOM proof classified as hipped.
+    polygon = [
+        [611001.0, 6677001.0],
+        [611010.0, 6677001.0],
+        [611010.0, 6677005.0],
+        [611006.0, 6677005.0],
+        [611006.0, 6677010.0],
+        [611001.0, 6677010.0],
+        [611001.0, 6677001.0],
+    ]
+    artifact = {
+        "schema": "nwe.building-footprint-artifact/0.1",
+        "tile_id": pipeline.EXPECTED_TILE_ID,
+        "horizontal_crs": pipeline.EXPECTED_HORIZONTAL_CRS,
+        "features": [
+            {
+                "source_id": "osm:way:2",
+                "polygon": polygon,
+                "building": "house",
+                "height_m": 7.0,
+                "height_source": "osm:height",
+                "area_m2": 61.0,
+            }
+        ],
+    }
+    orientation = {
+        "features": [
+            {
+                "source_id": "osm:way:2",
+                "building": "house",
+                "ridge_orientation_deg_from_east_ccw": 0.0,
+            }
+        ]
+    }
+    packets = pipeline.building_mesh_packets(
+        artifact,
+        terrain,
+        expected_count=1,
+        origin_e=611006.0,
+        origin_n=6677006.0,
+        origin_up_m=0.0,
+        roof_orientation_artifact=orientation,
+        roof_orientation_sha256="2" * 64,
+    )
+    roof = next(packet for name, packet in packets if name.startswith("building_roof_"))
+    assert roof.truth["roof_shape_counts"]["hipped"] == 1
+    assert roof.truth["derived_hipped_ridge_count"] == 0
+    assert roof.truth["derived_roof_orientation_applied_count"] == 0
+    assert roof.truth["roof_orientation_candidate_count"] == 1
+
+
 def test_pinned_vegetation_transport_requires_full_and_semantic_identity(monkeypatch) -> None:
     artifact = {
         "schema": pipeline.VEGETATION_ARTIFACT_SCHEMA,
