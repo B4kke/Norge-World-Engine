@@ -2,6 +2,7 @@ import { Earcut } from 'three/src/extras/Earcut.js';
 
 const DEFAULT_FALLBACK_HEIGHT_M = 5;
 const DEFAULT_GROUND_LIFT_M = 0.08;
+const SURFACE_UV_TILE_M = 4;
 
 function polygonWithoutDuplicateClosure(polygon) {
   if (!Array.isArray(polygon)) return [];
@@ -23,9 +24,12 @@ function polygonWithoutDuplicateClosure(polygon) {
   return deduped;
 }
 
-function pushQuad(positions, indices, a, b, c, d) {
+function pushQuad(positions, indices, uvs, a, b, c, d, edgeLengthM, heightM) {
   const base = positions.length / 3;
   positions.push(...a, ...b, ...c, ...d);
+  const repeatU = edgeLengthM / SURFACE_UV_TILE_M;
+  const repeatV = heightM / SURFACE_UV_TILE_M;
+  uvs.push(0, 0, repeatU, 0, repeatU, repeatV, 0, repeatV);
   indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
@@ -37,7 +41,7 @@ function signedTriangleNormalY(a, b, c) {
   return abz * acx - abx * acz;
 }
 
-function appendRoof(top, positions, indices) {
+function appendRoof(top, positions, indices, uvs) {
   const flattened = [];
   for (const point of top) flattened.push(point[0], point[2]);
   const faces = Earcut.triangulate(flattened, null, 2);
@@ -45,7 +49,10 @@ function appendRoof(top, positions, indices) {
     throw new Error(`BUILDING_ROOF_TRIANGULATION_INVALID: ${faces.length} indices for ${top.length} vertices`);
   }
   const base = positions.length / 3;
-  for (const point of top) positions.push(...point);
+  for (const point of top) {
+    positions.push(...point);
+    uvs.push(point[0] / SURFACE_UV_TILE_M, point[2] / SURFACE_UV_TILE_M);
+  }
   for (let offset = 0; offset < faces.length; offset += 3) {
     let ia = faces[offset];
     let ib = faces[offset + 1];
@@ -55,12 +62,14 @@ function appendRoof(top, positions, indices) {
   }
 }
 
-function typedGeometry(positions, indices) {
+function typedGeometry(positions, indices, uvs) {
   const vertexCount = positions.length / 3;
+  if (uvs.length !== vertexCount * 2) throw new Error('BUILDING_UV_ATTRIBUTE_MISMATCH');
   const IndexArray = vertexCount <= 65535 ? Uint16Array : Uint32Array;
   return {
     positions: new Float32Array(positions),
     indices: new IndexArray(indices),
+    uvs: new Float32Array(uvs),
     vertexCount,
     triangleCount: indices.length / 3,
   };
@@ -70,6 +79,9 @@ function combineGeometry(walls, roofs) {
   const positions = new Float32Array(walls.positions.length + roofs.positions.length);
   positions.set(walls.positions, 0);
   positions.set(roofs.positions, walls.positions.length);
+  const uvs = new Float32Array(walls.uvs.length + roofs.uvs.length);
+  uvs.set(walls.uvs, 0);
+  uvs.set(roofs.uvs, walls.uvs.length);
   const totalVertices = positions.length / 3;
   const IndexArray = totalVertices <= 65535 ? Uint16Array : Uint32Array;
   const indices = new IndexArray(walls.indices.length + roofs.indices.length);
@@ -78,10 +90,10 @@ function combineGeometry(walls, roofs) {
   for (let index = 0; index < roofs.indices.length; index += 1) {
     indices[walls.indices.length + index] = roofs.indices[index] + roofVertexOffset;
   }
-  return { positions, indices };
+  return { positions, indices, uvs };
 }
 
-function appendBuilding(feature, wallPositions, wallIndices, roofPositions, roofIndices, projectPoint, heightMeters) {
+function appendBuilding(feature, wallPositions, wallIndices, wallUvs, roofPositions, roofIndices, roofUvs, projectPoint, heightMeters) {
   const polygon = polygonWithoutDuplicateClosure(feature?.polygon);
   if (polygon.length < 3) return false;
   const base = polygon.map((point) => {
@@ -94,9 +106,23 @@ function appendBuilding(feature, wallPositions, wallIndices, roofPositions, roof
   const top = base.map((point) => [point[0], point[1] + heightMeters, point[2]]);
   for (let index = 0; index < base.length; index += 1) {
     const next = (index + 1) % base.length;
-    pushQuad(wallPositions, wallIndices, base[index], base[next], top[next], top[index]);
+    const edgeLengthM = Math.hypot(
+      base[next][0] - base[index][0],
+      base[next][2] - base[index][2],
+    );
+    pushQuad(
+      wallPositions,
+      wallIndices,
+      wallUvs,
+      base[index],
+      base[next],
+      top[next],
+      top[index],
+      edgeLengthM,
+      heightMeters,
+    );
   }
-  appendRoof(top, roofPositions, roofIndices);
+  appendRoof(top, roofPositions, roofIndices, roofUvs);
   return true;
 }
 
@@ -113,8 +139,10 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
 
   const wallPositions = [];
   const wallIndices = [];
+  const wallUvs = [];
   const roofPositions = [];
   const roofIndices = [];
+  const roofUvs = [];
   let count = 0;
   let sourceBackedHeightCount = 0;
   let fallbackHeightCount = 0;
@@ -128,8 +156,10 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       feature,
       wallPositions,
       wallIndices,
+      wallUvs,
       roofPositions,
       roofIndices,
+      roofUvs,
       (point) => {
         const projected = projectPoint(point);
         return [projected[0], projected[1] + groundLiftMeters, projected[2]];
@@ -142,14 +172,15 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     else fallbackHeightCount += 1;
   }
 
-  const walls = typedGeometry(wallPositions, wallIndices);
-  const roofs = typedGeometry(roofPositions, roofIndices);
+  const walls = typedGeometry(wallPositions, wallIndices, wallUvs);
+  const roofs = typedGeometry(roofPositions, roofIndices, roofUvs);
   const combined = combineGeometry(walls, roofs);
   return {
     positions: combined.positions,
     indices: combined.indices,
-    walls: { positions: walls.positions, indices: walls.indices },
-    roofs: { positions: roofs.positions, indices: roofs.indices },
+    uvs: combined.uvs,
+    walls: { positions: walls.positions, indices: walls.indices, uvs: walls.uvs },
+    roofs: { positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs },
     count,
     metadata: {
       schema: 'nwe.building-surface-render-geometry/0.1',
@@ -158,6 +189,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       fallback_height_m: resolved ? null : fallbackHeightMeters,
       ground_lift_m: groundLiftMeters,
       roof_triangulation: 'three-earcut-2d-footprint',
+      uv_semantics: 'renderer-only-meter-scaled-surface-uv',
+      uv_tile_m: SURFACE_UV_TILE_M,
       source_backed_height_count: sourceBackedHeightCount,
       fallback_height_count: fallbackHeightCount,
       wall_vertices: walls.vertexCount,

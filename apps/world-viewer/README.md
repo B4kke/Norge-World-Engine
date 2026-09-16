@@ -2,6 +2,28 @@
 
 Minimal browser/runtime consumer and measurable viewer boundary for Norge World Engine.
 
+## Ground-viewer visual quality
+
+The default Nannestad view now uses the Three WebGPU-capable renderer with a
+WebGL2 fallback and four explicit quality profiles. Desktop defaults to `high`;
+small screens default to `balanced`. `high` and `ultra` add the TSL render
+pipeline with bounded GTAO and restrained bloom, while lower profiles retain a
+direct render path.
+
+| Profile | Terrain grid | DPR cap | Texture filtering | Shadow map | Post effects |
+|---|---:|---:|---:|---:|---|
+| Low | 65² | 1× | 2×, no normal maps | 512² | Direct |
+| Balanced | 129² | 1.5× | 4× | 1024² | Direct |
+| High | 257² | 2× | 8× | 2048² | GTAO + bloom |
+| Ultra | 513² | 2.5× | 16× | 4096² | Higher-sample GTAO + bloom |
+
+Terrain, asphalt, timber walls and roof tiles use local 1K Poly Haven diffuse,
+roughness and OpenGL normal maps. The adjacent asset catalog pins all web maps
+and the Unreal DirectX normal variants by byte size, MD5 and SHA-256 under
+CC0-1.0. Runtime never contacts Poly Haven. Material choice, tint, UVs, light,
+fog and post processing are presentation only; they do not alter accepted DTM,
+road or building geometry.
+
 ## Deployable app boundary
 
 `index.html` + `src/` form the deployable Vite application shell for the browser viewer. Vite is only the replaceable web build/development tool; it does not select WebGPU, WebGL2, Three.js, Cesium, terrain format or world-coordinate policy.

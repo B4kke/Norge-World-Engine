@@ -11,6 +11,9 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
   '.nwehgt': 'application/vnd.nwe.terrain-height-grid',
 };
 
@@ -122,6 +125,7 @@ async function main() {
   const output = resolve(args.output);
   const timeoutMs = Number(args['timeout-ms'] ?? '90000');
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new Error('--timeout-ms must be a positive integer');
+  const chrome = findChrome();
 
   const server = createServer((req, res) => {
     try {
@@ -156,17 +160,22 @@ async function main() {
   if (!port) throw new Error('screenshot server did not expose a port');
   const origin = `http://127.0.0.1:${port}`;
   const debugPort = 9223;
-  const chrome = findChrome();
   const profile = mkdtempSync(resolve(tmpdir(), `nwe-preview1-screenshot-${Date.now()}-`));
   const query = new URLSearchParams({
     previewManifest: `${origin}/runtime/manifest.json`,
     renderer: 'webgl2',
+    graphics: 'high',
   });
+  if (args['ground-imagery-manifest']) {
+    const relative = args['ground-imagery-manifest'].replace(/^\/+/, '');
+    if (!relative || relative.includes('..')) throw new Error('--ground-imagery-manifest must be a safe runtime-relative path');
+    query.set('groundImagery', `${origin}/runtime/${relative}`);
+  }
   const url = `${origin}/?${query}`;
   const child = spawn(chrome, [
     '--headless=new', '--no-first-run', '--no-default-browser-check', '--no-sandbox', '--disable-dev-shm-usage',
     '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
-    '--ignore-gpu-blocklist', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1440,900',
+    '--ignore-gpu-blocklist', '--enable-webgl', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--window-size=1440,900',
     '--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${debugPort}`, '--remote-allow-origins=*',
     `--user-data-dir=${profile}`, url,
   ], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
@@ -199,6 +208,8 @@ async function main() {
       png_bytes: png.length,
       viewport: [1440, 900],
       renderer_request: 'webgl2',
+      graphics_profile: 'high',
+      ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nChrome tail:\n${chromeLog.slice(-5000)}`);

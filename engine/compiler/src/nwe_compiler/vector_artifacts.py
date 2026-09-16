@@ -74,6 +74,20 @@ def _road_path_dict(path: RoadPath) -> dict:
     }
 
 
+RUNTIME_BUILDING_TAGS = {
+    "building": "building",
+    "roof:shape": "roof_shape",
+    "roof:height": "roof_height",
+    "roof:levels": "roof_levels",
+    "roof:direction": "roof_direction",
+    "roof:orientation": "roof_orientation",
+    "roof:material": "roof_material",
+    "roof:colour": "roof_colour",
+    "building:material": "building_material",
+    "building:colour": "building_colour",
+}
+
+
 def _building_dict(feature: BuildingFeature, *, include_tags: bool) -> dict:
     value = {
         "source_id": feature.source_id,
@@ -87,6 +101,11 @@ def _building_dict(feature: BuildingFeature, *, include_tags: bool) -> dict:
         value["tags"] = feature.tags
     else:
         value["building"] = feature.tags.get("building", "yes")
+        for source_key, runtime_key in RUNTIME_BUILDING_TAGS.items():
+            raw_value = feature.tags.get(source_key)
+            if source_key == "building" or raw_value is None or raw_value == "":
+                continue
+            value[runtime_key] = raw_value
     return value
 
 
@@ -302,6 +321,7 @@ def compile_building_artifact(
         compiler_config_fields={
             "building_geometry_policy": "valid-polygon-clip-v0.1",
             "building_height_policy": "explicit-height-or-levels-provenance-no-fallback",
+            "building_surface_semantics_policy": "selected-osm-roof-and-material-tags-pass-through-v0.1",
         },
         canonicalizer=canonicalizer,
     )

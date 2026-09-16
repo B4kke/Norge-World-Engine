@@ -63,6 +63,11 @@ assert.equal(sourceBacked.metadata.roof_triangulation, 'three-earcut-2d-footprin
 assert.equal(sourceBacked.metadata.roof_vertices, 6);
 assert.equal(sourceBacked.metadata.roof_triangles, 4, 'simple six-vertex footprint must triangulate to n-2 roof triangles');
 assert.equal(sourceBacked.metadata.wall_triangles, 12, 'six footprint edges must emit two wall triangles each');
+assert.equal(sourceBacked.metadata.uv_semantics, 'renderer-only-meter-scaled-surface-uv');
+assert.equal(sourceBacked.metadata.uv_tile_m, 4);
+assert.equal(sourceBacked.walls.uvs.length, (sourceBacked.walls.positions.length / 3) * 2);
+assert.equal(sourceBacked.roofs.uvs.length, (sourceBacked.roofs.positions.length / 3) * 2);
+assert.ok(Math.max(...sourceBacked.walls.uvs) > 1, 'meter-scaled wall UVs must repeat instead of stretching one texel set over a building');
 for (const centroid of roofTriangleCentroids(sourceBacked)) {
   assert.ok(pointInPolygon(centroid, concaveFootprint.slice(0, -1)), `roof triangle centroid escaped footprint: ${centroid}`);
 }
@@ -74,6 +79,7 @@ assert.equal(
   sourceBacked.walls.indices.length + sourceBacked.roofs.indices.length,
   'combined compatibility geometry must contain exactly wall + roof indices',
 );
+assert.equal(sourceBacked.uvs.length, (sourceBacked.positions.length / 3) * 2, 'combined compatibility geometry must retain UV0');
 
 const fallback = buildBuildingSurfaceGeometry({
   features: [{ polygon: [[0, 0], [3, 0], [3, 3], [0, 3], [0, 0]], height_m: null }],

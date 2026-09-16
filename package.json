@@ -7,6 +7,15 @@
     "tools/runtime-packaging",
     "prototypes/cesium-baseline"
   ],
+  "overrides": {
+    "cesium@1.143.0": {
+      "@cesium/engine": "26.1.0",
+      "@cesium/widgets": "16.1.0"
+    },
+    "@cesium/widgets@16.1.0": {
+      "@cesium/engine": "26.1.0"
+    }
+  },
   "scripts": {
     "test:schemas": "npm --workspace @nwe/schemas-js test",
     "build:world-viewer": "npm --workspace @nwe/world-viewer run build",

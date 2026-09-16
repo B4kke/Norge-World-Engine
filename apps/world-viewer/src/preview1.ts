@@ -8,6 +8,7 @@ import { observeStreamingLifecycleAdapters } from '../../../engine/streaming/lif
 import { createStreamingTraceRecorder } from '../../../engine/streaming/streaming_trace_recorder.mjs';
 import { TileStreamingScheduler } from '../../../engine/streaming/tile_scheduler.mjs';
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
+import { loadGroundImageryRuntime } from './groundImageryRuntime.mjs';
 import { installPreview1CharacterControls } from './preview1CharacterControls.mjs';
 import { runPreview1CharacterMovementProbe } from './preview1CharacterMovementProbe.mjs';
 import { createPreview1CharacterRuntime } from './preview1CharacterRuntime.mjs';
@@ -244,6 +245,7 @@ export async function runPreview1({
   fetchImpl = globalThis.fetch,
   graphicsProfile = 'balanced',
   rendererPreference = 'auto',
+  groundImageryUrl = null,
   benchmarkFrameCount = Number(new URLSearchParams(location.search).get('previewBenchmarkFrames') || '0'),
   streamingMovementProbe = false,
   characterMovementProbe = new URLSearchParams(location.search).get('previewCharacterMovementProbe') === '1',
@@ -256,6 +258,7 @@ export async function runPreview1({
   fetchImpl?: typeof globalThis.fetch;
   graphicsProfile?: string;
   rendererPreference?: string;
+  groundImageryUrl?: string | null;
   benchmarkFrameCount?: number;
   streamingMovementProbe?: boolean;
   characterMovementProbe?: boolean;
@@ -286,13 +289,28 @@ export async function runPreview1({
     const roadsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase), expectedRole: 'road-network', fetchImpl });
     const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
     const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
-    const [roads, buildings, terrain] = await Promise.all([roadsPromise, buildingsPromise, terrainPromise]);
+    const groundImageryPromise = groundImageryUrl
+      ? loadGroundImageryRuntime({
+        manifestUrl: new URL(groundImageryUrl, location.href).href,
+        expectedTileId: manifest.tile.id,
+        expectedBounds: manifest.tile.bounds,
+        fetchImpl,
+        publicRuntime: true,
+      })
+      : Promise.resolve(null);
+    const [roads, buildings, terrain, groundImagery] = await Promise.all([
+      roadsPromise,
+      buildingsPromise,
+      terrainPromise,
+      groundImageryPromise,
+    ]);
     if (roads.artifact?.tile_id !== manifest.tile.id || buildings.artifact?.tile_id !== manifest.tile.id) throw new Error('PREVIEW_TILE_ID_MISMATCH: vector layer tile id differs from manifest');
 
     let rendererFallback: any = null;
     onPhase('renderer');
     const renderer = await createPreview1Renderer({
       canvas, terrainPayload: terrain.payload, roadsArtifact: roads.artifact, buildingsArtifact: buildings.artifact,
+      groundImagery,
       graphicsProfile: profile, backend: rendererChoice,
       onBackendFallback: (fallback: any) => { rendererFallback = { from: fallback.from, to: fallback.to, reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error) }; },
       onFrame: (frame: any) => { rendererFrames.push(frame); onFrame(frame); },
@@ -341,6 +359,7 @@ export async function runPreview1({
       },
       roads: { artifact_sha256: roads.artifactRef.sha256, verification_code: roads.verification.code, count: roads.artifact.paths?.length ?? 0 },
       buildings: { artifact_sha256: buildings.artifactRef.sha256, verification_code: buildings.verification.code, count: buildings.artifact.features?.length ?? 0 },
+      ground_imagery: renderer.stats.material_library?.ground_color ?? null,
       character: characterRuntime.snapshot(),
       character_movement_probe: characterMovementProof,
       character_controls: characterControls.snapshot(),

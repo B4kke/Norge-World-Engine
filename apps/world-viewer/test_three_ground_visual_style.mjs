@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
+import { resolveGraphicsProfile } from './src/graphicsProfiles.mjs';
 import {
   GROUND_VISUAL_STYLE,
   configureGroundRendererVisualStyle,
@@ -19,9 +20,16 @@ assert.equal(renderer.shadowMap.enabled, true);
 assert.equal(renderer.shadowMap.type, THREE.BasicShadowMap, 'bounded shadows must use the single-sample BasicShadowMap path');
 assert.equal(renderer.outputColorSpace, THREE.SRGBColorSpace);
 assert.equal(renderer.toneMapping, THREE.ACESFilmicToneMapping);
-assert.equal(renderer.toneMappingExposure, 1.05);
+assert.equal(renderer.toneMappingExposure, 1.04);
 assert.equal(rendererStyle.shadows_enabled, true);
 assert.equal(rendererStyle.shadow_filter, 'BasicShadowMap');
+
+const highRenderer = { shadowMap: { enabled: false, type: null } };
+const high = resolveGraphicsProfile('high');
+const highRendererStyle = configureGroundRendererVisualStyle(highRenderer, high);
+assert.equal(highRenderer.shadowMap.type, THREE.PCFShadowMap);
+assert.equal(highRenderer.toneMappingExposure, 1.08);
+assert.equal(highRendererStyle.shadow_filter, 'PCFShadowMap');
 
 const scene = new THREE.Scene();
 const lighting = createGroundLighting(scene);
@@ -40,6 +48,13 @@ assert.equal(lighting.snapshot().shadow.update_count, 1, 'initial shadow anchor 
 assert.equal(scene.fog.near, GROUND_VISUAL_STYLE.fogNearM);
 assert.equal(scene.fog.far, GROUND_VISUAL_STYLE.fogFarM);
 
+const highScene = new THREE.Scene();
+const highLighting = createGroundLighting(highScene, high);
+assert.equal(highLighting.sun.shadow.mapSize.x, 2048);
+assert.equal(highLighting.sun.shadow.camera.left, -85);
+assert.equal(highLighting.snapshot().shadow.update_distance_m, 5);
+assert.equal(highScene.fog.far, 1800);
+
 const smallMove = lighting.updateAnchor([4, 6, -3]);
 assert.deepEqual(smallMove.sun.requested_anchor, [4, 6, -3]);
 assert.deepEqual(smallMove.sun.anchor, [0, 0, 0], 'sub-threshold movement must reuse the current shadow map');
@@ -51,7 +66,7 @@ assert.deepEqual(movedLighting.sun.anchor, [25, 6, -40]);
 assert.equal(movedLighting.shadow.update_count, 2);
 assert.equal(lighting.sun.shadow.needsUpdate, true);
 assert.deepEqual(lighting.sunTarget.position.toArray(), [25, 7, -40]);
-assert.deepEqual(lighting.sun.position.toArray(), [-40, 126, 10]);
+assert.deepEqual(lighting.sun.position.toArray(), [-47, 131, 12]);
 
 const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
 configureMeshShadowRole(mesh, { cast: true, receive: true });
@@ -68,4 +83,6 @@ assert.throws(() => lighting.updateAnchor([0, Number.NaN, 0]), /visual anchor/);
 
 mesh.geometry.dispose();
 mesh.material.dispose();
+lighting.dispose();
+highLighting.dispose();
 console.log('THREE_GROUND_VISUAL_STYLE_PASS');
