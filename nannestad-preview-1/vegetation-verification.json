@@ -1,0 +1,15 @@
+{
+  "artifact_semantic_sha256": "320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f",
+  "artifact_sha256": "ceececdf22de88710f7eba4dd7d131a33f123b216bd3ca235e960ca9816c1686",
+  "compiled_segment_count": 92,
+  "compiler_config_id": "f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e",
+  "errors": [],
+  "independent_ar50_semantic_equal": true,
+  "modeled_tree_count_ge16_over_compiled_area": 23493.88753940326,
+  "normalized_semantic_sha256": "76536346c39a5a731352ca00d86231d901e025f9a1a4b4b2097700a694534ec1",
+  "representative_instance_count": 828,
+  "represented_tree_weight_sum": 23493.887539403266,
+  "same_cache_byte_identical": true,
+  "schema": "nwe.vegetation-representative-verification/0.1",
+  "status": "PASS"
+}
