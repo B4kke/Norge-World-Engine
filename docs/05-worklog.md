@@ -503,3 +503,24 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `P1-IMAGERY-01`: prove one license-safe imagery/orthophoto ingestion path for the same Nannestad tile and bake it into a renderer-neutral ground-texture derivative; do not ship private/token-gated imagery publicly.
 
+## 2026-09-16 23:40 CEST — SENTINEL — PR84-INTEGRATION
+
+**What**
+- Continued PR #84 at the user's explicit merge request, keeping LUMEN's runtime work intact and narrowing integration changes to dependency repair and evidence calibration.
+- Pinned the historical Cesium prototype's engine/widgets dependency family through scoped npm overrides; kept its existing CI build enabled.
+
+**Why**
+- The reproducible Cesium build failure was preventing a clean integration baseline for the Unreal foundation. More source/visual expansion would not resolve the active Windows game-runtime gate.
+
+**Result / evidence**
+- FACT: clean baseline workspace install reproduced three missing shader exports with Cesium 1.143.0 / engine 26.3.0 / widgets 16.2.0.
+- FACT: npm publisher metadata declares engine ^26.1.0 and widgets ^16.1.0; clean installation with exact 26.1.0 / 16.1.0 overrides passes `npm ls` and the unchanged Vite baseline build (1,445 modules). No build check was removed or weakened.
+- Hosted exact-head CI and merge status are recorded in PR #84 after publication; a local build alone is not hosted acceptance.
+- LIMITATION: the repository runner API lists no self-hosted runners. This Linux environment cannot establish the Windows UE Editor compile/PIE/package claims. `UE5-RUN-01` remains open; merging the foundation is not delivery of the finished game.
+
+**Changed**
+- PR #84: root `package.json`, `prototypes/cesium-baseline/README.md`, worklog and active queue.
+
+**Next**
+- `UE5-RUN-01`: execute the integrated foundation on a UE 5.8 Windows runner and retain compile, map creation, movement/collision and frame/performance evidence.
+

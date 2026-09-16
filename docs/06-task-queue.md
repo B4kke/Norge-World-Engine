@@ -41,7 +41,7 @@ The next task must advance the Unreal Nannestad milestone in `docs/09-unreal-gam
 ## UE5-FOUNDATION — Deterministic adapter and game scaffold
 **Priority:** IMPLEMENTED / VALIDATION PARTIAL
 **Owner:** LUMEN
-**Status:** Python unit PASS + real pinned-snapshot package PASS; UE Editor unavailable in the current environment
+**Status:** Python unit PASS + real pinned-snapshot package PASS; UE Editor unavailable in the current environment; PR #84 integration dependency repair complete, merge and CI pending
 
 **Implemented:** UE 5.8 C++ project; immutable Nannestad snapshot verification;
 1009² Landscape derivative; 21 chunked runtime mesh packets; explicit
