@@ -101,16 +101,18 @@ jobs:
       - name: Install runtime and World Viewer dependencies
         run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
 
-      - name: Verify all published compiled bytes before distribution
+      - name: Verify all published compiled and realism bytes before distribution
         run: |
           node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
           import fs from 'node:fs';
           import path from 'node:path';
           import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
 
           const root = '/tmp/nwe-preview';
           const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-          if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') {
+          const allowedStatuses = new Set(['REAL_COMPILED', 'REAL_COMPILED_WITH_DERIVED_REALISM']);
+          if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || !allowedStatuses.has(manifest.status)) {
             throw new Error(`unexpected preview manifest ${manifest.schema}/${manifest.status}`);
           }
           for (const name of ['terrain', 'roads', 'buildings']) {
@@ -127,6 +129,21 @@ jobs:
               throw new Error(`${name}: manifest/artifact SHA mismatch`);
             }
             console.log(JSON.stringify({ layer: name, sha256: layer.artifact_sha256, bytes: bytes.byteLength, verification: verification.code }));
+          }
+          if (manifest.status === 'REAL_COMPILED_WITH_DERIVED_REALISM') {
+            for (const name of ['building_surface', 'roof_orientation', 'vegetation']) {
+              const layer = manifest.realism_layers?.[name];
+              if (!layer?.path || !layer?.artifact_sha256) throw new Error(`${name}: realism descriptor missing`);
+              const artifactPath = path.join(root, layer.path.replace(/^\.\//, ''));
+              const bytes = fs.readFileSync(artifactPath);
+              const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+              if (sha256 !== layer.artifact_sha256) throw new Error(`${name}: staged SHA mismatch`);
+              const value = JSON.parse(bytes.toString('utf8'));
+              if (value.schema !== layer.schema || value.tile_id !== manifest.tile.id || value.compiler_config_id !== layer.compiler_config_id) {
+                throw new Error(`${name}: staged realism identity mismatch`);
+              }
+              console.log(JSON.stringify({ realism_layer: name, sha256, bytes: bytes.byteLength, schema: value.schema }));
+            }
           }
           NODE
 
@@ -168,8 +185,8 @@ jobs:
           # Norge World Engine runtime preview artifacts
 
           This orphan branch is a replaceable transport snapshot for the public Preview 1 viewer.
-          It contains only compiled, provenance-bound runtime artifacts and attribution metadata.
-          Raw Kartverket/NVDB/OSM source data is never published here.
+          It contains compiled provenance-bound runtime artifacts plus explicitly verified derived realism layers and attribution metadata.
+          Raw Kartverket/NVDB/OSM/NIBIO source data is never published here.
 
           This is not the selected long-term runtime object-store/CDN architecture.
           TXT
