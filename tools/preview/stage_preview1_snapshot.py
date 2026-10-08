@@ -7,9 +7,38 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 CACHE_PREFIX = "cache://compiled/"
 RAW_MARKERS = ("kartverket", "geonorge", "vegvesen", "nvdb", "overpass", "openstreetmap")
+
+BUILDING_RUNTIME_COMMIT = "7a0e49b1743d209bbc2d85af901915e4009e7d7f"
+VEGETATION_RUNTIME_COMMIT = "c8de691494edb550aa4c43812efdeec3facf24a1"
+RUNTIME_ROOT = "nannestad-preview-1"
+BUILDING_ARTIFACT_SHA256 = "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd"
+REALISM_SPECS = {
+    "building_surface": {
+        "filename": "building-surface.json",
+        "commit": BUILDING_RUNTIME_COMMIT,
+        "sha256": "7b07c587cbbf3e42685cc53d9751fa04471d247e2ab9601daa26e75a2e13721a",
+        "schema": "nwe.building-surface-artifact/0.1-candidate",
+        "compiler_config_id": "d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15",
+    },
+    "roof_orientation": {
+        "filename": "building-roof-orientation.json",
+        "commit": BUILDING_RUNTIME_COMMIT,
+        "sha256": "0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3",
+        "schema": "nwe.building-roof-orientation-artifact/0.1-candidate",
+        "compiler_config_id": "325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682",
+    },
+    "vegetation": {
+        "filename": "vegetation-representatives.json",
+        "commit": VEGETATION_RUNTIME_COMMIT,
+        "sha256": "ceececdf22de88710f7eba4dd7d131a33f123b216bd3ca235e960ca9816c1686",
+        "schema": "nwe.vegetation-representative-artifact/0.1-candidate",
+        "compiler_config_id": "f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e",
+    },
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -63,6 +92,64 @@ def copy_runtime_pair(*, bundle_path: Path, artifact_path: Path, output: Path, b
         "media_type": artifact_ref.get("media_type"),
         "compiled_path": f"./compiled/{compiled_relative(bundle).as_posix()}",
     }
+
+
+def download_bytes(url: str) -> bytes:
+    request = Request(url, headers={"User-Agent": "NWE-Preview-Stager/0.2"})
+    with urlopen(request, timeout=60) as response:
+        if response.status != 200:
+            raise RuntimeError(f"realism download failed HTTP {response.status}: {url}")
+        return response.read()
+
+
+def stage_realism_layers(output: Path, *, tile_id: str) -> dict[str, dict]:
+    realism_dir = output / "realism"
+    realism_dir.mkdir(parents=True, exist_ok=True)
+    descriptors: dict[str, dict] = {}
+    for name, spec in REALISM_SPECS.items():
+        url = (
+            "https://raw.githubusercontent.com/B4kke/Norge-World-Engine/"
+            f"{spec['commit']}/{RUNTIME_ROOT}/{spec['filename']}"
+        )
+        data = download_bytes(url)
+        actual_sha = hashlib.sha256(data).hexdigest()
+        if actual_sha != spec["sha256"]:
+            raise RuntimeError(f"{name}: immutable realism artifact SHA mismatch {actual_sha} != {spec['sha256']}")
+        try:
+            value = json.loads(data.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"{name}: invalid JSON: {exc}") from exc
+        if value.get("schema") != spec["schema"]:
+            raise RuntimeError(f"{name}: schema mismatch {value.get('schema')!r}")
+        if value.get("tile_id") != tile_id:
+            raise RuntimeError(f"{name}: tile mismatch {value.get('tile_id')!r} != {tile_id}")
+        if value.get("horizontal_crs") != "EPSG:25832":
+            raise RuntimeError(f"{name}: CRS mismatch {value.get('horizontal_crs')!r}")
+        if value.get("compiler_config_id") != spec["compiler_config_id"]:
+            raise RuntimeError(f"{name}: compiler config mismatch")
+        if name in {"building_surface", "roof_orientation"}:
+            source = value.get("source") or {}
+            if source.get("building_artifact_sha256") != BUILDING_ARTIFACT_SHA256:
+                raise RuntimeError(f"{name}: base building artifact mismatch")
+        if name == "building_surface" and len(value.get("features") or []) < 100:
+            raise RuntimeError("building_surface: too few features")
+        if name == "roof_orientation" and len(value.get("features") or []) < 10:
+            raise RuntimeError("roof_orientation: too few strong features")
+        if name == "vegetation" and len(value.get("instances") or []) < 100:
+            raise RuntimeError("vegetation: too few representative instances")
+
+        target = realism_dir / spec["filename"]
+        target.write_bytes(data)
+        descriptors[name] = {
+            "path": f"./realism/{spec['filename']}",
+            "artifact_sha256": actual_sha,
+            "artifact_byte_size": len(data),
+            "schema": spec["schema"],
+            "compiler_config_id": spec["compiler_config_id"],
+            "transport_commit": spec["commit"],
+            "truth_status": "derived-candidate-explicit-not-surveyed-individual-detail",
+        }
+    return descriptors
 
 
 def compile_vectors(cache_root: Path) -> dict:
@@ -152,11 +239,14 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
         raise RuntimeError(f"unexpected roads role {layers['roads']['artifact_role']}")
     if layers["buildings"]["artifact_role"] != "building-footprints":
         raise RuntimeError(f"unexpected buildings role {layers['buildings']['artifact_role']}")
+    if layers["buildings"]["artifact_sha256"] != BUILDING_ARTIFACT_SHA256:
+        raise RuntimeError("realism enrichment is calibrated only for the accepted Nannestad building artifact")
 
+    realism_layers = stage_realism_layers(output, tile_id=tile_id)
     manifest = {
         "schema": "nwe.world-preview-manifest/0.1",
         "preview_id": "nannestad-preview-1",
-        "status": "REAL_COMPILED",
+        "status": "REAL_COMPILED_WITH_DERIVED_REALISM",
         "generated_from_commit": commit_sha,
         "tile": {
             "id": tile_id,
@@ -169,16 +259,21 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
         "terrain": terrain,
         "roads": layers["roads"],
         "buildings": layers["buildings"],
+        "realism_layers": realism_layers,
         "preview_semantics": {
             "raw_source_runtime_calls": 0,
-            "road_width": "visual-debug-only-3.2m",
-            "unresolved_building_height": "visual-debug-only-5m",
-            "runtime_distribution": "temporary-preview-runtime-branch-not-final-architecture",
+            "road_width": "source-backed-when-present-otherwise-explicit-3.2m-renderer-fallback",
+            "building_height": "OSM-source-first; guarded-NHM-DOM-minus-DTM-p90-presentation; explicit-fallback-otherwise",
+            "roof_direction": "strong-NHM-DOM-derived-direction-may-orient-renderer-policy-gables; roof-shape-not-surveyed",
+            "vegetation": "NIBIO-SR16V-source-semantics-with-deterministic-representative-positions; not-observed-individual-trees",
+            "runtime_distribution": "preview-runtime-artifact-package",
         },
         "attribution": [
             "DTM1 height data: Kartverket / Geonorge, CC BY 4.0.",
+            "NHM DOM-derived building surface measurements: Kartverket / Geonorge; downstream derived candidate, source terms retained in provenance.",
             "Road data: Statens vegvesen, NLOD 1.0.",
-            "Building data: © OpenStreetMap contributors, ODbL 1.0.",
+            "Building footprints: © OpenStreetMap contributors, ODbL 1.0.",
+            "Forest semantics: Kilde: NIBIO, SR16V, NLOD 1.0.",
         ],
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -186,7 +281,7 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
 
     files = [path for path in output.rglob("*") if path.is_file()]
     total_bytes = sum(path.stat().st_size for path in files)
-    if total_bytes > 16 * 1024 * 1024:
+    if total_bytes > 20 * 1024 * 1024:
         raise RuntimeError(f"preview snapshot unexpectedly large: {total_bytes} bytes")
     return manifest
 
@@ -215,6 +310,7 @@ def main() -> None:
         "terrain_sha256": manifest["terrain"]["artifact_sha256"],
         "roads_sha256": manifest["roads"]["artifact_sha256"],
         "buildings_sha256": manifest["buildings"]["artifact_sha256"],
+        "realism_layers": {name: value["artifact_sha256"] for name, value in manifest["realism_layers"].items()},
         "snapshot_byte_size": sum(path.stat().st_size for path in args.output.rglob("*") if path.is_file()),
     }, indent=2, sort_keys=True))
 
