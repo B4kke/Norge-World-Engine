@@ -1,6 +1,11 @@
 import { resolveGraphicsProfile, resolveRendererPreference } from './graphicsProfiles.mjs';
 import { resolveCanvasSafeRendererPreference } from './rendererBackendPreflight.mjs';
 import { createThreeGroundRenderer } from './threeGroundRenderer.mjs';
+import { loadNannestadRealismRuntime } from './nannestadRealismRuntime.mjs';
+import { enrichBuildingsForWeb } from './buildingRealismEnrichment.mjs';
+import { buildForgeVegetationPlacement } from './forgeVegetationPlacement.mjs';
+
+const NANNESTAD_TILE_ID = 'epsg25832_611000_6677000_1000m';
 
 function normalizeRendererInterface(renderer) {
   if (!renderer) return renderer;
@@ -10,10 +15,21 @@ function normalizeRendererInterface(renderer) {
   return { ...renderer, invalidate, dispose };
 }
 
+function realismRequired() {
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? '').get('requireRealism') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export async function createPreview1Renderer({
   backend = 'auto',
   graphicsProfile = 'balanced',
   onBackendFallback = () => {},
+  enableRealism = true,
+  realismManifestUrl = null,
+  fetchImpl = globalThis.fetch,
   ...options
 } = {}) {
   const rendererPreference = resolveRendererPreference(backend);
@@ -24,8 +40,53 @@ export async function createPreview1Renderer({
     ? resolveGraphicsProfile(graphicsProfile)
     : graphicsProfile;
 
+  let buildingsArtifact = options.buildingsArtifact;
+  let vegetationPlacement = null;
+  let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
+  const targetTile = options.terrainPayload?.artifact?.header?.tile_id;
+  const canLoadRealism = enableRealism
+    && targetTile === NANNESTAD_TILE_ID
+    && typeof fetchImpl === 'function'
+    && Boolean(realismManifestUrl || globalThis.location);
+
+  if (canLoadRealism) {
+    try {
+      const runtime = await loadNannestadRealismRuntime({ fetchImpl, manifestUrl: realismManifestUrl });
+      buildingsArtifact = enrichBuildingsForWeb(
+        options.buildingsArtifact,
+        runtime.building_surface,
+        runtime.roof_orientation,
+      );
+      vegetationPlacement = buildForgeVegetationPlacement({
+        artifact: runtime.vegetation,
+        terrainPayload: options.terrainPayload,
+        roadsArtifact: options.roadsArtifact,
+        buildingsArtifact,
+        maxInstances: Number(profile?.vegetationInstanceBudget) || Number.POSITIVE_INFINITY,
+      });
+      realismEvidence = Object.freeze({
+        status: 'READY',
+        schema: runtime.schema,
+        transport: runtime.transport,
+        buildings: buildingsArtifact.web_realism,
+        vegetation: vegetationPlacement.stats,
+      });
+    } catch (error) {
+      if (realismRequired()) throw error;
+      realismEvidence = Object.freeze({
+        status: 'DEGRADED_BASE_WORLD',
+        error: error instanceof Error ? error.message : String(error),
+        truth_guard: 'base verified terrain/roads/buildings remain usable; failed realism enrichment is never silently treated as authoritative',
+      });
+      globalThis.console?.warn?.('NWE realism enrichment unavailable; rendering verified base world.', error);
+    }
+  }
+
   const renderer = await createThreeGroundRenderer({
     ...options,
+    buildingsArtifact,
+    vegetationPlacement,
+    realismEvidence,
     graphicsProfile: profile,
     backend: backendPreflight.backend,
     onBackendFallback,
