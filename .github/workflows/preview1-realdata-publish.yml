@@ -10,6 +10,7 @@ on:
       - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
       - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
       - 'engine/schemas/**'
@@ -26,6 +27,7 @@ on:
       - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
       - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
       - 'engine/schemas/**'
@@ -108,6 +110,15 @@ jobs:
             | tee /tmp/nwe-preview-road-realism.json
           python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
 
+      - name: Stage source-backed NVDB street detail
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/preview/stage_nvdb_street_detail.py \
+            --snapshot-root /tmp/nwe-preview \
+            | tee /tmp/nwe-preview-street-detail.json
+          python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
+
       - name: Stage pinned-summer Sentinel-2 macro ground color
         run: |
           python tools/preview/stage_sentinel_ground.py \
@@ -178,6 +189,20 @@ jobs:
             }
             if (!(roadValue.stats?.width_feature_part_count > 0)) throw new Error('road_realism lacks source width features');
             console.log(JSON.stringify({ realism_layer: 'road_realism', sha256: roadSha, widths: roadValue.stats.width_feature_part_count, range: roadValue.stats.width_range_m }));
+
+            const street = manifest.realism_layers?.street_detail;
+            if (!street?.path || !street?.artifact_sha256) throw new Error('street_detail descriptor missing');
+            const streetBytes = fs.readFileSync(path.join(root, street.path.replace(/^\.\//, '')));
+            const streetSha = crypto.createHash('sha256').update(streetBytes).digest('hex');
+            const streetValue = JSON.parse(streetBytes.toString('utf8'));
+            if (streetSha !== street.artifact_sha256 || streetValue.schema !== 'nwe.nvdb-street-detail-artifact/0.1-candidate') {
+              throw new Error('street_detail byte/schema mismatch');
+            }
+            if (streetValue.compiler_algorithm !== street.compiler_algorithm || streetValue.tile_id !== manifest.tile.id) {
+              throw new Error('street_detail algorithm/tile mismatch');
+            }
+            if (!(streetValue.stats?.feature_part_count > 0)) throw new Error('street_detail lacks source geometry');
+            console.log(JSON.stringify({ realism_layer: 'street_detail', sha256: streetSha, features: streetValue.stats.feature_part_count, by_type: streetValue.stats.feature_parts_by_type_id }));
           }
 
           const groundDescriptor = manifest.ground_imagery;
@@ -233,7 +258,7 @@ jobs:
           # Norge World Engine runtime preview artifacts
 
           This orphan branch is a replaceable transport snapshot for the public Preview 1 viewer.
-          It contains compiled provenance-bound runtime artifacts, explicitly verified derived realism layers, source-backed NVDB road-width/surface candidates, a redistribution-admitted Sentinel-2 macro ground-color tile and attribution metadata.
+          It contains compiled provenance-bound runtime artifacts, explicitly verified derived realism layers, source-backed NVDB road-width/surface and street-detail candidates, a redistribution-admitted Sentinel-2 macro ground-color tile and attribution metadata.
           Raw Kartverket/NVDB/OSM/NIBIO/Copernicus source data is never published here.
 
           This is not the selected long-term runtime object-store/CDN architecture.
