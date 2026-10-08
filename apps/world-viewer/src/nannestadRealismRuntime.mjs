@@ -33,6 +33,10 @@ export const NANNESTAD_REALISM_CONTRACT = Object.freeze({
     schema: 'nwe.road-realism-artifact/0.1-candidate',
     compiler_algorithm: 'nvdb-838-primary-583-nonoverlap-fallback-241-surface-v0.1',
   }),
+  street_detail: Object.freeze({
+    schema: 'nwe.nvdb-street-detail-artifact/0.1-candidate',
+    compiler_algorithm: 'nvdb-v4-explicit-geometry-street-detail-v0.1',
+  }),
 });
 
 const DEFAULT_PREVIEW1_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
@@ -140,18 +144,36 @@ function assertRoadRealism(value) {
   if (!Array.isArray(value.source_snapshots) || value.source_snapshots.length !== 3) throw new Error('NANNESTAD_REALISM_ROADS_SOURCE_SNAPSHOTS_INVALID');
 }
 
-async function loadOptionalRoadRealism({ fetchImpl, manifestUrl, descriptor }) {
+function assertStreetDetail(value) {
+  const contract = NANNESTAD_REALISM_CONTRACT.street_detail;
+  if (!value || typeof value !== 'object') throw new Error('NANNESTAD_REALISM_STREET_NOT_OBJECT');
+  if (value.schema !== contract.schema) throw new Error('NANNESTAD_REALISM_STREET_SCHEMA_MISMATCH');
+  if (value.tile_id !== TILE_ID || value.horizontal_crs !== HORIZONTAL_CRS) throw new Error('NANNESTAD_REALISM_STREET_WORLD_FRAME_MISMATCH');
+  if (value.compiler_algorithm !== contract.compiler_algorithm) throw new Error('NANNESTAD_REALISM_STREET_ALGORITHM_MISMATCH');
+  if (!Array.isArray(value.features) || value.features.length < 1) throw new Error('NANNESTAD_REALISM_STREET_FEATURES_INVALID');
+  if (!(Number(value?.stats?.feature_part_count) === value.features.length)) throw new Error('NANNESTAD_REALISM_STREET_COUNT_MISMATCH');
+  for (const feature of value.features) {
+    if (!Number.isInteger(feature?.source_type_id)) throw new Error('NANNESTAD_REALISM_STREET_TYPE_INVALID');
+    if (feature?.geometry_type === 'point') {
+      if (!Array.isArray(feature.point) || feature.point.length !== 2) throw new Error('NANNESTAD_REALISM_STREET_POINT_INVALID');
+    } else if (feature?.geometry_type === 'line') {
+      if (!Array.isArray(feature.points) || feature.points.length < 2) throw new Error('NANNESTAD_REALISM_STREET_LINE_INVALID');
+    } else throw new Error('NANNESTAD_REALISM_STREET_GEOMETRY_TYPE_INVALID');
+  }
+}
+
+async function loadOptionalDerivedLayer({ fetchImpl, manifestUrl, descriptor, label, assertValue }) {
   if (!descriptor) return null;
   if (typeof descriptor.path !== 'string' || typeof descriptor.artifact_sha256 !== 'string') {
-    throw new Error('NANNESTAD_REALISM_ROADS_DESCRIPTOR_INVALID');
+    throw new Error(`NANNESTAD_REALISM_${label.toUpperCase()}_DESCRIPTOR_INVALID`);
   }
   const loaded = await fetchVerifiedJson({
     fetchImpl,
     url: new URL(descriptor.path, manifestUrl).href,
     expectedSha256: descriptor.artifact_sha256,
-    label: 'road-realism',
+    label,
   });
-  assertRoadRealism(loaded.value);
+  assertValue(loaded.value);
   return loaded;
 }
 
@@ -164,8 +186,9 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   const roofDescriptor = layers.roof_orientation;
   const vegetationDescriptor = layers.vegetation;
   const roadDescriptor = layers.road_realism;
+  const streetDescriptor = layers.street_detail;
 
-  const [surface, roof, vegetation, roads] = await Promise.all([
+  const [surface, roof, vegetation, roads, street] = await Promise.all([
     fetchVerifiedJson({
       fetchImpl,
       url: descriptorUrl(resolvedManifestUrl, surfaceDescriptor, NANNESTAD_REALISM_CONTRACT.building_surface.fallback_url),
@@ -184,7 +207,8 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
       expectedSha256: descriptorSha(vegetationDescriptor, NANNESTAD_REALISM_CONTRACT.vegetation),
       label: 'vegetation',
     }),
-    loadOptionalRoadRealism({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: roadDescriptor }),
+    loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: roadDescriptor, label: 'road-realism', assertValue: assertRoadRealism }),
+    loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: streetDescriptor, label: 'street-detail', assertValue: assertStreetDetail }),
   ]);
 
   assertBuildingSurface(surface.value);
@@ -192,12 +216,13 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   assertVegetation(vegetation.value);
 
   return Object.freeze({
-    schema: 'nwe.web-nannestad-realism-runtime/0.2',
+    schema: 'nwe.web-nannestad-realism-runtime/0.3',
     tile_id: TILE_ID,
     building_surface: surface.value,
     roof_orientation: roof.value,
     vegetation: vegetation.value,
     road_realism: roads?.value ?? null,
+    street_detail: street?.value ?? null,
     transport: Object.freeze({
       manifest_url: resolvedManifestUrl,
       manifest_staged_layers: Boolean(surfaceDescriptor && roofDescriptor && vegetationDescriptor),
@@ -205,6 +230,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
       roof_orientation: Object.freeze({ sha256: roof.sha256, byte_size: roof.byte_size, url: roof.url }),
       vegetation: Object.freeze({ sha256: vegetation.sha256, byte_size: vegetation.byte_size, url: vegetation.url }),
       road_realism: roads ? Object.freeze({ sha256: roads.sha256, byte_size: roads.byte_size, url: roads.url }) : null,
+      street_detail: street ? Object.freeze({ sha256: street.sha256, byte_size: street.byte_size, url: street.url }) : null,
     }),
   });
 }
