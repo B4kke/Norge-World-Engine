@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - agent/lumen-unreal-nannestad-foundation
     paths:
       - 'apps/world-viewer/**'
       - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
