@@ -24,7 +24,7 @@ function realismRequired() {
   }
 }
 
-function enrichRoadsForWeb(baseArtifact, roadRealism) {
+export function enrichRoadsForWeb(baseArtifact, roadRealism) {
   if (!Array.isArray(baseArtifact?.paths)) throw new TypeError('NANNESTAD_ROAD_BASE_PATHS_REQUIRED');
   if (!Array.isArray(roadRealism?.width_features) || roadRealism.width_features.length === 0) return baseArtifact;
   const overlays = roadRealism.width_features.map((feature) => ({
