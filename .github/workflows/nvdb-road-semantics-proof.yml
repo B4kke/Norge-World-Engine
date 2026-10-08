@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/geo/probe_nvdb_road_semantics.py'
       - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
       - 'tools/preview/stage_nvdb_road_realism.py'
       - 'engine/compiler/src/nwe_compiler/acquisition.py'
       - '.github/workflows/nvdb-road-semantics-proof.yml'
@@ -88,6 +89,34 @@ jobs:
           }, indent=2, sort_keys=True, ensure_ascii=False))
           PY
 
+      - name: Compile source-backed street-detail inventory for exact tile
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/geo/compile_nvdb_street_detail.py \
+            --output /tmp/nwe-nvdb-street-detail.json \
+            --verification /tmp/nwe-nvdb-street-detail-verification.json
+          python - <<'PY'
+          import hashlib, json
+          raw = open('/tmp/nwe-nvdb-street-detail.json', 'rb').read()
+          artifact = json.loads(raw)
+          verification = json.load(open('/tmp/nwe-nvdb-street-detail-verification.json', encoding='utf-8'))
+          assert artifact['schema'] == 'nwe.nvdb-street-detail-artifact/0.1-candidate'
+          assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
+          assert artifact['horizontal_crs'] == 'EPSG:25832'
+          assert verification['status'] == 'PASS'
+          assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
+          assert verification['feature_part_count'] > 0
+          expected = {'99','519','174','95','87','181','20','5','80','9','48','953'}
+          assert set(artifact['stats']['feature_parts_by_type_id']) == expected
+          print(json.dumps({
+              'artifact_sha256': verification['artifact_sha256'],
+              'feature_part_count': verification['feature_part_count'],
+              'feature_parts_by_type_id': artifact['stats']['feature_parts_by_type_id'],
+              'geometry_type_counts': artifact['stats']['geometry_type_counts'],
+          }, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: nvdb-road-semantics-${{ github.event.pull_request.head.sha || github.sha }}
@@ -95,5 +124,7 @@ jobs:
             /tmp/nwe-nvdb-road-semantics.json
             /tmp/nwe-road-realism.json
             /tmp/nwe-road-realism-verification.json
+            /tmp/nwe-nvdb-street-detail.json
+            /tmp/nwe-nvdb-street-detail-verification.json
           if-no-files-found: error
           retention-days: 7
