@@ -87,6 +87,7 @@ export async function createPreview1Renderer({
   let roadsArtifact = options.roadsArtifact;
   let vegetationPlacement = null;
   let roadRealism = null;
+  let streetDetail = null;
   let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
   const targetTile = options.terrainPayload?.artifact?.header?.tile_id;
   const canLoadRealism = enableRealism
@@ -108,9 +109,10 @@ export async function createPreview1Renderer({
         terrainPayload: options.terrainPayload,
         roadsArtifact: options.roadsArtifact,
         buildingsArtifact,
-        maxInstances: Number(profile?.vegetationInstanceBudget) || Number.POSITIVE_INFINITY,
+        maxInstances: Number(profile?.vegetationBudget) || Number.POSITIVE_INFINITY,
       });
       roadRealism = runtime.road_realism;
+      streetDetail = runtime.street_detail;
       roadsArtifact = enrichRoadsForWeb(options.roadsArtifact, roadRealism);
       realismEvidence = Object.freeze({
         status: 'READY',
@@ -125,6 +127,11 @@ export async function createPreview1Renderer({
           surface_material_counts: roadRealism.stats?.surface_material_counts ?? {},
           policy: roadRealism.policy,
         }) : Object.freeze({ status: 'BASE_ROAD_FALLBACK_ONLY' }),
+        street_detail: streetDetail ? Object.freeze({
+          feature_part_count: streetDetail.stats?.feature_part_count ?? 0,
+          feature_parts_by_type_id: streetDetail.stats?.feature_parts_by_type_id ?? {},
+          policy: streetDetail.policy,
+        }) : Object.freeze({ status: 'NOT_STAGED' }),
       });
     } catch (error) {
       if (realismRequired()) throw error;
@@ -142,6 +149,7 @@ export async function createPreview1Renderer({
     roadsArtifact,
     buildingsArtifact,
     vegetationPlacement,
+    streetDetail,
     realismEvidence,
     graphicsProfile: profile,
     backend: backendPreflight.backend,
