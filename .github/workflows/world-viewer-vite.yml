@@ -112,13 +112,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Exact Preview 1 renderer A/B on accepted compiled artifacts
+      - name: Exact Preview 1 renderer A/B on immutable accepted compiled artifacts
         run: |
           rm -rf /tmp/nwe-preview1-dist
           cp -R apps/world-viewer/dist /tmp/nwe-preview1-dist
           cp apps/world-viewer/dist/preview1.html /tmp/nwe-preview1-dist/index.html
           node apps/world-viewer/run_preview1_renderer_benchmark.mjs \
             --dist-root /tmp/nwe-preview1-dist \
+            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/e827b37faad70639988c5258ecd9ae585597c1df/nannestad-preview-1/manifest.json \
             --output /tmp/nwe-preview1-renderer-benchmark.json \
             --timeout-ms 90000 \
             --graphics balanced \
