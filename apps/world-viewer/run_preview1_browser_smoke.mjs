@@ -91,7 +91,7 @@ function assertBrowserResult(report, manifest, serverRequests) {
   for (const key of ['easting', 'northing', 'height']) {
     if (!Number.isFinite(Number(authoritativePosition?.[key]))) throw new Error(`character authoritative ${key} missing: ${JSON.stringify(authoritativePosition)}`);
   }
-  if (characterWorld.worldTransform?.worldFrameId !== 'nwe.preview1.epsg25832-nn2000/0.1') throw new Error(`character world frame invalid: ${characterWorld.worldTransform?.worldFrameId}`);
+  if (characterWorld.worldTransform?.worldFrameId !== 'nwe.preview1.epsg25832-nn2000/0.1') throw new Error(`character world frame invalid: ${characterWorld.worldTransform.worldFrameId}`);
   const threePose = characterWorld.threePose;
   if (threePose?.coordinateAdapter !== 'atlas-east-north-up -> three-east-up-minus-north') throw new Error(`character coordinate adapter invalid: ${threePose?.coordinateAdapter}`);
 
@@ -126,7 +126,8 @@ function assertBrowserResult(report, manifest, serverRequests) {
 
   const materialLibrary = result.renderer?.material_library;
   if (materialLibrary?.license !== 'CC0-1.0' || materialLibrary.runtime_policy !== 'same-origin-local-assets-only') throw new Error(`local PBR material proof missing: ${JSON.stringify(materialLibrary)}`);
-  if (materialLibrary.texture_count !== 12 || materialLibrary.normal_maps !== true) throw new Error(`high-profile material maps missing: ${JSON.stringify(materialLibrary)}`);
+  const expectedMaterialTextureCount = 12 + (materialLibrary.ground_color?.mode === 'source-derived-geographic-albedo' ? 1 : 0);
+  if (materialLibrary.texture_count !== expectedMaterialTextureCount || materialLibrary.normal_maps !== true) throw new Error(`high-profile material maps missing: ${JSON.stringify(materialLibrary)}`);
   if (!Object.values(materialLibrary.assets ?? {}).includes('asphalt_02')) throw new Error(`asphalt asset identity missing: ${JSON.stringify(materialLibrary.assets)}`);
   const post = result.renderer?.post_processing;
   if (result.graphics_profile === 'high' && !(post?.enabled && post.ambient_occlusion && post.bloom)) throw new Error(`high-profile post effects missing: ${JSON.stringify(post)}`);
