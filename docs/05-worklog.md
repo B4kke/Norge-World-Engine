@@ -524,3 +524,32 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `UE5-RUN-01`: execute the integrated foundation on a UE 5.8 Windows runner and retain compile, map creation, movement/collision and frame/performance evidence.
 
+## 2026-10-09 00:10 CEST — LUMEN — WEB-REALISM-04/06
+
+**What**
+- Repaired the exact Preview 1 browser composition gate for the current `REAL_COMPILED_WITH_DERIVED_REALISM` snapshot instead of weakening the runtime.
+- Replaced stale hard-coded material/request-count assumptions with a manifest-driven resource contract, required `?requireRealism=1`, SHA-checked all five staged realism layers in Chrome and required the source-backed street-detail layer to reach the renderer.
+- Inspected the exact hosted screenshot and the accepted road geometry before classifying the remaining dark near-field asphalt as a presentation problem rather than a proven runaway road-triangulation error.
+- Advanced the active queue: source-backed street detail is closed; procedural façade presentation is recorded as implemented but explicitly non-source-backed; integrated WebUI acceptance remains open on visual/performance quality.
+
+**Why**
+- `WEB-REALISM-04` was the highest-priority open WebUI gate. The implementation already contained the real street-detail and façade work, but stale browser assertions were preventing exact acceptance and hiding which remaining problems were technical versus visual.
+
+**Result / evidence**
+- FACT: implementation head `feec1cc6b5d263a29444dc8c3a3e13acda84cfd0` passes `preview1-realdata-publish` run `37850767271`, exact visual-proof run `37850767344`, `world-viewer-vite` run `37850767346`, `viewer-benchmark` run `37850767341`, `baseline` run `37850767420` and `nvdb-road-semantics-proof` run `37850767279`.
+- FACT: exact Chrome proof reports `REAL WORLD READY`, `web_realism=READY`, 15 runtime requests / 14 unique manifest-backed runtime paths / 14 expected paths and zero raw-source runtime calls.
+- FACT: all five realism payloads SHA-match the snapshot manifest. Street detail contributes 252 source feature parts and reaches the renderer as 5 line meshes + 4 instanced meshes / 9 draw calls. The façade layer renders 3,000 procedural window instances + 127 door instances in 2 draw calls with an explicit renderer-only truth guard.
+- FACT: the published `preview-runtime` manifest is generated from the same exact implementation head and contains terrain, roads, buildings, Sentinel-2 ground color and all five realism descriptors. Publish commit is `23e23ce`.
+- FACT: exact visual-proof artifact `11581119975` has artifact digest `sha256:ba13a9f19d75ae4b9c564ef48e03515b0e50e1b43ddb59ff7f26ebd990a40cfb`; extracted screenshot SHA-256 is `ca0c478de5633fb3e5011a9fa9f08ee7707c363e0e893c6e08e0194ac87e8e4b`.
+- FACT: exact browser proof artifact is `11582505180`.
+- VISUAL LIMITATION: the exact screenshot is materially beyond debug geometry, but near-field asphalt is still much too dark, vegetation remains proxy-like and distant building presentation remains generic. These are not hidden by the green technical gates.
+- PERFORMANCE LIMITATION: hosted SwiftShader/WebGL2 first-frame timing is not evidence of real WebGPU/mobile gameplay performance; no such claim is made.
+
+**Changed**
+- PR #85 / branch `agent/lumen-web-nannestad-1to1`.
+- `apps/world-viewer/run_preview1_browser_smoke.mjs` through commits `0942deb`, `42dde15` and `feec1cc`.
+- `preview-runtime` replaceable snapshot generated from `feec1cc`.
+- `docs/06-task-queue.md` and `docs/05-worklog.md`.
+
+**Next**
+- `WEB-REALISM-06`: perform a measured renderer-only asphalt presentation calibration against the exact screenshot, retain source geometry/provenance unchanged, and keep or revert the change based on exact visual improvement plus bounded browser/resource evidence.
