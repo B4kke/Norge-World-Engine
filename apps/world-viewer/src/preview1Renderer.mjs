@@ -42,6 +42,7 @@ export async function createPreview1Renderer({
 
   let buildingsArtifact = options.buildingsArtifact;
   let vegetationPlacement = null;
+  let roadRealism = null;
   let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
   const targetTile = options.terrainPayload?.artifact?.header?.tile_id;
   const canLoadRealism = enableRealism
@@ -64,12 +65,19 @@ export async function createPreview1Renderer({
         buildingsArtifact,
         maxInstances: Number(profile?.vegetationInstanceBudget) || Number.POSITIVE_INFINITY,
       });
+      roadRealism = runtime.road_realism;
       realismEvidence = Object.freeze({
         status: 'READY',
         schema: runtime.schema,
         transport: runtime.transport,
         buildings: buildingsArtifact.web_realism,
         vegetation: vegetationPlacement.stats,
+        roads: roadRealism ? Object.freeze({
+          width_feature_part_count: roadRealism.stats?.width_feature_part_count ?? 0,
+          width_range_m: roadRealism.stats?.width_range_m ?? null,
+          surface_material_counts: roadRealism.stats?.surface_material_counts ?? {},
+          policy: roadRealism.policy,
+        }) : Object.freeze({ status: 'BASE_ROAD_FALLBACK_ONLY' }),
       });
     } catch (error) {
       if (realismRequired()) throw error;
@@ -86,6 +94,7 @@ export async function createPreview1Renderer({
     ...options,
     buildingsArtifact,
     vegetationPlacement,
+    roadRealism,
     realismEvidence,
     graphicsProfile: profile,
     backend: backendPreflight.backend,
