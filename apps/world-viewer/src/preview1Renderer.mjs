@@ -24,6 +24,15 @@ function realismRequired() {
   }
 }
 
+function realismTransportEnabled(manifestUrl) {
+  if (!manifestUrl) return true;
+  try {
+    return new URL(manifestUrl, globalThis.location?.href ?? 'https://nwe.invalid/').searchParams.get('nweRealism') !== '0';
+  } catch {
+    return true;
+  }
+}
+
 export function enrichRoadsForWeb(baseArtifact, roadRealism) {
   if (!Array.isArray(baseArtifact?.paths)) throw new TypeError('NANNESTAD_ROAD_BASE_PATHS_REQUIRED');
   if (!Array.isArray(roadRealism?.width_features) || roadRealism.width_features.length === 0) return baseArtifact;
@@ -81,6 +90,7 @@ export async function createPreview1Renderer({
   let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
   const targetTile = options.terrainPayload?.artifact?.header?.tile_id;
   const canLoadRealism = enableRealism
+    && realismTransportEnabled(realismManifestUrl)
     && targetTile === NANNESTAD_TILE_ID
     && typeof fetchImpl === 'function'
     && Boolean(realismManifestUrl || globalThis.location);
