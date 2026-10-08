@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
@@ -19,6 +21,8 @@ on:
       - main
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
@@ -67,7 +71,7 @@ jobs:
     needs: change-gate
     if: needs.change-gate.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       NWE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -92,7 +96,14 @@ jobs:
             --commit-sha "$NWE_SOURCE_SHA" \
             | tee /tmp/nwe-preview-stage.json
           python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
-          du -ah /tmp/nwe-preview | sort -h | tail -20
+
+      - name: Stage pinned-summer Sentinel-2 macro ground color
+        run: |
+          python tools/preview/stage_sentinel_ground.py \
+            --snapshot-root /tmp/nwe-preview \
+            | tee /tmp/nwe-preview-sentinel-ground.json
+          python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
+          du -ah /tmp/nwe-preview | sort -h | tail -30
 
       - uses: actions/setup-node@v4
         with:
@@ -101,7 +112,7 @@ jobs:
       - name: Install runtime and World Viewer dependencies
         run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
 
-      - name: Verify all published compiled and realism bytes before distribution
+      - name: Verify all published compiled, realism and ground-color bytes before distribution
         run: |
           node --input-type=module <<'NODE'
           import crypto from 'node:crypto';
@@ -145,6 +156,23 @@ jobs:
               console.log(JSON.stringify({ realism_layer: name, sha256, bytes: bytes.byteLength, schema: value.schema }));
             }
           }
+          const groundDescriptor = manifest.ground_imagery;
+          if (!groundDescriptor?.manifest || groundDescriptor.truth_status !== 'presentation-only-10m-satellite-ground-color-not-orthophoto') {
+            throw new Error('ground imagery descriptor missing or truth status invalid');
+          }
+          const groundManifest = JSON.parse(fs.readFileSync(path.join(root, groundDescriptor.manifest.replace(/^\.\//, '')), 'utf8'));
+          if (groundManifest.schema !== 'nwe.private-ground-imagery/0.1' || groundManifest.tile_id !== manifest.tile.id) {
+            throw new Error('ground imagery manifest identity mismatch');
+          }
+          if (groundManifest.source?.redistribution !== 'allowed-by-license') throw new Error('ground imagery public redistribution not admitted');
+          if (groundManifest.transform?.geometry_displacement !== false) throw new Error('ground imagery must not displace DTM geometry');
+          const groundTexturePath = path.join(root, groundDescriptor.texture.replace(/^\.\//, ''));
+          const groundTexture = fs.readFileSync(groundTexturePath);
+          const groundSha = crypto.createHash('sha256').update(groundTexture).digest('hex');
+          if (groundSha !== groundDescriptor.texture_sha256 || groundSha !== groundManifest.texture?.sha256) {
+            throw new Error('ground imagery texture SHA mismatch');
+          }
+          console.log(JSON.stringify({ ground_color: groundSha, bytes: groundTexture.byteLength, source: groundManifest.source?.stac_item_id }));
           NODE
 
       - name: Build deployable World Viewer
@@ -185,8 +213,8 @@ jobs:
           # Norge World Engine runtime preview artifacts
 
           This orphan branch is a replaceable transport snapshot for the public Preview 1 viewer.
-          It contains compiled provenance-bound runtime artifacts plus explicitly verified derived realism layers and attribution metadata.
-          Raw Kartverket/NVDB/OSM/NIBIO source data is never published here.
+          It contains compiled provenance-bound runtime artifacts, explicitly verified derived realism layers, a redistribution-admitted Sentinel-2 macro ground-color tile and attribution metadata.
+          Raw Kartverket/NVDB/OSM/NIBIO/Copernicus source data is never published here.
 
           This is not the selected long-term runtime object-store/CDN architecture.
           TXT
