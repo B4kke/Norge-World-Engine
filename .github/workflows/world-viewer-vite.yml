@@ -119,7 +119,7 @@ jobs:
           cp apps/world-viewer/dist/preview1.html /tmp/nwe-preview1-dist/index.html
           node apps/world-viewer/run_preview1_renderer_benchmark.mjs \
             --dist-root /tmp/nwe-preview1-dist \
-            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/e827b37faad70639988c5258ecd9ae585597c1df/nannestad-preview-1/manifest.json \
+            --manifest-url 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/e827b37faad70639988c5258ecd9ae585597c1df/nannestad-preview-1/manifest.json?nweRealism=0' \
             --output /tmp/nwe-preview1-renderer-benchmark.json \
             --timeout-ms 90000 \
             --graphics balanced \
