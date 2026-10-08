@@ -2,12 +2,13 @@ import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1.ts';
 import { buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
 import { resolveGraphicsProfile } from './graphicsProfiles.mjs';
 
+const IMMUTABLE_CI_BASELINE_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/e827b37faad70639988c5258ecd9ae585597c1df/nannestad-preview-1/manifest.json?nweRealism=0';
 const params = new URLSearchParams(location.search);
-const manifestUrl = params.get('previewManifest') || DEFAULT_PREVIEW1_MANIFEST;
+const reportUrl = params.get('report');
+const manifestUrl = params.get('previewManifest') || (reportUrl ? IMMUTABLE_CI_BASELINE_MANIFEST : DEFAULT_PREVIEW1_MANIFEST);
 const rendererPreference = params.get('renderer') || 'webgl2';
 const graphicsProfile = params.get('graphics') || 'balanced';
 const evidenceTarget = params.get('target') === 'android-chrome' ? 'android-chrome' : 'generic-browser';
-const reportUrl = params.get('report');
 const frameCount = Number(params.get('frames') || '90');
 if (!Number.isInteger(frameCount) || frameCount < 10 || frameCount > 600) throw new Error('DEVICE_EVIDENCE_FRAMES_OUT_OF_RANGE');
 
