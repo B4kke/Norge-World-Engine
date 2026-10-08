@@ -6,6 +6,7 @@ import { enrichBuildingsForWeb } from './buildingRealismEnrichment.mjs';
 import { buildForgeVegetationPlacement } from './forgeVegetationPlacement.mjs';
 
 const NANNESTAD_TILE_ID = 'epsg25832_611000_6677000_1000m';
+const SOURCE_WIDTH_OVERLAY_LIFT_M = 0.005;
 
 function normalizeRendererInterface(renderer) {
   if (!renderer) return renderer;
@@ -21,6 +22,39 @@ function realismRequired() {
   } catch {
     return false;
   }
+}
+
+function enrichRoadsForWeb(baseArtifact, roadRealism) {
+  if (!Array.isArray(baseArtifact?.paths)) throw new TypeError('NANNESTAD_ROAD_BASE_PATHS_REQUIRED');
+  if (!Array.isArray(roadRealism?.width_features) || roadRealism.width_features.length === 0) return baseArtifact;
+  const overlays = roadRealism.width_features.map((feature) => ({
+    path_id: `nvdb-width:${feature.source_type_id}:${feature.source_object_id}:${feature.part_index}`,
+    road_type: 'source-width-overlay',
+    source_segment_ids: [],
+    source_sequence_ids: [...new Set((feature.locations ?? []).map((location) => location.sequence_id).filter(Number.isInteger))],
+    length_m: null,
+    points: feature.points,
+    width_m: Number(feature.width_m),
+    surface_lift_m: SOURCE_WIDTH_OVERLAY_LIFT_M,
+    width_source: `NVDB-${feature.source_type_id}`,
+    width_source_object_id: feature.source_object_id,
+    width_priority: feature.priority,
+  }));
+  return {
+    ...baseArtifact,
+    paths: [...baseArtifact.paths, ...overlays],
+    web_realism: {
+      schema: 'nwe.web-road-realism/0.1',
+      base_path_count: baseArtifact.paths.length,
+      source_width_overlay_count: overlays.length,
+      source_width_range_m: roadRealism.stats?.width_range_m ?? null,
+      source_width_semantics: 'NVDB-838-primary-583-nonoverlap-fallback-overlay',
+      surface_material_counts: roadRealism.stats?.surface_material_counts ?? {},
+      fallback_semantics: 'accepted road network remains 3.2m renderer fallback where no source-width overlay exists',
+      overlay_lift_m: SOURCE_WIDTH_OVERLAY_LIFT_M,
+      truth_guard: roadRealism.policy?.truth_guard ?? 'no inferred width is source truth',
+    },
+  };
 }
 
 export async function createPreview1Renderer({
@@ -41,6 +75,7 @@ export async function createPreview1Renderer({
     : graphicsProfile;
 
   let buildingsArtifact = options.buildingsArtifact;
+  let roadsArtifact = options.roadsArtifact;
   let vegetationPlacement = null;
   let roadRealism = null;
   let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
@@ -66,6 +101,7 @@ export async function createPreview1Renderer({
         maxInstances: Number(profile?.vegetationInstanceBudget) || Number.POSITIVE_INFINITY,
       });
       roadRealism = runtime.road_realism;
+      roadsArtifact = enrichRoadsForWeb(options.roadsArtifact, roadRealism);
       realismEvidence = Object.freeze({
         status: 'READY',
         schema: runtime.schema,
@@ -73,6 +109,7 @@ export async function createPreview1Renderer({
         buildings: buildingsArtifact.web_realism,
         vegetation: vegetationPlacement.stats,
         roads: roadRealism ? Object.freeze({
+          ...roadsArtifact.web_realism,
           width_feature_part_count: roadRealism.stats?.width_feature_part_count ?? 0,
           width_range_m: roadRealism.stats?.width_range_m ?? null,
           surface_material_counts: roadRealism.stats?.surface_material_counts ?? {},
@@ -92,9 +129,9 @@ export async function createPreview1Renderer({
 
   const renderer = await createThreeGroundRenderer({
     ...options,
+    roadsArtifact,
     buildingsArtifact,
     vegetationPlacement,
-    roadRealism,
     realismEvidence,
     graphicsProfile: profile,
     backend: backendPreflight.backend,
