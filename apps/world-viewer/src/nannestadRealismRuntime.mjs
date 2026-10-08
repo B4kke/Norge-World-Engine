@@ -29,6 +29,10 @@ export const NANNESTAD_REALISM_CONTRACT = Object.freeze({
     sha256: 'ceececdf22de88710f7eba4dd7d131a33f123b216bd3ca235e960ca9816c1686',
     fallback_url: `https://raw.githubusercontent.com/B4kke/Norge-World-Engine/${VEGETATION_RUNTIME_COMMIT}/${RUNTIME_ROOT}/vegetation-representatives.json`,
   }),
+  road_realism: Object.freeze({
+    schema: 'nwe.road-realism-artifact/0.1-candidate',
+    compiler_algorithm: 'nvdb-838-primary-583-nonoverlap-fallback-241-surface-v0.1',
+  }),
 });
 
 const DEFAULT_PREVIEW1_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json';
@@ -121,6 +125,36 @@ function assertVegetation(value) {
   if (value?.stats?.representative_instance_count !== value.instances.length) throw new Error('NANNESTAD_REALISM_VEGETATION_COUNT_MISMATCH');
 }
 
+function assertRoadRealism(value) {
+  const contract = NANNESTAD_REALISM_CONTRACT.road_realism;
+  if (!value || typeof value !== 'object') throw new Error('NANNESTAD_REALISM_ROADS_NOT_OBJECT');
+  if (value.schema !== contract.schema) throw new Error('NANNESTAD_REALISM_ROADS_SCHEMA_MISMATCH');
+  if (value.tile_id !== TILE_ID || value.horizontal_crs !== HORIZONTAL_CRS) throw new Error('NANNESTAD_REALISM_ROADS_WORLD_FRAME_MISMATCH');
+  if (value.compiler_algorithm !== contract.compiler_algorithm) throw new Error('NANNESTAD_REALISM_ROADS_ALGORITHM_MISMATCH');
+  if (!Array.isArray(value.width_features) || value.width_features.length < 1) throw new Error('NANNESTAD_REALISM_ROADS_WIDTH_FEATURES_INVALID');
+  for (const feature of value.width_features) {
+    if (!(Number.isFinite(feature?.width_m) && feature.width_m >= 0.8 && feature.width_m <= 30)) throw new Error('NANNESTAD_REALISM_ROADS_WIDTH_INVALID');
+    if (!Array.isArray(feature?.points) || feature.points.length < 2) throw new Error('NANNESTAD_REALISM_ROADS_GEOMETRY_INVALID');
+    if (![838, 583].includes(Number(feature?.source_type_id))) throw new Error('NANNESTAD_REALISM_ROADS_SOURCE_TYPE_INVALID');
+  }
+  if (!Array.isArray(value.source_snapshots) || value.source_snapshots.length !== 3) throw new Error('NANNESTAD_REALISM_ROADS_SOURCE_SNAPSHOTS_INVALID');
+}
+
+async function loadOptionalRoadRealism({ fetchImpl, manifestUrl, descriptor }) {
+  if (!descriptor) return null;
+  if (typeof descriptor.path !== 'string' || typeof descriptor.artifact_sha256 !== 'string') {
+    throw new Error('NANNESTAD_REALISM_ROADS_DESCRIPTOR_INVALID');
+  }
+  const loaded = await fetchVerifiedJson({
+    fetchImpl,
+    url: new URL(descriptor.path, manifestUrl).href,
+    expectedSha256: descriptor.artifact_sha256,
+    label: 'road-realism',
+  });
+  assertRoadRealism(loaded.value);
+  return loaded;
+}
+
 export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch, manifestUrl = null } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('NANNESTAD_REALISM_FETCH_REQUIRED');
   const resolvedManifestUrl = resolvePreviewManifestUrl(manifestUrl);
@@ -129,8 +163,9 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   const surfaceDescriptor = layers.building_surface;
   const roofDescriptor = layers.roof_orientation;
   const vegetationDescriptor = layers.vegetation;
+  const roadDescriptor = layers.road_realism;
 
-  const [surface, roof, vegetation] = await Promise.all([
+  const [surface, roof, vegetation, roads] = await Promise.all([
     fetchVerifiedJson({
       fetchImpl,
       url: descriptorUrl(resolvedManifestUrl, surfaceDescriptor, NANNESTAD_REALISM_CONTRACT.building_surface.fallback_url),
@@ -149,6 +184,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
       expectedSha256: descriptorSha(vegetationDescriptor, NANNESTAD_REALISM_CONTRACT.vegetation),
       label: 'vegetation',
     }),
+    loadOptionalRoadRealism({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: roadDescriptor }),
   ]);
 
   assertBuildingSurface(surface.value);
@@ -156,17 +192,19 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   assertVegetation(vegetation.value);
 
   return Object.freeze({
-    schema: 'nwe.web-nannestad-realism-runtime/0.1',
+    schema: 'nwe.web-nannestad-realism-runtime/0.2',
     tile_id: TILE_ID,
     building_surface: surface.value,
     roof_orientation: roof.value,
     vegetation: vegetation.value,
+    road_realism: roads?.value ?? null,
     transport: Object.freeze({
       manifest_url: resolvedManifestUrl,
       manifest_staged_layers: Boolean(surfaceDescriptor && roofDescriptor && vegetationDescriptor),
       building_surface: Object.freeze({ sha256: surface.sha256, byte_size: surface.byte_size, url: surface.url }),
       roof_orientation: Object.freeze({ sha256: roof.sha256, byte_size: roof.byte_size, url: roof.url }),
       vegetation: Object.freeze({ sha256: vegetation.sha256, byte_size: vegetation.byte_size, url: vegetation.url }),
+      road_realism: roads ? Object.freeze({ sha256: roads.sha256, byte_size: roads.byte_size, url: roads.url }) : null,
     }),
   });
 }
