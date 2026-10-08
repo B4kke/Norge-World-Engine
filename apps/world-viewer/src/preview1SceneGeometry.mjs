@@ -5,6 +5,7 @@ import { buildRoadSurfaceGeometry } from './roadSurfaceGeometry.mjs';
 
 const ROAD_VISUAL_WIDTH_M = 3.2;
 const ROAD_SURFACE_LIFT_M = 0.06;
+const ROAD_SOURCE_WIDTH_LIFT_M = 0.065;
 const BUILDING_FALLBACK_HEIGHT_M = 5;
 const BUILDING_GROUND_LIFT_M = 0.08;
 
@@ -90,7 +91,8 @@ function worldPointToLocal(point, origin, sampleHeight, lift = 0) {
   const easting = Number(point?.[0]);
   const northing = Number(point?.[1]);
   if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid world point');
-  const sourceZ = Number(point?.[2]);
+  const rawSourceZ = point?.[2];
+  const sourceZ = rawSourceZ == null ? Number.NaN : Number(rawSourceZ);
   const elevation = Number.isFinite(sourceZ) && sourceZ > -10000 ? sourceZ : sampleHeight(easting, northing);
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
 }
@@ -100,6 +102,18 @@ function footprintPointToLocal(point, origin, sampleHeight) {
   const northing = Number(point?.[1]);
   if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid building footprint point');
   return [easting - origin.e, sampleHeight(easting, northing) - origin.h, origin.n - northing];
+}
+
+function sourceRoadArtifact(roadRealism) {
+  if (!Array.isArray(roadRealism?.width_features) || roadRealism.width_features.length === 0) return null;
+  return {
+    paths: roadRealism.width_features.map((feature) => ({
+      points: feature.points,
+      width_m: feature.width_m,
+      source_type_id: feature.source_type_id,
+      source_object_id: feature.source_object_id,
+    })),
+  };
 }
 
 export function createPreviewCamera() {
@@ -130,7 +144,7 @@ export function installPreviewSceneControls(canvas, camera, onChange) {
   });
 }
 
-export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact }) {
+export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact, roadRealism = null }) {
   if (!terrainPayload?.mesh?.positions || !terrainPayload?.artifact?.header) throw new TypeError('terrainPayload is required');
   const origin = {
     e: terrainPayload.mesh.metadata.origin[0],
@@ -142,6 +156,16 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SURFACE_LIFT_M),
     widthMeters: ROAD_VISUAL_WIDTH_M,
   });
+  const sourceRoads = sourceRoadArtifact(roadRealism);
+  const roadsSourceWidth = sourceRoads
+    ? buildRoadSurfaceGeometry(sourceRoads, {
+      projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SOURCE_WIDTH_LIFT_M),
+      widthMeters: ROAD_VISUAL_WIDTH_M,
+    })
+    : buildRoadSurfaceGeometry({ paths: [] }, {
+      projectPoint: (point) => worldPointToLocal(point, origin, sampleHeight, ROAD_SOURCE_WIDTH_LIFT_M),
+      widthMeters: ROAD_VISUAL_WIDTH_M,
+    });
   const buildingProjectPoint = (point) => footprintPointToLocal(point, origin, sampleHeight);
   const buildingsResolved = buildBuildingSurfaceGeometry(buildingsArtifact, {
     projectPoint: buildingProjectPoint,
@@ -159,6 +183,7 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     origin,
     terrain: terrainPayload.mesh,
     roads,
+    roadsSourceWidth,
     buildingsResolved,
     buildingsFallback,
     stats: {
@@ -168,8 +193,16 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
       road_surface_paths: roads.metadata.path_count,
       road_surface_segments: roads.metadata.segment_count,
       road_surface_triangles: roads.metadata.triangle_count,
-      road_width_semantics: roads.metadata.width_semantics,
+      road_width_semantics: roadsSourceWidth.metadata.path_count > 0
+        ? 'source-backed-NVDB-overlay-with-explicit-fallback-underlay'
+        : roads.metadata.width_semantics,
+      road_source_width_parts: roadsSourceWidth.metadata.path_count,
+      road_source_width_segments: roadsSourceWidth.metadata.segment_count,
+      road_source_width_triangles: roadsSourceWidth.metadata.triangle_count,
+      road_source_width_range_m: roadRealism?.stats?.width_range_m ?? null,
+      road_surface_material_counts: roadRealism?.stats?.surface_material_counts ?? {},
       road_surface_lift_m: ROAD_SURFACE_LIFT_M,
+      road_source_width_lift_m: ROAD_SOURCE_WIDTH_LIFT_M,
       building_footprints: buildingsArtifact?.features?.length ?? 0,
       source_backed_building_heights: buildingsResolved.count,
       unresolved_building_heights: buildingsFallback.count,
