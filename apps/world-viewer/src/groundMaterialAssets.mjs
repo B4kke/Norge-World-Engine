@@ -3,6 +3,15 @@ import * as THREE from 'three/webgpu';
 export const GROUND_MATERIAL_CATALOG_SCHEMA = 'nwe.polyhaven-material-catalog/0.1';
 export const GROUND_MATERIAL_LIBRARY_SCHEMA = 'nwe.ground-material-library/0.1';
 export const GROUND_MATERIAL_CATALOG_PATH = 'assets/materials/polyhaven/manifest.json';
+export const GROUND_MATERIAL_PRESENTATION = Object.freeze({
+  roadAsphalt: Object.freeze({
+    diffuseTint: 0xffffff,
+    diffuseTintSrgb: '#ffffff',
+    normalScale: 0.58,
+    roughness: 0.94,
+    rationale: 'preserve-pinned-cc0-diffuse-albedo-without-extra-darkening-tint',
+  }),
+});
 
 const REQUIRED_SURFACES = Object.freeze([
   'terrain',
@@ -175,6 +184,7 @@ export async function createGroundMaterialLibrary({
     ...terrainTextures,
     diffuse: geographicGroundColor ?? terrainTextures.diffuse,
   };
+  const roadPresentation = GROUND_MATERIAL_PRESENTATION.roadAsphalt;
   const materials = {
     terrain: new THREE.MeshStandardMaterial(materialOptions(terrainMaterialTextures, profile, {
       normalScale: 0.42,
@@ -182,9 +192,9 @@ export async function createGroundMaterialLibrary({
       vertexColors: geographicGroundColor == null,
     })),
     roadAsphalt: new THREE.MeshStandardMaterial(materialOptions(roadTextures, profile, {
-      normalScale: 0.58,
-      roughness: 0.94,
-      color: 0xc8c9c8,
+      normalScale: roadPresentation.normalScale,
+      roughness: roadPresentation.roughness,
+      color: roadPresentation.diffuseTint,
       side: THREE.DoubleSide,
     })),
     resolvedWall: new THREE.MeshStandardMaterial(materialOptions(wallTextures, profile, {
@@ -241,6 +251,13 @@ export async function createGroundMaterialLibrary({
     normal_maps: profile.normalMaps !== false,
     normal_convention: 'OpenGL',
     terrain_repeat: Object.freeze(terrainRepeat),
+    road_asphalt_presentation: Object.freeze({
+      diffuse_tint_srgb: roadPresentation.diffuseTintSrgb,
+      roughness: roadPresentation.roughness,
+      normal_scale: roadPresentation.normalScale,
+      rationale: roadPresentation.rationale,
+      truth: 'renderer-only-material-calibration-no-road-geometry-or-source-semantics-change',
+    }),
     ground_color: groundImagery ? Object.freeze({
       schema: groundImagery.schema,
       mode: 'source-derived-geographic-albedo',
