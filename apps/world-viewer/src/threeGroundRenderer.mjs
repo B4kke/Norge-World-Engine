@@ -9,6 +9,7 @@ import { createGroundPostProcessing } from './threeGroundPostProcessing.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
 import { createThreeVegetationLayer } from './threeVegetationLayer.mjs';
 import { createThreeStreetDetailLayer } from './threeStreetDetailLayer.mjs';
+import { createThreeBuildingFacadeLayer } from './threeBuildingFacadeLayer.mjs';
 import {
   configureGroundRendererVisualStyle,
   configureMeshShadowRole,
@@ -127,12 +128,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const lighting = createGroundLighting(scene, profile);
   const [terrainExtentE, terrainExtentN] = terrainExtentMeters(terrainPayload);
   const materialLoadStartedAt = monotonicNow();
-  const materialLibrary = await createGroundMaterialLibrary({
-    renderer,
-    profile,
-    terrainExtentM: [terrainExtentE, terrainExtentN],
-    groundImagery,
-  });
+  const materialLibrary = await createGroundMaterialLibrary({ renderer, profile, terrainExtentM: [terrainExtentE, terrainExtentN], groundImagery });
   const materialLoadCpuMs = monotonicNow() - materialLoadStartedAt;
   const {
     terrain: terrainMaterial,
@@ -152,15 +148,14 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
-  const vegetationLayer = vegetationPlacement
-    ? createThreeVegetationLayer({ placement: vegetationPlacement, profile })
-    : null;
+  const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile }) : null;
   if (vegetationLayer) scene.add(vegetationLayer.root);
 
-  const streetDetailLayer = streetDetail
-    ? createThreeStreetDetailLayer({ artifact: streetDetail, terrainPayload, profile })
-    : null;
+  const streetDetailLayer = streetDetail ? createThreeStreetDetailLayer({ artifact: streetDetail, terrainPayload, profile }) : null;
   if (streetDetailLayer) scene.add(streetDetailLayer.root);
+
+  const buildingFacadeLayer = createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPayload, profile });
+  scene.add(buildingFacadeLayer.root);
 
   const terrainLifecycle = { creates: 0, destroys: 0, createTimingMs: [], destroyTimingMs: [] };
   let terrainMesh = null;
@@ -172,6 +167,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     + ((streetDetailLayer?.stats.source_light_mast_count ?? 0) + (streetDetailLayer?.stats.deduplicated_additional_light_point_count ?? 0)) * 2
     + (streetDetailLayer?.stats.edge_post_count ?? 0);
   const streetInstanceMatrixBytesEstimate = streetInstanceCountEstimate * 16 * Float32Array.BYTES_PER_ELEMENT;
+  const facadeInstanceCount = (buildingFacadeLayer.stats.rendered_window_count ?? 0) + (buildingFacadeLayer.stats.rendered_door_count ?? 0);
+  const facadeInstanceMatrixBytesEstimate = facadeInstanceCount * 16 * Float32Array.BYTES_PER_ELEMENT;
   const texturePayloadBytesEstimate = materialLibrary.stats.texture_count * 1024 * 1024 * 4;
 
   function makeTerrainMesh(payload) {
@@ -230,7 +227,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
       const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length
         + humanoid.snapshot().render_mesh_count
         + (vegetationLayer?.stats.draw_calls ?? 0)
-        + (streetDetailLayer?.stats.draw_calls ?? 0);
+        + (streetDetailLayer?.stats.draw_calls ?? 0)
+        + buildingFacadeLayer.stats.draw_calls;
       const frame = { at: now, drawGapMs: lastDrawAt ? now - lastDrawAt : null, drawCpuMs: monotonicNow() - startedAt, drawCalls: Number.isFinite(rendererCalls) && rendererCalls > 0 ? rendererCalls : fallbackCalls, backend: activeBackend, pixelRatio: renderer.getPixelRatio(), camera: { yaw: cameraState.yaw, pitch: cameraState.pitch, distance: cameraState.distance, target: cameraState.target, eye_height_m: camera.position.y - centerGround }, character: humanoid.snapshot() };
       onFrame(frame); lastDrawAt = now;
       if (!firstFrameSettled) { firstFrameSettled = true; firstFrameResolve(frame); }
@@ -254,26 +252,29 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     for (const mesh of staticMeshes) disposeMesh(mesh);
     vegetationLayer?.dispose();
     streetDetailLayer?.dispose();
+    buildingFacadeLayer.dispose();
     postProcessing.dispose(); lighting.dispose(); materialLibrary.dispose(); renderer.dispose();
   };
 
   const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
   const vegetationDrawCalls = vegetationLayer?.stats.draw_calls ?? 0;
   const streetDetailDrawCalls = streetDetailLayer?.stats.draw_calls ?? 0;
-  const colorDrawCalls = 2 + buildingDrawCalls + vegetationDrawCalls + streetDetailDrawCalls + humanoid.snapshot().render_mesh_count;
+  const facadeDrawCalls = buildingFacadeLayer.stats.draw_calls;
+  const colorDrawCalls = 2 + buildingDrawCalls + vegetationDrawCalls + streetDetailDrawCalls + facadeDrawCalls + humanoid.snapshot().render_mesh_count;
   const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
-  const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + (profile.shadows === false ? 0 : vegetationDrawCalls) + humanoidShadowMeshCount;
+  const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + (profile.shadows === false ? 0 : vegetationDrawCalls) + (buildingFacadeLayer.stats.rendered_door_count > 0 ? 1 : 0) + humanoidShadowMeshCount;
   const characterSnapshot = humanoid.snapshot();
   const stats = {
     ...sceneGeometry.stats,
-    renderer_adapter: 'three-ground/0.4', three_revision: THREE.REVISION, backend: activeBackend, graphics_profile: profile.id, max_dpr: profile.maxDpr, pixel_ratio: renderer.getPixelRatio(), msaa_samples: profile.webglAntialias === false ? 1 : 4,
+    renderer_adapter: 'three-ground/0.5', three_revision: THREE.REVISION, backend: activeBackend, graphics_profile: profile.id, max_dpr: profile.maxDpr, pixel_ratio: renderer.getPixelRatio(), msaa_samples: profile.webglAntialias === false ? 1 : 4,
     draw_calls_per_frame: colorDrawCalls,
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
-    gpu_buffer_count: 25 + (vegetationLayer?.stats.mesh_count ?? 0) * 2 + (streetDetailLayer?.stats.rendered_line_mesh_count ?? 0) * 4 + (streetDetailLayer?.stats.rendered_instanced_mesh_count ?? 0) * 2,
-    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + streetInstanceMatrixBytesEstimate,
+    gpu_buffer_count: 25 + (vegetationLayer?.stats.mesh_count ?? 0) * 2 + (streetDetailLayer?.stats.rendered_line_mesh_count ?? 0) * 4 + (streetDetailLayer?.stats.rendered_instanced_mesh_count ?? 0) * 2 + facadeDrawCalls * 2,
+    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + streetInstanceMatrixBytesEstimate + facadeInstanceMatrixBytesEstimate,
     vegetation_instance_matrix_bytes_estimate: vegetationInstanceMatrixBytesEstimate,
     street_detail_instance_matrix_bytes_estimate: streetInstanceMatrixBytesEstimate,
+    facade_instance_matrix_bytes_estimate: facadeInstanceMatrixBytesEstimate,
     gpu_texture_payload_bytes: texturePayloadBytesEstimate,
     gpu_texture_payload_semantics: 'uncompressed-rgba-estimate', timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'first-person', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
@@ -282,6 +283,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     web_realism: realismEvidence ?? { status: 'BASE_WORLD_ONLY' },
     vegetation: vegetationLayer?.stats ?? { status: 'NOT_LOADED' },
     street_detail: streetDetailLayer?.stats ?? { status: 'NOT_LOADED' },
+    building_facades: buildingFacadeLayer.stats,
     terrain_material: {
       schema: TERRAIN_MATERIAL_SCHEMA,
       pbr: true,
@@ -305,10 +307,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     setCharacterAnimationState(state, options) { const snapshot = humanoid.setAnimationState(state, options); dirty = true; return snapshot; },
     setCharacterRenderPose(pose) {
       if (!(pose?.position instanceof Float32Array) || pose.position.length !== 3) throw new TypeError('THREE_GROUND_CHARACTER_POSE_REQUIRED');
-      const renderPose = {
-        ...pose,
-        position: new Float32Array([pose.position[0], pose.position[1] + HUMANOID_GROUND_LIFT_M, pose.position[2]]),
-      };
+      const renderPose = { ...pose, position: new Float32Array([pose.position[0], pose.position[1] + HUMANOID_GROUND_LIFT_M, pose.position[2]]) };
       const snapshot = humanoid.setRenderPose(renderPose);
       cameraControls.followTarget([...pose.position], { headingRadians: pose.headingRadians, initialize: !characterFollowInitialized });
       lighting.updateAnchor([...pose.position]);
