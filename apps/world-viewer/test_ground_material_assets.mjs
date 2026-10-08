@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   GROUND_MATERIAL_CATALOG_SCHEMA,
+  GROUND_MATERIAL_PRESENTATION,
   validateGroundMaterialCatalog,
 } from './src/groundMaterialAssets.mjs';
 
@@ -13,6 +14,12 @@ assert.equal(catalog.schema, GROUND_MATERIAL_CATALOG_SCHEMA);
 assert.equal(catalog.license, 'CC0-1.0');
 assert.equal(catalog.runtime_policy, 'same-origin-local-assets-only');
 assert.deepEqual(Object.keys(catalog.assets), ['terrain', 'road_asphalt', 'building_walls', 'building_roofs']);
+
+assert.equal(GROUND_MATERIAL_PRESENTATION.roadAsphalt.diffuseTint, 0xffffff);
+assert.equal(GROUND_MATERIAL_PRESENTATION.roadAsphalt.diffuseTintSrgb, '#ffffff');
+assert.equal(GROUND_MATERIAL_PRESENTATION.roadAsphalt.roughness, 0.94);
+assert.equal(GROUND_MATERIAL_PRESENTATION.roadAsphalt.normalScale, 0.58);
+assert.match(GROUND_MATERIAL_PRESENTATION.roadAsphalt.rationale, /without-extra-darkening-tint/);
 
 let fileCount = 0;
 for (const [surfaceId, surface] of Object.entries(catalog.assets)) {
