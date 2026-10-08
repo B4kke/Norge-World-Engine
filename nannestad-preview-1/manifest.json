@@ -1,0 +1,167 @@
+{
+  "attribution": [
+    "DTM1 height data: Kartverket / Geonorge, CC BY 4.0.",
+    "NHM DOM-derived building surface measurements: Kartverket / Geonorge; downstream derived candidate, source terms retained in provenance.",
+    "Road data: Statens vegvesen, NLOD 1.0.",
+    "Building footprints: \u00a9 OpenStreetMap contributors, ODbL 1.0.",
+    "Forest semantics: Kilde: NIBIO, SR16V, NLOD 1.0.",
+    "Inneholder data under norsk lisens for offentlige data (NLOD) tilgjengeliggjort av Statens vegvesen.",
+    "Contains modified Copernicus Sentinel data 2026"
+  ],
+  "buildings": {
+    "artifact_byte_size": 80846,
+    "artifact_role": "building-footprints",
+    "artifact_sha256": "678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd",
+    "bundle": "./buildings.bundle.json",
+    "compiled_count": 135,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/building-footprints/678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd.json",
+    "media_type": "application/json; profile=nwe.building-footprint-artifact/0.1",
+    "normalized_count": 135,
+    "raw_object_count": 5703,
+    "raw_sha256": "b37d8a084f8e649d13e0fde4bbb84603ac087f58b4e596da715d10e62d6513eb",
+    "semantic_stats": {
+      "building_type_counts": {
+        "apartments": 18,
+        "barn": 3,
+        "civic": 5,
+        "commercial": 1,
+        "farm": 3,
+        "farm_auxiliary": 2,
+        "garage": 37,
+        "garages": 4,
+        "house": 35,
+        "kindergarten": 1,
+        "office": 2,
+        "retail": 7,
+        "school": 2,
+        "sports_centre": 1,
+        "terrace": 8,
+        "warehouse": 3,
+        "yes": 3
+      },
+      "feature_count": 135,
+      "features_with_any_roof_semantics": 0,
+      "features_with_any_surface_semantics": 0,
+      "field_counts": {
+        "building_colour": 0,
+        "building_material": 0,
+        "roof_colour": 0,
+        "roof_direction": 0,
+        "roof_height": 0,
+        "roof_levels": 0,
+        "roof_material": 0,
+        "roof_orientation": 0,
+        "roof_shape": 0
+      },
+      "source_height_count": 15,
+      "unresolved_height_count": 120
+    },
+    "source_selected_count": 141
+  },
+  "generated_from_commit": "3087954fc21dcdd170b9f7098bbd09454f947e56",
+  "ground_imagery": {
+    "eo_cloud_cover_percent": 0.0,
+    "manifest": "./ground/ground-imagery.json",
+    "provider": "Copernicus Sentinel-2 via Earth Search",
+    "stac_collection": "sentinel-2-c1-l2a",
+    "stac_datetime": "2026-07-23T10:54:11.499000Z",
+    "stac_item_id": "S2B_T32VPM_20260723T104808_L2A",
+    "texture": "./ground/nannestad_ground_color.png",
+    "texture_byte_size": 1901885,
+    "texture_sha256": "0bbe8079f2fb2eedffaec3612f7cdb9724b12b061613b74751db388af1f2e55a",
+    "truth_status": "presentation-only-10m-satellite-ground-color-not-orthophoto"
+  },
+  "preview_id": "nannestad-preview-1",
+  "preview_semantics": {
+    "building_height": "OSM-source-first; guarded-NHM-DOM-minus-DTM-p90-presentation; explicit-fallback-otherwise",
+    "ground_color": "Sentinel-2-10m-source-backed-macro-color-only; PBR microdetail remains generic; no DTM displacement",
+    "raw_source_runtime_calls": 0,
+    "road_surface": "NVDB type 241 Massetype where available; material rendering remains asphalt PBR for admitted current sample",
+    "road_width": "NVDB type 838 Dekkebredde primary; type 583 non-overlap fallback; accepted centerline 3.2m renderer fallback elsewhere",
+    "roof_direction": "strong-NHM-DOM-derived-direction-may-orient-renderer-policy-gables; roof-shape-not-surveyed",
+    "runtime_distribution": "preview-runtime-artifact-package",
+    "street_detail": "NVDB explicit geometry for markings/sign points/lighting/ditches/kerbs/sidewalks where present; renderer appearance and missing dimensions remain presentation-only",
+    "vegetation": "NIBIO-SR16V-source-semantics-with-deterministic-representative-positions; not-observed-individual-trees"
+  },
+  "realism_layers": {
+    "building_surface": {
+      "artifact_byte_size": 62155,
+      "artifact_sha256": "7b07c587cbbf3e42685cc53d9751fa04471d247e2ab9601daa26e75a2e13721a",
+      "compiler_config_id": "d80cb89ff57170f0bfd6b341c5c6072654919dc29f81954b7eb52753e6477f15",
+      "path": "./realism/building-surface.json",
+      "schema": "nwe.building-surface-artifact/0.1-candidate",
+      "transport_commit": "7a0e49b1743d209bbc2d85af901915e4009e7d7f",
+      "truth_status": "derived-candidate-explicit-not-surveyed-individual-detail"
+    },
+    "road_realism": {
+      "artifact_byte_size": 27620,
+      "artifact_sha256": "75b2376f55dcd382ffccb305ddf9ea7e95027c34b4f3e04def0c2d7e4412702f",
+      "compiler_algorithm": "nvdb-838-primary-583-nonoverlap-fallback-241-surface-v0.1",
+      "path": "./realism/road-realism.json",
+      "schema": "nwe.road-realism-artifact/0.1-candidate",
+      "truth_status": "source-backed-NVDB-width-and-surface-candidate-with-explicit-fallback-elsewhere"
+    },
+    "roof_orientation": {
+      "artifact_byte_size": 14482,
+      "artifact_sha256": "0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3",
+      "compiler_config_id": "325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682",
+      "path": "./realism/building-roof-orientation.json",
+      "schema": "nwe.building-roof-orientation-artifact/0.1-candidate",
+      "transport_commit": "7a0e49b1743d209bbc2d85af901915e4009e7d7f",
+      "truth_status": "derived-candidate-explicit-not-surveyed-individual-detail"
+    },
+    "street_detail": {
+      "artifact_byte_size": 93589,
+      "artifact_sha256": "0129342bc8d20b600189d5e77f3fa636203c5cdbd5b8ca4461f0d04c0d67bae4",
+      "compiler_algorithm": "nvdb-v4-explicit-geometry-street-detail-v0.1",
+      "path": "./realism/street-detail.json",
+      "schema": "nwe.nvdb-street-detail-artifact/0.1-candidate",
+      "truth_status": "source-backed-NVDB-explicit-point-and-line-geometry-with-renderer-authored-appearance"
+    },
+    "vegetation": {
+      "artifact_byte_size": 224895,
+      "artifact_sha256": "ceececdf22de88710f7eba4dd7d131a33f123b216bd3ca235e960ca9816c1686",
+      "compiler_config_id": "f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e",
+      "path": "./realism/vegetation-representatives.json",
+      "schema": "nwe.vegetation-representative-artifact/0.1-candidate",
+      "transport_commit": "c8de691494edb550aa4c43812efdeec3facf24a1",
+      "truth_status": "derived-candidate-explicit-not-surveyed-individual-detail"
+    }
+  },
+  "roads": {
+    "artifact_byte_size": 171732,
+    "artifact_role": "road-network",
+    "artifact_sha256": "34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a",
+    "bundle": "./roads.bundle.json",
+    "compiled_count": 246,
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/road-network/34b9cd4594230df111f4563ee79e6d0a919c1c33be3502dbbcadf1afa5a6db8a.json",
+    "media_type": "application/json; profile=nwe.road-network-artifact/0.1",
+    "normalized_count": 407,
+    "raw_object_count": 471,
+    "raw_sha256": "1eb6f45961f7cc54320785d56e75754c5c9e57b24ca07d2a5d943ba7ebb04214",
+    "source_selected_count": 471
+  },
+  "schema": "nwe.world-preview-manifest/0.1",
+  "status": "REAL_COMPILED_WITH_DERIVED_REALISM",
+  "terrain": {
+    "artifact_byte_size": 4000382,
+    "artifact_role": "terrain-height-grid",
+    "artifact_sha256": "780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96",
+    "bundle": "./terrain.bundle.json",
+    "compiled_path": "./compiled/epsg25832_611000_6677000_1000m/terrain-height-grid/780de19ef1c7911bcf2476def2b91dee078612b11d10ef62923c411c6679bd96.nwehgt",
+    "media_type": "application/vnd.nwe.terrain-height-grid"
+  },
+  "tile": {
+    "bounds": [
+      611000.0,
+      6677000.0,
+      612000.0,
+      6678000.0
+    ],
+    "center_e": 611500.0,
+    "center_n": 6677500.0,
+    "horizontal_crs": "EPSG:25832",
+    "id": "epsg25832_611000_6677000_1000m",
+    "vertical_datum": "NN2000"
+  }
+}

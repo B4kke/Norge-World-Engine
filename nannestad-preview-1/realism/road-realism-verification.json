@@ -1,0 +1,13 @@
+{
+  "artifact_byte_size": 27620,
+  "artifact_sha256": "75b2376f55dcd382ffccb305ddf9ea7e95027c34b4f3e04def0c2d7e4412702f",
+  "schema": "nwe.road-realism-verification/0.1",
+  "source_raw_sha256": {
+    "241": "ddb9a37d565eff7a5f2205f7eb1c3825c2af0faa96a6e1de0c9a43c58f139da7",
+    "583": "e2239c228edf75035cd590732c23b92d5e4152f937e947cae295a10fa49560a1",
+    "838": "1094d2b97e986fe37840f652e5caec855aec53f2397c9ea8f1ac4ec8e7383320"
+  },
+  "status": "PASS",
+  "surface_feature_part_count": 7,
+  "width_feature_part_count": 20
+}
