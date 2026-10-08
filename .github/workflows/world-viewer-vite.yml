@@ -60,6 +60,12 @@ jobs:
           node apps/world-viewer/test_device_evidence_lifecycle.mjs
           node apps/world-viewer/test_browser_artifact_profile.mjs
 
+      - name: Building realism regression
+        run: node apps/world-viewer/test_building_realism_enrichment.mjs
+
+      - name: Vegetation grounding and exclusion regression
+        run: node apps/world-viewer/test_forge_vegetation_placement.mjs
+
       - name: Terrain experiment syntax boundary
         run: |
           node --check apps/world-viewer/terrain_runtime_input.mjs
