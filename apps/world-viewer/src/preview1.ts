@@ -289,9 +289,12 @@ export async function runPreview1({
     const roadsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.roads.bundle, manifestBase), expectedRole: 'road-network', fetchImpl });
     const buildingsPromise = loadCompiledJsonArtifact({ bundleUrl: absoluteUrl(manifest.buildings.bundle, manifestBase), expectedRole: 'building-footprints', fetchImpl });
     const terrainPromise = loadTerrain(manifest, manifestBase, onPhase, fetchImpl, profile);
-    const groundImageryPromise = groundImageryUrl
+    const resolvedGroundImageryUrl = groundImageryUrl ?? (typeof manifest.ground_imagery?.manifest === 'string'
+      ? absoluteUrl(manifest.ground_imagery.manifest, manifestBase)
+      : null);
+    const groundImageryPromise = resolvedGroundImageryUrl
       ? loadGroundImageryRuntime({
-        manifestUrl: new URL(groundImageryUrl, location.href).href,
+        manifestUrl: new URL(resolvedGroundImageryUrl, location.href).href,
         expectedTileId: manifest.tile.id,
         expectedBounds: manifest.tile.bounds,
         fetchImpl,
@@ -309,9 +312,15 @@ export async function runPreview1({
     let rendererFallback: any = null;
     onPhase('renderer');
     const renderer = await createPreview1Renderer({
-      canvas, terrainPayload: terrain.payload, roadsArtifact: roads.artifact, buildingsArtifact: buildings.artifact,
+      canvas,
+      terrainPayload: terrain.payload,
+      roadsArtifact: roads.artifact,
+      buildingsArtifact: buildings.artifact,
       groundImagery,
-      graphicsProfile: profile, backend: rendererChoice,
+      graphicsProfile: profile,
+      backend: rendererChoice,
+      realismManifestUrl: manifestBase,
+      fetchImpl,
       onBackendFallback: (fallback: any) => { rendererFallback = { from: fallback.from, to: fallback.to, reason: fallback.error instanceof Error ? fallback.error.message : String(fallback.error) }; },
       onFrame: (frame: any) => { rendererFrames.push(frame); onFrame(frame); },
     });
@@ -358,7 +367,13 @@ export async function runPreview1({
         movement_probe: movementProbe, streaming_trace: streamingTrace,
       },
       roads: { artifact_sha256: roads.artifactRef.sha256, verification_code: roads.verification.code, count: roads.artifact.paths?.length ?? 0 },
-      buildings: { artifact_sha256: buildings.artifactRef.sha256, verification_code: buildings.verification.code, count: buildings.artifact.features?.length ?? 0 },
+      buildings: {
+        artifact_sha256: buildings.artifactRef.sha256,
+        verification_code: buildings.verification.code,
+        count: buildings.artifact.features?.length ?? 0,
+        realism: renderer.stats.web_realism?.buildings ?? null,
+      },
+      vegetation: renderer.stats.vegetation ?? null,
       ground_imagery: renderer.stats.material_library?.ground_color ?? null,
       character: characterRuntime.snapshot(),
       character_movement_probe: characterMovementProof,
