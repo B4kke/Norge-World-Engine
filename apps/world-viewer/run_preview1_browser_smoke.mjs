@@ -49,7 +49,7 @@ function safePath(root, relative) {
 
 function readManifest(runtimeRoot) {
   const manifest = JSON.parse(readFileSync(resolve(runtimeRoot, 'manifest.json'), 'utf8'));
-  if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') throw new Error(`unexpected Preview 1 manifest ${manifest.schema}/${manifest.status}`);
+  if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || !['REAL_COMPILED', 'REAL_COMPILED_WITH_DERIVED_REALISM'].includes(manifest.status)) throw new Error(`unexpected Preview 1 manifest ${manifest.schema}/${manifest.status}`);
   return manifest;
 }
 
