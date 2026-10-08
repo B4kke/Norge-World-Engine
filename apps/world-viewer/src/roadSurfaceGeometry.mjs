@@ -60,13 +60,13 @@ function joinOffset(points, index, halfWidth, miterLimit) {
   return [miterX * cappedLength, miterZ * cappedLength];
 }
 
-function projectPath(points, projectPoint) {
+function projectPath(points, projectPoint, additionalLiftM = 0) {
   const projected = [];
   for (const point of points ?? []) {
     const local = projectPoint(point);
     if (!finitePoint(local)) throw new Error('ROAD_SURFACE_PROJECTED_POINT_INVALID');
     if (projected.length > 0 && planarDistance(projected.at(-1), local) <= 1e-4) continue;
-    projected.push([Number(local[0]), Number(local[1]), Number(local[2])]);
+    projected.push([Number(local[0]), Number(local[1]) + additionalLiftM, Number(local[2])]);
   }
   return projected;
 }
@@ -77,6 +77,12 @@ function pathWidth(path, fallbackWidthMeters) {
     return { width: sourceWidth, sourceBacked: true };
   }
   return { width: fallbackWidthMeters, sourceBacked: false };
+}
+
+function pathLift(path) {
+  const lift = Number(path?.surface_lift_m ?? 0);
+  if (!Number.isFinite(lift) || lift < 0 || lift > 0.1) throw new RangeError('road path surface_lift_m must be within [0, 0.1]');
+  return lift;
 }
 
 function signedTriangleNormalY(positions, a, b, c) {
@@ -114,17 +120,20 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
   let centerlineLengthM = 0;
   let sourceWidthPathCount = 0;
   let fallbackWidthPathCount = 0;
+  let liftedOverlayPathCount = 0;
   let minWidthM = Number.POSITIVE_INFINITY;
   let maxWidthM = 0;
   let skippedDegenerateTriangles = 0;
 
   for (const path of roadsArtifact?.paths ?? []) {
-    const points = projectPath(path?.points, projectPoint);
+    const additionalLiftM = pathLift(path);
+    const points = projectPath(path?.points, projectPoint, additionalLiftM);
     if (points.length < 2) continue;
     const resolvedWidth = pathWidth(path, widthMeters);
     const halfWidth = resolvedWidth.width / 2;
     if (resolvedWidth.sourceBacked) sourceWidthPathCount += 1;
     else fallbackWidthPathCount += 1;
+    if (additionalLiftM > 0) liftedOverlayPathCount += 1;
     minWidthM = Math.min(minWidthM, resolvedWidth.width);
     maxWidthM = Math.max(maxWidthM, resolvedWidth.width);
 
@@ -165,12 +174,13 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
     uvs: new Float32Array(uvs),
     indices: new IndexArray(indices),
     metadata: {
-      schema: 'nwe.road-surface-render-geometry/0.2',
-      source: 'compiled-road-paths',
+      schema: 'nwe.road-surface-render-geometry/0.3',
+      source: 'compiled-road-paths-plus-explicit-source-width-overlays',
       width_m: widthMeters,
       width_semantics: sourceWidthPathCount > 0 ? 'source-backed-when-present-otherwise-renderer-fallback' : 'renderer-only-fallback',
       source_width_path_count: sourceWidthPathCount,
       fallback_width_path_count: fallbackWidthPathCount,
+      lifted_overlay_path_count: liftedOverlayPathCount,
       width_range_m: pathCount ? [minWidthM, maxWidthM] : [widthMeters, widthMeters],
       miter_limit: miterLimit,
       uv_period_m: uvPeriodMeters,
