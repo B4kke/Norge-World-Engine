@@ -22,7 +22,9 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 - conservative strong DOM-derived roof-direction candidate: PASS candidate;
 - NIBIO SR16V + AR50 representative vegetation: PASS candidate;
 - NVDB type 838/583 width + type 241 surface realism: PASS candidate;
-- NVDB explicit street-detail source compiler: HOSTED PASS candidate.
+- NVDB explicit street-detail source compiler: HOSTED PASS candidate;
+- manifest-driven exact browser proof with required derived realism: PASS on implementation head `feec1cc6b5d263a29444dc8c3a3e13acda84cfd0`;
+- published `preview-runtime` snapshot generated from that exact head: PASS.
 
 ---
 
@@ -42,12 +44,14 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 **Truth guard:** derived height/direction and renderer materials are not surveyed building/land-cover truth.
 
 ## WEB-REALISM-02 — Norwegian vegetation presentation
-**Priority:** IMPLEMENTED / VISUAL ACCEPTANCE RUNNING  
+**Priority:** IMPLEMENTED / EXACT VISUAL INSPECTED  
 **Owner:** LUMEN  
 
 **Implemented:** deterministic SR16V representatives, DTM grounding, road/building/spawn/slope exclusion, instanced spruce/pine/deciduous categories and naturalized multi-tier/multi-lobe proxy silhouettes.
 
-**Acceptance remaining:** inspect exact current hosted screenshot; do not call proxy trees photoreal individual trees.
+**Exact evidence:** current exact hosted screenshot renders the admitted vegetation layer; exact browser proof reports 828 source representatives and 817 visible representatives after explicit exclusions.
+
+**Known limit:** the current trees remain renderer-authored proxy silhouettes, not observed individual trees and not photoreal near-field assets. Better licensed near-field tree/LOD assets belong to `P1-VEGETATION-ASSETS`; do not reopen source-placement work without new evidence.
 
 ## WEB-REALISM-03 — NVDB physical road semantics
 **Priority:** IMPLEMENTED CANDIDATE / INTEGRATED  
@@ -56,42 +60,51 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 **Implemented:** type 838 calculated road width primary, type 583 non-overlap fallback and type 241 surface semantics. Source-backed width overlays progressively replace the old 3.2 m visual fallback; fallback remains explicit where no admitted width exists.
 
 ## WEB-REALISM-04 — Source-backed street detail
-**Priority:** 1 — ACTIVE  
+**Priority:** COMPLETED / EXACT BROWSER PASS  
 **Owner:** FORGE + LUMEN  
 
 **Source evidence:** hosted compiler PASS for exact Nannestad tile with 252 explicit geometry parts: 25 longitudinal markings, 12 transverse markings, 1 crosswalk point, 67 sign points, 57 lighting points, 41 light masts, 29 open ditches, 19 kerb segments and 1 sidewalk segment; current sample has 0 edge-post, guardrail and bike-lane parts.
 
-**Implemented on branch:**
+**Implemented and accepted:**
 - deterministic NVDB V4 compiler with source type/object IDs, raw hashes, CRS transform and exact tile clipping;
 - Preview runtime staging + SHA verification;
 - runtime loader verification;
 - batched source road markings and DTM-grounded instanced sign/light objects;
 - kerb/sidewalk/ditch presentation along explicit NVDB geometry;
-- generic sign face/pole dimensions remain renderer-only because exact sign-face identity is not yet admitted.
-
-**Acceptance:** current viewer build/browser/visual gates green with the staged street-detail descriptor and zero raw NVDB runtime calls.
+- generic sign face/pole dimensions remain renderer-only because exact sign-face identity is not yet admitted;
+- exact Chrome composition on implementation head `feec1cc6b5d263a29444dc8c3a3e13acda84cfd0` reports `web_realism=READY`, 252 source feature parts reaching the renderer, 9 street-detail draw calls and zero raw NVDB runtime acquisition;
+- `preview1-realdata-publish` run `37850767271` and exact visual-proof run `37850767344` both PASS.
 
 ## WEB-REALISM-05 — Near-field buildings
-**Priority:** 2  
+**Priority:** IMPLEMENTED PRESENTATION / SOURCE FIDELITY OPEN  
 **Owner:** FORGE + LUMEN  
 
 **Current truth:** 135 footprints; 15 OSM source heights + 105 guarded DOM-derived presentation heights + 15 explicit fallbacks. Strong roof directions are admitted only where the fit gate passes.
 
-**Next fidelity gate:** legally/source-backed roof shape/façade/use semantics or clearly renderer-only procedural façade detail. Do not invent exact windows/doors and label them source truth.
+**Implemented presentation:** deterministic, instanced façade detail is explicitly renderer-only. Exact browser proof renders 3,000 window instances and 127 door instances in 2 draw calls over the accepted source footprints/best-available heights. Window/door placement, count and dimensions are not source-backed and must never be presented as observed Nannestad façade truth.
+
+**Next source-fidelity gate:** legally/source-backed roof shape/façade/use semantics when an admitted source materially improves the world. Do not invent exact windows/doors and label them source truth.
 
 ## WEB-REALISM-06 — Exact integrated browser acceptance
-**Priority:** 3  
+**Priority:** 1 — ACTIVE; TECHNICAL GATES PASS / VISUAL-PERFORMANCE CLOSURE OPEN  
 **Owner:** SENTINEL + LUMEN  
 
-**Acceptance:**
+**Passed on exact implementation head `feec1cc6b5d263a29444dc8c3a3e13acda84cfd0`:**
 - production Vite build PASS;
 - exact real-data Preview 1 browser smoke PASS;
-- `?requireRealism=1` reports READY and all staged realism layers;
+- `?requireRealism=1` reports `READY` and SHA-matches all five staged realism layers;
 - free movement/DTM grounding PASS;
 - zero raw Norwegian source acquisition;
-- exact screenshot is visibly beyond prototype/debug geometry;
-- frame/draw/resource metrics remain bounded enough for interaction;
-- Preview/WebUI points to the accepted head/snapshot.
+- runtime request contract is manifest-driven: 15 requests / 14 unique runtime paths / 14 manifest-declared paths;
+- exact hosted screenshot is visibly beyond prototype/debug geometry;
+- `preview-runtime` was republished from the exact accepted implementation head.
+
+**Still open before calling the WebUI realism milestone complete:**
+- exact screenshot still shows asphalt substantially too dark in the near field; this is a presentation issue, not proven road-geometry corruption;
+- vegetation remains proxy-quality in the near field and distant building presentation remains generic;
+- hosted SwiftShader/WebGL2 first-frame timing is not valid evidence of real WebGPU/mobile gameplay performance.
+
+**Next concrete task:** perform a measured renderer-only asphalt presentation calibration against the exact screenshot, retain source geometry/material provenance unchanged, rerun exact visual proof and browser/resource gates, and keep/revert the change based on visible improvement plus bounded cost. After that, capture real WebGPU/mobile evidence before closing this milestone.
 
 ---
 
