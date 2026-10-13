@@ -1,0 +1,130 @@
+name: nvdb-road-semantics-proof
+
+on:
+  pull_request:
+    paths:
+      - 'tools/geo/probe_nvdb_road_semantics.py'
+      - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
+      - 'tools/preview/stage_nvdb_road_realism.py'
+      - 'engine/compiler/src/nwe_compiler/acquisition.py'
+      - '.github/workflows/nvdb-road-semantics-proof.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install compiler dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Query official NVDB V4 width and surface types for exact Nannestad tile
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/geo/probe_nvdb_road_semantics.py --output /tmp/nwe-nvdb-road-semantics.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-nvdb-road-semantics.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nvdb-road-semantics-live-probe/0.1'
+          assert value['status'] == 'PASS'
+          assert value['policy']['width_primary_type_id'] == 838
+          assert value['policy']['width_fallback_type_id'] == 583
+          assert value['policy']['surface_type_id'] == 241
+          assert value['coverage']['source_width_available'] is True
+          primary = value['types']['width_primary_838']
+          fallback = value['types']['width_fallback_583']
+          assert primary['valid_dekkebredde_count'] > 0 or fallback['valid_dekkebredde_count'] > 0
+          assert primary['geometry_count'] > 0 or fallback['geometry_count'] > 0
+          print(json.dumps({
+              'status': value['status'],
+              'primary_width_objects': value['coverage']['primary_width_objects'],
+              'fallback_width_objects': value['coverage']['fallback_width_objects'],
+              'surface_objects': value['coverage']['surface_objects'],
+              'primary_range_m': primary['dekkebredde_range_m'],
+              'fallback_range_m': fallback['dekkebredde_range_m'],
+              'primary_properties': primary['property_names'],
+              'primary_location_keys': primary['location_keys'],
+              'surface_properties': value['types']['surface_241']['property_names'],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Compile deterministic source-backed road realism candidate
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/geo/compile_nvdb_road_realism.py \
+            --output /tmp/nwe-road-realism.json \
+            --verification /tmp/nwe-road-realism-verification.json
+          python - <<'PY'
+          import hashlib, json
+          raw = open('/tmp/nwe-road-realism.json', 'rb').read()
+          artifact = json.loads(raw)
+          verification = json.load(open('/tmp/nwe-road-realism-verification.json', encoding='utf-8'))
+          assert artifact['schema'] == 'nwe.road-realism-artifact/0.1-candidate'
+          assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
+          assert artifact['horizontal_crs'] == 'EPSG:25832'
+          assert verification['status'] == 'PASS'
+          assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
+          assert verification['width_feature_part_count'] > 0
+          assert artifact['stats']['width_range_m'][0] >= 0.8
+          assert artifact['stats']['width_range_m'][1] <= 30
+          assert all(feature['source_type_id'] in (838, 583) for feature in artifact['width_features'])
+          assert all(feature['width_m'] >= 0.8 for feature in artifact['width_features'])
+          print(json.dumps({
+              'artifact_sha256': verification['artifact_sha256'],
+              'width_feature_part_count': verification['width_feature_part_count'],
+              'surface_feature_part_count': verification['surface_feature_part_count'],
+              'width_range_m': artifact['stats']['width_range_m'],
+              'surface_material_counts': artifact['stats']['surface_material_counts'],
+              'fallback_583_skipped_overlap_count': artifact['stats']['fallback_583_skipped_overlap_count'],
+          }, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
+      - name: Compile source-backed street-detail inventory for exact tile
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/geo/compile_nvdb_street_detail.py \
+            --output /tmp/nwe-nvdb-street-detail.json \
+            --verification /tmp/nwe-nvdb-street-detail-verification.json
+          python - <<'PY'
+          import hashlib, json
+          raw = open('/tmp/nwe-nvdb-street-detail.json', 'rb').read()
+          artifact = json.loads(raw)
+          verification = json.load(open('/tmp/nwe-nvdb-street-detail-verification.json', encoding='utf-8'))
+          assert artifact['schema'] == 'nwe.nvdb-street-detail-artifact/0.1-candidate'
+          assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
+          assert artifact['horizontal_crs'] == 'EPSG:25832'
+          assert verification['status'] == 'PASS'
+          assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
+          assert verification['feature_part_count'] > 0
+          expected = {'99','519','174','95','87','181','20','5','80','9','48','953'}
+          assert set(artifact['stats']['feature_parts_by_type_id']) == expected
+          print(json.dumps({
+              'artifact_sha256': verification['artifact_sha256'],
+              'feature_part_count': verification['feature_part_count'],
+              'feature_parts_by_type_id': artifact['stats']['feature_parts_by_type_id'],
+              'geometry_type_counts': artifact['stats']['geometry_type_counts'],
+          }, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nvdb-road-semantics-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            /tmp/nwe-nvdb-road-semantics.json
+            /tmp/nwe-road-realism.json
+            /tmp/nwe-road-realism-verification.json
+            /tmp/nwe-nvdb-street-detail.json
+            /tmp/nwe-nvdb-street-detail-verification.json
+          if-no-files-found: error
+          retention-days: 7

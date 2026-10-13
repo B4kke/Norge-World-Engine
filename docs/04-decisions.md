@@ -54,46 +54,53 @@ Only decisions with evidence or an explicit product requirement belong here. Ope
 
 ## D-008 — Ground-level product target + Three.js working renderer
 
-**Status:** Superseded as product-runtime selection by D-009 on 2026-09-03; retained as evidence for the completed web vertical.
+**Status:** Superseded as sole product-runtime selection by D-009 on 2026-09-03; reactivated as an active product surface by D-010 on 2026-10-08.
 **Product requirement:** the primary experience is free movement near the ground — initially walking, later driving/interacting — with strong materials, shaders, lighting and game-like presentation. High-altitude globe navigation is not the current design center.
-**Decision:** Three.js is the primary working web renderer for the active Nannestad playable vertical slice, with a WebGPU-first capability path where genuinely available and WebGL2 fallback/baseline. Cesium/3D Tiles remain useful standards/reference/interop tools, not the primary player renderer.
+**Decision:** Three.js is the primary working web renderer for the Nannestad playable vertical slice, with a WebGPU-first capability path where genuinely available and WebGL2 fallback/baseline. Cesium/3D Tiles remain useful standards/reference/interop tools, not the primary player renderer.
 **Engine-portability requirement:** Three.js may own GPU objects, materials, shaders, animation mixers and render-local scene resources only. `THREE.*` types must not enter authoritative world state, compiler artifacts, provenance schemas, tile identity or simulation contracts.
-**Unreal consequence:** future Unreal Engine support is expected to be an importer/runtime adapter over the same engine-neutral compiled data, coordinates, IDs and entity state rather than a second Norwegian data pipeline. glTF/GLB is preferred for portable static/animated render assets where appropriate; semantic metadata remains separate from renderer scene graphs.
-**Reason:** this matches the explicit desired experience while preserving D-002. It also lets NWE invest in ground-level PBR/shader/gameplay quality without paying the cost of building a globe-first user experience that is not currently needed.
-**Acceptance consequence:** the next proof target is a walkable single-tile Nannestad scene, not a whole-Norway renderer comparison.
+**Unreal consequence:** Unreal Engine support is an importer/runtime adapter over the same engine-neutral compiled data, coordinates, IDs and entity state rather than a second Norwegian data pipeline.
 
-## D-009 — Unreal Engine 5.8 is the active game runtime
+## D-009 — Unreal Engine 5.8 is an active game runtime
 
-**Status:** Accepted from explicit product requirement — 2026-09-03.
-**Product requirement:** build the game in Unreal Engine 5, in real Nannestad,
-with realistic graphics and human characters.
-**Decision:** Unreal Engine 5.8 on Windows PC is the active runtime for a
-third-person vertical slice. `apps/unreal-runtime` consumes the existing
-engine-neutral DTM1/NVDB/OSM artifacts and full provenance contract through a
-deterministic adapter. The Three.js viewer remains reference evidence, not the
-product runtime.
-**World boundary:** Unreal Actors, Components, Landscapes, materials and
-animation are derived presentation/runtime state. EPSG:25832, NN2000, source
-lineage, artifact identity and fallback-vs-source semantics remain outside UE
-objects and continue to obey D-002/D-004/D-007.
-**First scope:** the accepted 1 × 1 km tile is enough to prove compile, world
-orientation, collision, third-person movement and visual quality. Whole-Norway
-streaming cannot displace those gates.
-**Truth consequence:** current NVDB centerlines and OSM footprints are real;
-fallback road widths, unresolved building heights and flat roofs are not.
-Lumen/VSM configuration is not itself proof of photorealism.
-**Evidence state:** deterministic external conversion and real-snapshot
-verification pass. A UE 5.8 Windows compile/play/render/package is still open
-and must not be inferred from Python/C++ source checks.
+**Status:** Accepted from explicit product requirement — 2026-09-03; remains valid in parallel under D-010.
+**Product requirement:** build the game in Unreal Engine 5, in real Nannestad, with realistic graphics and human characters.
+**Decision:** Unreal Engine 5.8 on Windows PC is an active runtime for a third-person vertical slice. `apps/unreal-runtime` consumes the existing engine-neutral DTM1/NVDB/OSM artifacts and full provenance contract through a deterministic adapter.
+**World boundary:** Unreal Actors, Components, Landscapes, materials and animation are derived presentation/runtime state. EPSG:25832, NN2000, source lineage, artifact identity and fallback-vs-source semantics remain outside UE objects and continue to obey D-002/D-004/D-007.
+**Evidence state:** deterministic external conversion and real-snapshot verification pass. A UE 5.8 Windows compile/play/render/package is still open and must not be inferred from Python/C++ source checks.
 **Plan:** `docs/09-unreal-game-plan.md`.
+
+## D-010 — Nannestad 1×1 WebUI is the immediate delivery surface
+
+**Status:** Accepted from explicit product requirement — 2026-10-08.
+
+**Product requirement:** the user wants the real 1×1 km Nannestad slice in the WebUI now, with free movement and the highest practical realism, rather than treating the browser viewer as historical-only.
+
+**Decision:** `apps/world-viewer` is again an active product and acceptance surface. The immediate critical path is the verified Nannestad 1×1 km browser world. Unreal remains a parallel runtime adapter and D-009 is not revoked; neither renderer may own or redefine Norwegian world truth.
+
+**World-truth policy:**
+- accepted DTM1 geometry, NVDB/OSM source geometry and authoritative coordinate state remain unchanged unless a separately admitted compiler/source decision replaces them;
+- NHM DOM−DTM building height and fitted roof direction remain guarded derived presentation semantics, not surveyed geometry;
+- NIBIO SR16V representatives preserve source class/height/density semantics, while individual point placement/tree mesh is representative presentation, not observed individual-tree truth;
+- NVDB road width/surface and explicit street-detail geometry may progressively replace renderer fallbacks only where source-backed values/geometry exist;
+- missing sign face identity, exact pole dimensions, missing road-marking widths, façade windows/doors and similar details must remain renderer fallbacks until an admitted source supports a stronger claim.
+
+**Runtime policy:** normal WebUI consumes compiled/SHA-verified runtime artifacts and derived layers. It must not contact Kartverket, NVDB, OSM/NIBIO or other raw Norwegian provider endpoints during ordinary play.
+
+**Visual policy:** local licensed PBR assets, lighting, fog, post-processing, procedural microdetail and renderer proxies are allowed to improve realism so long as they remain explicitly presentation-only and do not displace source geometry.
+
+**Evidence required:** green unit/build/provenance tests are necessary but insufficient for a visual claim. The integrated milestone requires exact hosted browser evidence, free movement/grounding, zero raw-source acquisition and screenshot-level inspection of the current head.
+
+**Consequence:** `docs/03-roadmap.md` and `docs/06-task-queue.md` prioritize Web Nannestad realism until this 1×1 milestone is accepted. UE Windows evidence continues independently.
 
 ## Open decisions
 
-- Whether direct `NHM DTM 25832 WCS` should supersede the accepted D-007 Atom source path for Nannestad multi-tile terrain. Canonical `P0-MULTITILE-TERRAIN-01` remains fail-closed until source-family/seam authority is reconciled.
+- Whether direct `NHM DTM 25832 WCS` should supersede the accepted D-007 Atom source path for Nannestad multi-tile terrain. Canonical multi-tile terrain authority remains fail-closed until source-family/seam authority is reconciled.
 - Whole-Norway coordinate/tile indexing strategy.
 - Whole-Norway terrain source/acquisition strategy across UTM zones and service/bulk-download limits.
 - Final whole-Norway terrain mesh/LOD and 3D Tiles-like vs custom/hybrid streaming format; the Prototype-0 height grid is only an interchange/runtime proof artifact.
-- Exact UE 5.8 material, vegetation, frame-time and memory budgets after the first Windows render.
-- Native Landscape/World Partition cell sizing and Nanite choice after measured single-tile evidence.
+- Exact WebGPU/WebGL high/ultra material, vegetation, street-detail, frame-time and memory budgets after integrated real-data measurements.
+- Exact source strategy for stronger building façade/roof geometry and production imagery/land-cover under verified access and redistribution rights.
+- Exact sign-face/type/orientation enrichment path from NVDB relations before rendering real traffic symbols.
+- UE native Landscape/World Partition cell sizing and Nanite choice after measured Windows evidence.
 - Physics/collision library and client/worker/server split for simulation.
-- FKB access/redistribution strategy and production imagery source/license.
+- FKB access/redistribution strategy.

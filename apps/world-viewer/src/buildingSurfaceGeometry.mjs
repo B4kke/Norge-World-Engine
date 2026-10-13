@@ -41,7 +41,20 @@ function signedTriangleNormalY(a, b, c) {
   return abz * acx - abx * acz;
 }
 
-function appendRoof(top, positions, indices, uvs) {
+function pushUpwardTriangle(positions, indices, uvs, a, b, c) {
+  const base = positions.length / 3;
+  let first = a; let second = b; let third = c;
+  if (signedTriangleNormalY(first, second, third) < 0) [second, third] = [third, second];
+  positions.push(...first, ...second, ...third);
+  uvs.push(
+    first[0] / SURFACE_UV_TILE_M, first[2] / SURFACE_UV_TILE_M,
+    second[0] / SURFACE_UV_TILE_M, second[2] / SURFACE_UV_TILE_M,
+    third[0] / SURFACE_UV_TILE_M, third[2] / SURFACE_UV_TILE_M,
+  );
+  indices.push(base, base + 1, base + 2);
+}
+
+function appendFlatRoof(top, positions, indices, uvs) {
   const flattened = [];
   for (const point of top) flattened.push(point[0], point[2]);
   const faces = Earcut.triangulate(flattened, null, 2);
@@ -60,6 +73,74 @@ function appendRoof(top, positions, indices, uvs) {
     if (signedTriangleNormalY(top[ia], top[ib], top[ic]) < 0) [ib, ic] = [ic, ib];
     indices.push(base + ia, base + ib, base + ic);
   }
+}
+
+function projection(point, axis) {
+  return point[0] * axis[0] + point[2] * axis[1];
+}
+
+function gableDescriptor(feature, base, totalHeightM) {
+  const degrees = Number(feature?.presentation_gable_direction_deg_from_east_ccw);
+  if (!Number.isFinite(degrees) || base.length !== 4 || feature?.presentation_roof_shape !== 'gabled') return null;
+  const requestedRise = Number(feature?.presentation_gable_rise_m);
+  const rise = Math.max(0.5, Math.min(Number.isFinite(requestedRise) ? requestedRise : 1.5, totalHeightM * 0.45, 5));
+  if (!(rise > 0 && totalHeightM - rise >= 1.5)) return null;
+  const radians = degrees * Math.PI / 180;
+  const ridgeAxis = [Math.cos(radians), -Math.sin(radians)];
+  const crossAxis = [-ridgeAxis[1], ridgeAxis[0]];
+  const classified = base.map((point, index) => ({
+    index,
+    u: projection(point, ridgeAxis),
+    v: projection(point, crossAxis),
+  }));
+  const sortedByV = [...classified].sort((a, b) => a.v - b.v);
+  const low = sortedByV.slice(0, 2).sort((a, b) => a.u - b.u);
+  const high = sortedByV.slice(2).sort((a, b) => a.u - b.u);
+  if (low.length !== 2 || high.length !== 2) return null;
+  const vSpan = Math.min(...high.map((item) => item.v)) - Math.max(...low.map((item) => item.v));
+  if (!(vSpan > 0.5)) return null;
+  const uMin = Math.min(...classified.map((item) => item.u));
+  const uMax = Math.max(...classified.map((item) => item.u));
+  const vCenter = (Math.min(...classified.map((item) => item.v)) + Math.max(...classified.map((item) => item.v))) * 0.5;
+  if (!(uMax - uMin > 0.5)) return null;
+  const groundMean = base.reduce((sum, point) => sum + point[1], 0) / base.length;
+  const ridgeY = groundMean + totalHeightM;
+  const pointAt = (u) => [
+    ridgeAxis[0] * u + crossAxis[0] * vCenter,
+    ridgeY,
+    ridgeAxis[1] * u + crossAxis[1] * vCenter,
+  ];
+  return {
+    rise,
+    wallHeight: totalHeightM - rise,
+    ridge: [pointAt(uMin), pointAt(uMax)],
+    low,
+    high,
+  };
+}
+
+function appendGabledBuilding(base, descriptor, wallPositions, wallIndices, wallUvs, roofPositions, roofIndices, roofUvs) {
+  const eaves = base.map((point) => [point[0], point[1] + descriptor.wallHeight, point[2]]);
+  for (let index = 0; index < base.length; index += 1) {
+    const next = (index + 1) % base.length;
+    const edgeLengthM = Math.hypot(base[next][0] - base[index][0], base[next][2] - base[index][2]);
+    pushQuad(wallPositions, wallIndices, wallUvs, base[index], base[next], eaves[next], eaves[index], edgeLengthM, descriptor.wallHeight);
+  }
+
+  const lowA = eaves[descriptor.low[0].index];
+  const lowB = eaves[descriptor.low[1].index];
+  const highA = eaves[descriptor.high[0].index];
+  const highB = eaves[descriptor.high[1].index];
+  const ridgeA = descriptor.ridge[0];
+  const ridgeB = descriptor.ridge[1];
+
+  pushUpwardTriangle(roofPositions, roofIndices, roofUvs, lowA, lowB, ridgeB);
+  pushUpwardTriangle(roofPositions, roofIndices, roofUvs, lowA, ridgeB, ridgeA);
+  pushUpwardTriangle(roofPositions, roofIndices, roofUvs, highA, ridgeA, ridgeB);
+  pushUpwardTriangle(roofPositions, roofIndices, roofUvs, highA, ridgeB, highB);
+
+  pushUpwardTriangle(wallPositions, wallIndices, wallUvs, lowA, highA, ridgeA);
+  pushUpwardTriangle(wallPositions, wallIndices, wallUvs, lowB, ridgeB, highB);
 }
 
 function typedGeometry(positions, indices, uvs) {
@@ -95,7 +176,7 @@ function combineGeometry(walls, roofs) {
 
 function appendBuilding(feature, wallPositions, wallIndices, wallUvs, roofPositions, roofIndices, roofUvs, projectPoint, heightMeters) {
   const polygon = polygonWithoutDuplicateClosure(feature?.polygon);
-  if (polygon.length < 3) return false;
+  if (polygon.length < 3) return { appended: false, gabled: false };
   const base = polygon.map((point) => {
     const projected = projectPoint(point);
     if (!Array.isArray(projected) || projected.length < 3 || projected.some((value) => !Number.isFinite(value))) {
@@ -103,27 +184,20 @@ function appendBuilding(feature, wallPositions, wallIndices, wallUvs, roofPositi
     }
     return [Number(projected[0]), Number(projected[1]), Number(projected[2])];
   });
+  const descriptor = gableDescriptor(feature, base, heightMeters);
+  if (descriptor) {
+    appendGabledBuilding(base, descriptor, wallPositions, wallIndices, wallUvs, roofPositions, roofIndices, roofUvs);
+    return { appended: true, gabled: true };
+  }
+
   const top = base.map((point) => [point[0], point[1] + heightMeters, point[2]]);
   for (let index = 0; index < base.length; index += 1) {
     const next = (index + 1) % base.length;
-    const edgeLengthM = Math.hypot(
-      base[next][0] - base[index][0],
-      base[next][2] - base[index][2],
-    );
-    pushQuad(
-      wallPositions,
-      wallIndices,
-      wallUvs,
-      base[index],
-      base[next],
-      top[next],
-      top[index],
-      edgeLengthM,
-      heightMeters,
-    );
+    const edgeLengthM = Math.hypot(base[next][0] - base[index][0], base[next][2] - base[index][2]);
+    pushQuad(wallPositions, wallIndices, wallUvs, base[index], base[next], top[next], top[index], edgeLengthM, heightMeters);
   }
-  appendRoof(top, roofPositions, roofIndices, roofUvs);
-  return true;
+  appendFlatRoof(top, roofPositions, roofIndices, roofUvs);
+  return { appended: true, gabled: false };
 }
 
 export function buildBuildingSurfaceGeometry(buildingsArtifact, {
@@ -145,14 +219,16 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
   const roofUvs = [];
   let count = 0;
   let sourceBackedHeightCount = 0;
+  let derivedPresentationHeightCount = 0;
   let fallbackHeightCount = 0;
+  let gabledPresentationCount = 0;
 
   for (const feature of buildingsArtifact?.features ?? []) {
-    const sourceHeight = Number(feature?.height_m);
-    const hasSourceHeight = Number.isFinite(sourceHeight) && sourceHeight > 0;
-    if (hasSourceHeight !== resolved) continue;
-    const heightMeters = hasSourceHeight ? sourceHeight : fallbackHeightMeters;
-    const didAppend = appendBuilding(
+    const height = Number(feature?.height_m);
+    const hasResolvedHeight = Number.isFinite(height) && height > 0;
+    if (hasResolvedHeight !== resolved) continue;
+    const heightMeters = hasResolvedHeight ? height : fallbackHeightMeters;
+    const result = appendBuilding(
       feature,
       wallPositions,
       wallIndices,
@@ -166,15 +242,21 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       },
       heightMeters,
     );
-    if (!didAppend) continue;
+    if (!result.appended) continue;
     count += 1;
-    if (hasSourceHeight) sourceBackedHeightCount += 1;
-    else fallbackHeightCount += 1;
+    if (result.gabled) gabledPresentationCount += 1;
+    if (hasResolvedHeight) {
+      if (feature?.height_semantics === 'derived-nhm-dom-minus-dtm-p90-presentation') derivedPresentationHeightCount += 1;
+      else sourceBackedHeightCount += 1;
+    } else fallbackHeightCount += 1;
   }
 
   const walls = typedGeometry(wallPositions, wallIndices, wallUvs);
   const roofs = typedGeometry(roofPositions, roofIndices, roofUvs);
   const combined = combineGeometry(walls, roofs);
+  const resolvedSemantics = derivedPresentationHeightCount > 0
+    ? 'source-backed-or-verified-dom-derived-presentation'
+    : 'source-backed';
   return {
     positions: combined.positions,
     indices: combined.indices,
@@ -183,16 +265,19 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     roofs: { positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs },
     count,
     metadata: {
-      schema: 'nwe.building-surface-render-geometry/0.1',
+      schema: 'nwe.building-surface-render-geometry/0.2',
       footprint_source: 'compiled-building-footprints',
-      height_semantics: resolved ? 'source-backed' : 'renderer-only-fallback',
+      height_semantics: resolved ? resolvedSemantics : 'renderer-only-fallback',
       fallback_height_m: resolved ? null : fallbackHeightMeters,
       ground_lift_m: groundLiftMeters,
-      roof_triangulation: 'three-earcut-2d-footprint',
+      roof_triangulation: gabledPresentationCount > 0 ? 'earcut-flat-plus-strong-dom-oriented-presentation-gables' : 'three-earcut-2d-footprint',
+      roof_shape_truth: 'source roof shape is not inferred from DOM; gables are explicit renderer policy only',
       uv_semantics: 'renderer-only-meter-scaled-surface-uv',
       uv_tile_m: SURFACE_UV_TILE_M,
       source_backed_height_count: sourceBackedHeightCount,
+      derived_presentation_height_count: derivedPresentationHeightCount,
       fallback_height_count: fallbackHeightCount,
+      gabled_presentation_count: gabledPresentationCount,
       wall_vertices: walls.vertexCount,
       wall_triangles: walls.triangleCount,
       roof_vertices: roofs.vertexCount,

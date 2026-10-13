@@ -11,7 +11,7 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Syntax check
+      - name: Syntax and suite regressions
         run: |
           python -m py_compile tools/visual-data/probe_visual_sources.py
           python -m py_compile tools/visual-data/probe_visual_order_selections.py
@@ -32,25 +32,31 @@ jobs:
           python -m py_compile tools/visual-data/verify_vegetation_source_sample.py
           python -m py_compile tools/visual-data/compile_vegetation_representative_sample.py
           python -m py_compile tools/visual-data/verify_vegetation_representative_sample.py
+          python -m py_compile tools/visual-data/run_visual_source_probes.py
+          python tools/visual-data/test_run_visual_source_probes.py
+          python tools/visual-data/test_visual_source_active_dependency_classification.py
 
-      - name: Probe current official source contracts
+      - name: Probe current official source contracts with diagnostics
+        id: source_probes
+        continue-on-error: true
         run: |
-          python tools/visual-data/probe_visual_sources.py --output /tmp/nwe-visual-source-probe.json >/dev/null
-          python tools/visual-data/probe_visual_order_selections.py --output /tmp/nwe-visual-order-selection.json >/dev/null
-          python tools/visual-data/probe_sr16_metadata_links.py --output /tmp/nwe-sr16-metadata-links.json >/dev/null
-          python tools/visual-data/probe_vegetation_real_sample.py --output /tmp/nwe-vegetation-real-source-probe.json >/dev/null
-          python tools/visual-data/probe_nibio_capabilities_catalog.py --output /tmp/nwe-nibio-capabilities-catalog.json >/dev/null
-          python tools/visual-data/probe_ar50_determinism.py --output /tmp/nwe-ar50-determinism.json >/dev/null
+          python tools/visual-data/run_visual_source_probes.py \
+            --output-dir /tmp/nwe-visual-source-probes \
+            --summary /tmp/nwe-visual-source-probe-suite.json
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload visual-source diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: visual-source-probe-${{ github.sha }}
           path: |
-            /tmp/nwe-visual-source-probe.json
-            /tmp/nwe-visual-order-selection.json
-            /tmp/nwe-sr16-metadata-links.json
-            /tmp/nwe-vegetation-real-source-probe.json
-            /tmp/nwe-nibio-capabilities-catalog.json
-            /tmp/nwe-ar50-determinism.json
-          if-no-files-found: error
+            /tmp/nwe-visual-source-probe-suite.json
+            /tmp/nwe-visual-source-probes/*.json
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Enforce official source probe result
+        if: steps.source_probes.outcome != 'success'
+        run: |
+          echo 'One or more active visual source contracts failed. Inspect the uploaded suite JSON for exact provider evidence. Research-candidate drift is reported inside probe JSON but does not invalidate accepted runtime sources.' >&2
+          exit 1

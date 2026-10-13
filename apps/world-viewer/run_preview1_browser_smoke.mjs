@@ -49,7 +49,7 @@ function safePath(root, relative) {
 
 function readManifest(runtimeRoot) {
   const manifest = JSON.parse(readFileSync(resolve(runtimeRoot, 'manifest.json'), 'utf8'));
-  if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') throw new Error(`unexpected Preview 1 manifest ${manifest.schema}/${manifest.status}`);
+  if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || !['REAL_COMPILED', 'REAL_COMPILED_WITH_DERIVED_REALISM'].includes(manifest.status)) throw new Error(`unexpected Preview 1 manifest ${manifest.schema}/${manifest.status}`);
   return manifest;
 }
 
@@ -57,6 +57,36 @@ function numericComponent(value, index) {
   const component = Number(value?.[index]);
   if (!Number.isFinite(component)) throw new Error(`character render component ${index} is not finite: ${JSON.stringify(value)}`);
   return component;
+}
+
+function runtimePath(relativePath) {
+  if (typeof relativePath !== 'string' || !relativePath) return null;
+  return `/runtime/${relativePath.replace(/^\.\//, '')}`;
+}
+
+function expectedRuntimePaths(manifest) {
+  const expected = new Set(['/runtime/manifest.json']);
+  for (const layerName of ['terrain', 'roads', 'buildings']) {
+    const layer = manifest[layerName];
+    for (const field of ['bundle', 'compiled_path']) {
+      const path = runtimePath(layer?.[field]);
+      if (!path) throw new Error(`${layerName}.${field} missing from Preview 1 manifest`);
+      expected.add(path);
+    }
+  }
+  if (manifest.ground_imagery) {
+    for (const field of ['manifest', 'texture']) {
+      const path = runtimePath(manifest.ground_imagery[field]);
+      if (!path) throw new Error(`ground_imagery.${field} missing from Preview 1 manifest`);
+      expected.add(path);
+    }
+  }
+  for (const [name, descriptor] of Object.entries(manifest.realism_layers ?? {})) {
+    const path = runtimePath(descriptor?.path);
+    if (!path) throw new Error(`realism_layers.${name}.path missing from Preview 1 manifest`);
+    expected.add(path);
+  }
+  return expected;
 }
 
 function assertBrowserResult(report, manifest, serverRequests) {
@@ -126,25 +156,41 @@ function assertBrowserResult(report, manifest, serverRequests) {
 
   const materialLibrary = result.renderer?.material_library;
   if (materialLibrary?.license !== 'CC0-1.0' || materialLibrary.runtime_policy !== 'same-origin-local-assets-only') throw new Error(`local PBR material proof missing: ${JSON.stringify(materialLibrary)}`);
-  if (materialLibrary.texture_count !== 12 || materialLibrary.normal_maps !== true) throw new Error(`high-profile material maps missing: ${JSON.stringify(materialLibrary)}`);
+  const expectedMaterialTextureCount = 12 + (materialLibrary.ground_color?.mode === 'source-derived-geographic-albedo' ? 1 : 0);
+  if (materialLibrary.texture_count !== expectedMaterialTextureCount || materialLibrary.normal_maps !== true) throw new Error(`high-profile material maps missing: ${JSON.stringify(materialLibrary)}`);
   if (!Object.values(materialLibrary.assets ?? {}).includes('asphalt_02')) throw new Error(`asphalt asset identity missing: ${JSON.stringify(materialLibrary.assets)}`);
   const post = result.renderer?.post_processing;
   if (result.graphics_profile === 'high' && !(post?.enabled && post.ambient_occlusion && post.bloom)) throw new Error(`high-profile post effects missing: ${JSON.stringify(post)}`);
 
+  const webRealism = result.renderer?.web_realism;
+  if (manifest.status === 'REAL_COMPILED_WITH_DERIVED_REALISM') {
+    if (webRealism?.status !== 'READY') throw new Error(`required web realism did not reach READY: ${JSON.stringify(webRealism)}`);
+    for (const name of ['building_surface', 'roof_orientation', 'vegetation', 'road_realism', 'street_detail']) {
+      const descriptor = manifest.realism_layers?.[name];
+      if (!descriptor?.artifact_sha256) throw new Error(`required realism descriptor missing: ${name}`);
+      if (webRealism.transport?.[name]?.sha256 !== descriptor.artifact_sha256) throw new Error(`browser realism SHA mismatch for ${name}: ${webRealism.transport?.[name]?.sha256} != ${descriptor.artifact_sha256}`);
+    }
+    if (!(webRealism.street_detail?.feature_part_count > 0)) throw new Error(`required street detail source geometry missing: ${JSON.stringify(webRealism.street_detail)}`);
+    if (result.renderer?.street_detail?.source_feature_part_count !== webRealism.street_detail.feature_part_count) throw new Error(`street detail renderer/source count mismatch: ${result.renderer?.street_detail?.source_feature_part_count} != ${webRealism.street_detail.feature_part_count}`);
+  }
+
   const runtimeRequests = report.runtime_requests ?? [];
-  const expectedRuntimeRequests = 7;
-  if (runtimeRequests.length !== expectedRuntimeRequests) throw new Error(`runtime request count ${runtimeRequests.length} != ${expectedRuntimeRequests}: ${JSON.stringify(runtimeRequests)}`);
+  if (!Array.isArray(runtimeRequests) || runtimeRequests.length === 0) throw new Error('runtime request audit is empty');
   if (runtimeRequests.some((url) => new URL(url).origin !== serverRequests.origin)) throw new Error(`runtime escaped same-origin snapshot: ${JSON.stringify(runtimeRequests)}`);
-  const rawMarkers = ['kartverket', 'geonorge', 'vegvesen', 'nvdb', 'overpass', 'openstreetmap'];
-  if (runtimeRequests.some((url) => rawMarkers.some((marker) => url.toLowerCase().includes(marker)))) throw new Error(`raw source marker observed in browser runtime requests: ${JSON.stringify(runtimeRequests)}`);
+  const expectedPaths = expectedRuntimePaths(manifest);
+  const actualPaths = new Set(runtimeRequests.map((url) => new URL(url).pathname));
+  const missingPaths = [...expectedPaths].filter((path) => !actualPaths.has(path));
+  const unexpectedPaths = [...actualPaths].filter((path) => !expectedPaths.has(path));
+  if (missingPaths.length || unexpectedPaths.length) throw new Error(`runtime request set diverged from manifest: ${JSON.stringify({ missingPaths, unexpectedPaths, runtimeRequests })}`);
+
   const browserPaths = serverRequests.paths.map((request) => request.split(' ')[1]);
   if (!browserPaths.includes('/assets/materials/polyhaven/manifest.json')) throw new Error('local material manifest was not requested');
   if (browserPaths.filter((path) => path.endsWith('.jpg')).length < 12) throw new Error(`expected twelve local PBR JPG requests: ${JSON.stringify(browserPaths)}`);
 
   return {
     schema: 'nwe.world-preview-browser-proof/0.1', status: 'PASS', tile_id: result.tile_id, phase: report.phase,
-    runtime_request_count: runtimeRequests.length, raw_source_runtime_calls: 0,
-    renderer: { backend: result.renderer.backend, preference: result.renderer_preference, graphics_profile: result.graphics_profile, fallback: result.renderer.fallback ?? null, first_frame: firstFrame, camera_mode: result.renderer.camera_mode, camera: result.renderer.camera, material_library: materialLibrary, post_processing: post },
+    runtime_request_count: runtimeRequests.length, runtime_unique_path_count: actualPaths.size, runtime_manifest_path_count: expectedPaths.size, raw_source_runtime_calls: 0,
+    renderer: { backend: result.renderer.backend, preference: result.renderer_preference, graphics_profile: result.graphics_profile, fallback: result.renderer.fallback ?? null, first_frame: firstFrame, camera_mode: result.renderer.camera_mode, camera: result.renderer.camera, material_library: materialLibrary, post_processing: post, web_realism: webRealism, street_detail: result.renderer.street_detail, building_facades: result.renderer.building_facades },
     character: { world_frame_id: characterWorld.worldTransform.worldFrameId, grounding: characterWorld.grounding, authoritative_position: authoritativePosition, renderer_state: rendererCharacter.state, renderer_pose: rendererPose, movement_probe: characterProbe, controls, presentation_ground_lift_m: 0.02 },
     terrain: { sha256: result.terrain.artifact_sha256, retained_bytes: result.terrain.retained_bytes, vertices: result.renderer.terrain_vertices, triangles: result.renderer.terrain_triangles, timing_ms: result.terrain.timing_ms },
     roads: { sha256: result.roads.artifact_sha256, count: result.roads.count },
@@ -214,6 +260,7 @@ async function main() {
     previewReport: `${origin}/__preview_report`,
     previewAuditOrigin: '1',
     previewCharacterMovementProbe: '1',
+    requireRealism: '1',
     graphics: 'high',
   });
   const url = `${origin}/?${query}`;

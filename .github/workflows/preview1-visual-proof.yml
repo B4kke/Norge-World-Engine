@@ -4,12 +4,15 @@ on:
   pull_request:
     paths:
       - 'apps/world-viewer/**'
-      - 'apps/unreal-runtime/Tools/nwe_unreal_pipeline.py'
-      - 'apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs'
       - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
       - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'apps/unreal-runtime/requirements-authoring.txt'
+      - 'tools/preview/**'
+      - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
+      - 'engine/compiler/**'
       - 'engine/streaming/runtime_verifier*.mjs'
+      - 'requirements-dev.txt'
       - '.github/workflows/preview1-visual-proof.yml'
   workflow_dispatch:
 
@@ -19,7 +22,7 @@ permissions:
 jobs:
   exact-preview-screenshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
@@ -31,64 +34,87 @@ jobs:
         with:
           node-version: '22.12.0'
 
-      - name: Install World Viewer dependencies
-        run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
-
-      - name: Set up Python for source-safe visual authoring
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
 
-      - name: Install pinned imagery authoring dependencies
-        run: python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+      - name: Install compiler and visual-authoring dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+
+      - name: Install World Viewer dependencies
+        run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
 
       - name: Build exact World Viewer
         run: npm run build --workspace @nwe/world-viewer
 
-      - name: Materialize and verify pinned runtime snapshot
+      - name: Materialize exact current Nannestad runtime snapshot
+        env:
+          PYTHONPATH: engine/compiler/src
+          NWE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          rm -rf apps/unreal-runtime/Saved/NWE/Snapshot
-          python apps/unreal-runtime/Tools/nwe_unreal_pipeline.py fetch \
-            --snapshot-dir apps/unreal-runtime/Saved/NWE/Snapshot
-          node apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs \
-            apps/unreal-runtime/Saved/NWE/Snapshot
+          rm -rf /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
+          mkdir -p /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
+          python tools/preview/stage_preview1_snapshot.py \
+            --cache-root /tmp/nwe-visual-cache \
+            --output /tmp/nwe-visual-runtime \
+            --commit-sha "$NWE_SOURCE_SHA" \
+            | tee /tmp/nwe-visual-stage.json
+          python tools/preview/stage_nvdb_road_realism.py \
+            --snapshot-root /tmp/nwe-visual-runtime \
+            | tee /tmp/nwe-visual-road-realism.json
+          python tools/preview/stage_nvdb_street_detail.py \
+            --snapshot-root /tmp/nwe-visual-runtime \
+            | tee /tmp/nwe-visual-street-detail.json
+          python tools/preview/stage_sentinel_ground.py \
+            --snapshot-root /tmp/nwe-visual-runtime \
+            | tee /tmp/nwe-visual-ground.json
+          python -m json.tool /tmp/nwe-visual-runtime/manifest.json
 
-      - name: Materialize pinned legal Sentinel-2 ground color
+      - name: Verify staged realism descriptors before rendering
         run: |
-          python apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py \
-            --item-id S2B_T32VPM_20260723T104808_L2A \
-            --refresh \
-            > /tmp/nwe-sentinel-ground.json
-          python -m json.tool /tmp/nwe-sentinel-ground.json
-          mkdir -p apps/unreal-runtime/Saved/NWE/Snapshot/ground
-          cp apps/unreal-runtime/Saved/NWE/PrivateVisual/ground/ground-imagery.json \
-            apps/unreal-runtime/Saved/NWE/Snapshot/ground/ground-imagery.json
-          cp apps/unreal-runtime/Saved/NWE/PrivateVisual/ground/nannestad_ground_color.png \
-            apps/unreal-runtime/Saved/NWE/Snapshot/ground/nannestad_ground_color.png
-          python - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          root = Path('apps/unreal-runtime/Saved/NWE/Snapshot/ground')
-          manifest = json.loads((root / 'ground-imagery.json').read_text())
-          texture = root / manifest['texture']['path']
-          assert manifest['schema'] == 'nwe.private-ground-imagery/0.1'
-          assert manifest['tile_id'] == 'epsg25832_611000_6677000_1000m'
-          assert manifest['horizontal_crs'] == 'EPSG:25832'
-          assert manifest['source']['redistribution'] == 'allowed-by-license'
-          assert manifest['source']['stac_item_id'] == 'S2B_T32VPM_20260723T104808_L2A'
-          assert manifest['source']['native_ground_sample_distance_m'] == 10.0
-          assert manifest['transform']['geometry_displacement'] is False
-          assert hashlib.sha256(texture.read_bytes()).hexdigest() == manifest['texture']['sha256']
-          assert texture.stat().st_size == manifest['texture']['byte_size']
-          PY
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
+
+          const root = '/tmp/nwe-visual-runtime';
+          const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+          if (manifest.schema !== 'nwe.world-preview-manifest/0.1') throw new Error('visual manifest schema mismatch');
+          if (manifest.tile?.id !== 'epsg25832_611000_6677000_1000m') throw new Error('visual tile mismatch');
+          for (const name of ['terrain', 'roads', 'buildings']) {
+            const layer = manifest[name];
+            const bundle = JSON.parse(fs.readFileSync(path.join(root, layer.bundle.replace(/^\.\//, '')), 'utf8'));
+            const bytes = new Uint8Array(fs.readFileSync(path.join(root, layer.compiled_path.replace(/^\.\//, ''))));
+            const verification = verifyRuntimeBundle(bundle, bytes);
+            if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') throw new Error(`${name}: ${verification.code}`);
+          }
+          for (const name of ['building_surface', 'roof_orientation', 'vegetation', 'road_realism', 'street_detail']) {
+            const layer = manifest.realism_layers?.[name];
+            if (!layer?.path || !layer?.artifact_sha256) throw new Error(`${name}: realism descriptor missing`);
+            const bytes = fs.readFileSync(path.join(root, layer.path.replace(/^\.\//, '')));
+            const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+            if (sha !== layer.artifact_sha256) throw new Error(`${name}: sha mismatch`);
+          }
+          const street = JSON.parse(fs.readFileSync(path.join(root, manifest.realism_layers.street_detail.path.replace(/^\.\//, '')), 'utf8'));
+          if (!(street.stats?.feature_part_count > 0)) throw new Error('street detail empty');
+          console.log(JSON.stringify({
+            realism_layers: Object.keys(manifest.realism_layers).sort(),
+            street_detail_parts: street.stats.feature_part_count,
+            street_detail_by_type: street.stats.feature_parts_by_type_id,
+          }, null, 2));
+          NODE
 
       - name: Capture REAL WORLD READY screenshot
         run: |
           mkdir -p artifacts
           node apps/world-viewer/capture_preview1_screenshot.mjs \
             --dist-root apps/world-viewer/dist \
-            --runtime-root apps/unreal-runtime/Saved/NWE/Snapshot \
+            --runtime-root /tmp/nwe-visual-runtime \
             --ground-imagery-manifest ground/ground-imagery.json \
             --output artifacts/preview1-ground-ready.png \
             --timeout-ms 90000
