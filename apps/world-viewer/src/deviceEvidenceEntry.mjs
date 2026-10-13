@@ -1,5 +1,6 @@
 import { DEFAULT_PREVIEW1_MANIFEST, runPreview1 } from './preview1.ts';
-import { buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { buildCounterpartEvidenceUrl, buildDeviceEvidence, evidenceFilename } from './deviceEvidence.mjs';
+import { assessWebGpuMilestoneEvidence } from './deviceMilestoneEvidence.mjs';
 import { resolveGraphicsProfile } from './graphicsProfiles.mjs';
 
 const IMMUTABLE_CI_BASELINE_MANIFEST = 'https://raw.githubusercontent.com/B4kke/Norge-World-Engine/e827b37faad70639988c5258ecd9ae585597c1df/nannestad-preview-1/manifest.json?nweRealism=0';
@@ -9,6 +10,9 @@ const manifestUrl = params.get('previewManifest') || (reportUrl ? IMMUTABLE_CI_B
 const rendererPreference = params.get('renderer') || 'webgl2';
 const graphicsProfile = params.get('graphics') || 'balanced';
 const evidenceTarget = params.get('target') === 'android-chrome' ? 'android-chrome' : 'generic-browser';
+const operatorPhysicalDeviceAttestation = params.get('physical') === '1';
+const expectedViewerCommitSha = params.get('expectedViewerCommit') || null;
+const expectedRuntimeCommitSha = params.get('expectedRuntimeCommit') || null;
 const frameCount = Number(params.get('frames') || '90');
 if (!Number.isInteger(frameCount) || frameCount < 10 || frameCount > 600) throw new Error('DEVICE_EVIDENCE_FRAMES_OUT_OF_RANGE');
 
@@ -28,7 +32,8 @@ const canvas = document.querySelector('#device-canvas');
 const status = document.querySelector('#device-status');
 const output = document.querySelector('#device-output');
 const download = document.querySelector('#device-download');
-if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement)) {
+const counterpart = document.querySelector('#device-counterpart');
+if (!(canvas instanceof HTMLCanvasElement) || !status || !output || !(download instanceof HTMLButtonElement) || !(counterpart instanceof HTMLAnchorElement)) {
   throw new Error('DEVICE_EVIDENCE_UI_MISSING');
 }
 
@@ -135,9 +140,25 @@ async function run() {
       captureSessionId,
       evidenceTarget,
     });
+    evidence.milestone = assessWebGpuMilestoneEvidence({
+      evidence,
+      runtimeResult: result,
+      operatorPhysicalDeviceAttestation,
+      expectedViewerCommitSha,
+      expectedRuntimeCommitSha,
+      minMeasuredFrames: 90,
+    });
+
+    counterpart.href = buildCounterpartEvidenceUrl(location.href, { activeBackend: evidence.renderer.active_backend });
+    counterpart.hidden = false;
+
     const json = `${JSON.stringify(evidence, null, 2)}\n`;
     output.textContent = json;
-    setStatus('DEVICE EVIDENCE PASS', 'pass');
+    if (evidence.milestone.status === 'READY_FOR_REVIEW') {
+      setStatus('WEBGPU MILESTONE EVIDENCE READY', 'pass');
+    } else {
+      setStatus(`CAPTURE PASS · MILESTONE INCOMPLETE (${evidence.milestone.failures.length})`, 'partial');
+    }
     await postReport(evidence);
     download.disabled = false;
     download.addEventListener('click', () => {
@@ -161,6 +182,7 @@ async function run() {
       build: buildIdentity,
       capture_session_id: captureSessionId,
       evidence_target: evidenceTarget,
+      operator_physical_device_attested: operatorPhysicalDeviceAttestation,
       requested_renderer: rendererPreference,
       graphics_profile: graphicsProfile,
       webgpu_adapter_probe: webgpuAdapterProbe,
