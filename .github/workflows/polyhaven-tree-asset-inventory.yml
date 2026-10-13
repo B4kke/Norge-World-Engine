@@ -1,11 +1,18 @@
 name: polyhaven-tree-asset-inventory
 
 on:
+  pull_request:
+    paths:
+      - 'tools/visual-data/polyhaven_tree_candidates.json'
+      - 'tools/visual-data/inventory_polyhaven_tree_assets.py'
+      - 'tools/visual-data/test_inventory_polyhaven_tree_assets.py'
+      - '.github/workflows/polyhaven-tree-asset-inventory.yml'
   workflow_dispatch:
 
 jobs:
   metadata-inventory:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
 
