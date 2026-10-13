@@ -34,6 +34,7 @@ jobs:
           python -m py_compile tools/visual-data/verify_vegetation_representative_sample.py
           python -m py_compile tools/visual-data/run_visual_source_probes.py
           python tools/visual-data/test_run_visual_source_probes.py
+          python tools/visual-data/test_visual_source_active_dependency_classification.py
 
       - name: Probe current official source contracts with diagnostics
         id: source_probes
@@ -57,5 +58,5 @@ jobs:
       - name: Enforce official source probe result
         if: steps.source_probes.outcome != 'success'
         run: |
-          echo 'One or more visual source contracts failed. Inspect the uploaded suite JSON for the exact probe and provider evidence.' >&2
+          echo 'One or more active visual source contracts failed. Inspect the uploaded suite JSON for exact provider evidence. Research-candidate drift is reported inside probe JSON but does not invalidate accepted runtime sources.' >&2
           exit 1
