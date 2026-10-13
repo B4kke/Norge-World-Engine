@@ -1,0 +1,64 @@
+{
+  "bounds": [
+    611000.0,
+    6677000.0,
+    612000.0,
+    6678000.0
+  ],
+  "horizontal_crs": "EPSG:25832",
+  "schema": "nwe.private-ground-imagery/0.1",
+  "source": {
+    "asset_hrefs": {
+      "visual": "https://e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com/sentinel-2-c1-l2a/32/V/PM/2026/7/S2B_T32VPM_20260723T104808_L2A/TCI.tif"
+    },
+    "asset_keys": [
+      "visual"
+    ],
+    "asset_mode": "visual",
+    "copernicus_notice": "Contains modified Copernicus Sentinel data 2026",
+    "display_transform": "earth-search-visual-cog-rgb8",
+    "eo_cloud_cover_percent": 0.0,
+    "local_filename": "S2B_T32VPM_20260723T104808_L2A.tif",
+    "name": "Copernicus Sentinel-2 L2A S2B_T32VPM_20260723T104808_L2A",
+    "native_ground_sample_distance_m": 10.0,
+    "provider": "Copernicus Sentinel-2 via Earth Search",
+    "raw_source_committed": false,
+    "redistribution": "allowed-by-license",
+    "rgb_bands": [
+      1,
+      2,
+      3
+    ],
+    "rights_basis": "Copernicus Sentinel data licence: free, full and open lawful use; public distribution of modified data requires source notice.",
+    "search_window": {
+      "end_date": "2026-09-30",
+      "start_date": "2026-05-01"
+    },
+    "selection_policy": "May-September; scene cloud cover ascending; distance to July 15 ascending; capture time newest tie-break",
+    "sha256": "b4d0d1be7f7ad8aa115ca4bf377de5022e7eb593235947b44db2f183b18d6d90",
+    "source_tile_byte_size": 25166,
+    "source_tile_path": "/home/runner/work/Norge-World-Engine/Norge-World-Engine/apps/unreal-runtime/Saved/NWE/PrivateVisual/sentinel-source/S2B_T32VPM_20260723T104808_L2A.tif",
+    "source_tile_sha256": "b4d0d1be7f7ad8aa115ca4bf377de5022e7eb593235947b44db2f183b18d6d90",
+    "source_value_max": 255.0,
+    "stac_api": "https://earth-search.aws.element84.com/v1",
+    "stac_collection": "sentinel-2-c1-l2a",
+    "stac_datetime": "2026-07-23T10:54:11.499000Z",
+    "stac_item_id": "S2B_T32VPM_20260723T104808_L2A"
+  },
+  "texture": {
+    "byte_size": 1901885,
+    "format": "png-rgb8",
+    "height": 2048,
+    "path": "nannestad_ground_color.png",
+    "sha256": "0bbe8079f2fb2eedffaec3612f7cdb9724b12b061613b74751db388af1f2e55a",
+    "uv_semantics": "u-west-to-east-v-north-to-south",
+    "width": 2048
+  },
+  "tile_id": "epsg25832_611000_6677000_1000m",
+  "transform": {
+    "geometry_displacement": false,
+    "operation": "rasterio-reproject-epsg25832-exact-1km-tile-bilinear-rgb-v0.1",
+    "output_pixel_size_m": 0.48828125,
+    "sentinel_ground_truth": "presentation-only-10m-satellite-ground-color-not-orthophoto"
+  }
+}
