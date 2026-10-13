@@ -24,8 +24,9 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 - NVDB type 838/583 width + type 241 surface realism: PASS candidate;
 - NVDB explicit street-detail source compiler: HOSTED PASS candidate;
 - manifest-driven exact browser proof with required derived realism: PASS;
-- published `preview-runtime` snapshot generated from current implementation head `91b82196ed02c604c89ff205c6da26dec8a56a2a`: PASS;
-- exact-head asphalt presentation calibration with unchanged NVDB geometry/source semantics: PASS.
+- published `preview-runtime` snapshot generated from current code head `e57f574d195c474c493acd2f59ddd8dab5488493`: PASS;
+- exact-head asphalt presentation calibration with unchanged NVDB geometry/source semantics: PASS;
+- exact-head milestone-grade WebGPU device-evidence assessment and deployable Vercel preview: PASS tooling; physical-device capture still open.
 
 ---
 
@@ -86,38 +87,45 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 **Next source-fidelity gate:** legally/source-backed roof shape/façade/use semantics when an admitted source materially improves the world. Do not invent exact windows/doors and label them source truth.
 
 ## WEB-REALISM-06 — Exact integrated browser acceptance
-**Priority:** 1 — ACTIVE; AUTOMATED/WEBGL2 VISUAL GATES PASS / REAL WEBGPU-MOBILE EVIDENCE OPEN  
+**Priority:** 1 — ACTIVE; EXACT DEPLOY + AUTOMATED GATES PASS / PHYSICAL ANDROID CHROME WEBGPU CAPTURE OPEN  
 **Owner:** SENTINEL + LUMEN  
 
-**Passed on exact current implementation head `91b82196ed02c604c89ff205c6da26dec8a56a2a`:**
-- production Vite build PASS;
-- baseline PASS;
-- viewer benchmark PASS;
-- NVDB road semantics proof PASS;
-- exact real-data Preview 1 browser smoke PASS;
-- exact visual proof PASS;
-- `?requireRealism=1` reports `READY` and SHA-matches all five staged realism layers;
-- free movement/DTM grounding PASS;
-- zero raw Norwegian source acquisition;
-- runtime request contract remains manifest-driven;
-- `preview-runtime` manifest reports `generated_from_commit=91b82196ed02c604c89ff205c6da26dec8a56a2a`.
+**Passed on exact current code head `e57f574d195c474c493acd2f59ddd8dab5488493`:**
+- production Vite / `world-viewer-vite` run `38482495892`: PASS;
+- baseline run `38482496004`: PASS;
+- viewer benchmark run `38482495838`: PASS;
+- NVDB road-semantics proof run `38482495981`: PASS;
+- exact visual proof run `38482495969`: PASS;
+- exact real-data/browser publish run `38482495877`: PASS;
+- exact Vercel Preview deployment `dpl_DtzoLD1AbzEjEqbBADTe6BQ7L1xs` is `READY` and serves the normal WebUI plus `device-evidence.html` from this exact SHA;
+- `preview-runtime` manifest reports `generated_from_commit=e57f574d195c474c493acd2f59ddd8dab5488493`;
+- runtime remains `REAL_COMPILED_WITH_DERIVED_REALISM` with the same accepted terrain/roads/buildings, Sentinel-2 macro color and five staged realism layers;
+- free movement/DTM grounding remains PASS;
+- zero raw Norwegian source acquisition remains required;
+- runtime request contract remains manifest-driven.
 
-**Asphalt calibration accepted:**
+**Asphalt calibration accepted on parent implementation `91b82196ed02c604c89ff205c6da26dec8a56a2a` and inherited unchanged:**
 - the pinned Poly Haven `asphalt_02` diffuse/normal/roughness assets are unchanged;
 - renderer-only extra diffuse tint `0xc8c9c8` was removed so the authored diffuse albedo is no longer darkened a second time;
 - same fixed near-road screenshot region improved from median luminance `16.44` to `20.87` (~27%) and mean `20.34` to `24.65` (~21%);
 - exact visual-proof run `37852464305` PASS, artifact `11582397470`, screenshot SHA-256 `344b4ac02389b12ac1cf8e44b6f7fd707e5aa8eaf071937cac8501fad13b8330`;
-- exact real-data/browser publish run `37852464488` PASS;
 - no road geometry, width, material source semantics, artifact SHA or provenance was changed.
+
+**Milestone-grade device-evidence gate implemented:**
+- ordinary runtime/provenance capture `PASS` is now explicitly separate from WebGPU milestone readiness;
+- milestone assessment is `nwe.webgpu-milestone-evidence-assessment/0.1` and reports `READY_FOR_REVIEW` only when viewer/runtime build identity is bound, capture session exists, Android Chrome is detected, the operator explicitly attests a physical device, requested+active backend are both WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/streaming-lifecycle gates pass, and the 90-frame measurement window contains first-visible, frame-gap, draw-CPU and GPU resource observations;
+- timestamp-query support is recorded as a capability and is not required to be available;
+- no arbitrary FPS/frame-time target is invented. `READY_FOR_REVIEW` means the evidence is complete enough to judge, not that performance is automatically acceptable;
+- device page now exposes a deterministic WebGL2↔WebGPU counterpart link using the same capture session/workload.
 
 **Known visual limits that are not hidden by acceptance:**
 - vegetation remains proxy-quality in the near field;
 - distant/unsupported building semantics still produce generic presentation;
 - these are P1 quality work unless a concrete P0 usability/performance failure is found.
 
-**Remaining P0 closure gate:** hosted SwiftShader/WebGL2 evidence is not real WebGPU/mobile performance evidence. Capture one milestone-grade run on a genuine WebGPU-capable browser/device using the exact accepted WebUI/runtime snapshot. Record backend, graphics profile, first-visible/frame metrics, draw/resource observations and timestamp-query capability where available. Do not call WebGPU/mobile PASS from fallback evidence.
+**Remaining P0 closure gate:** run the exact deployed `e57f574...` device-evidence page on a genuine physical Android Chrome device with WebGPU requested and no fallback. Retain the generated JSON and review the recorded first-visible, 90-frame p50/p95, draw/resource and timestamp-query observations. Browser APIs cannot prove physical-device identity; `physical=1` is an explicit operator/device-lab attestation rather than a browser fact. Do not close P0 from SwiftShader/headless evidence.
 
-**Next concrete task:** expose/confirm an exact-head deployable Preview URL for `91b82196...`, verify that the normal WebUI and existing WebGPU/device-evidence probes are reachable from the same accepted build, then perform the batched real-device WebGPU milestone check.
+**Next concrete task:** run `device-evidence.html?renderer=webgpu&target=android-chrome&physical=1&frames=90` on the exact `e57f574...` Vercel deployment, retain the JSON capture, and judge the observed real-device metrics before closing `WEB-REALISM-06`.
 
 ---
 
