@@ -24,6 +24,7 @@ jobs:
       - name: Python syntax checks
         run: |
           python -m py_compile tools/geo/verify_nannestad_source_contracts.py
+          python -m py_compile tools/visual-data/inventory_polyhaven_tree_assets.py
           python -m compileall -q engine/compiler/src engine/compiler/tests
           python -m py_compile prototypes/nannestad/compiler/dtm1_atom_adapter_v02.py
           python -m py_compile prototypes/nannestad/compiler/test_dtm1_atom_adapter_v02.py
@@ -43,6 +44,9 @@ jobs:
 
       - name: Source contract verifier
         run: python tools/geo/verify_nannestad_source_contracts.py --output /tmp/nwe-source-proof.json
+
+      - name: Poly Haven tree inventory parser regression
+        run: python tools/visual-data/test_inventory_polyhaven_tree_assets.py
 
       - name: Production-direction compiler regressions
         run: pytest -q engine/compiler/tests
