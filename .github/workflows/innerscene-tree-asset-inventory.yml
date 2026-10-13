@@ -1,0 +1,39 @@
+name: innerscene-tree-asset-inventory
+
+on:
+  pull_request:
+    paths:
+      - 'tools/visual-data/innerscene_tree_candidates.json'
+      - 'tools/visual-data/inventory_innerscene_tree_assets.py'
+      - 'tools/visual-data/test_inventory_innerscene_tree_assets.py'
+      - '.github/workflows/innerscene-tree-asset-inventory.yml'
+  workflow_dispatch:
+
+jobs:
+  bounded-glb-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate GLB parser without provider network
+        run: |
+          python -m py_compile tools/visual-data/inventory_innerscene_tree_assets.py
+          python tools/visual-data/test_inventory_innerscene_tree_assets.py
+
+      - name: Inventory current bounded Innerscene candidates
+        run: |
+          python tools/visual-data/inventory_innerscene_tree_assets.py --output /tmp/innerscene-tree-inventory.json
+          python -m json.tool /tmp/innerscene-tree-inventory.json > /dev/null
+
+      - name: Upload hash and geometry inventory only
+        uses: actions/upload-artifact@v4
+        with:
+          name: innerscene-tree-inventory-${{ github.sha }}
+          path: /tmp/innerscene-tree-inventory.json
+          if-no-files-found: error
+          retention-days: 14
