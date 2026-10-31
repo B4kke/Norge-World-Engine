@@ -614,5 +614,9 @@ Every completed work session appends exactly one entry using this structure:
 - `apps/world-viewer/test_three_ground_visual_style.mjs`, `test_three_ground_post_processing.mjs`.
 - `docs/06-task-queue.md`, `docs/05-worklog.md`.
 
+**Infrastructure classification (SENTINEL rule)**
+- `preview1-visual-proof` and `preview1-realdata-publish` fail on this branch at the **snapshot-staging step, before any rendering**: the freshly compiled OSM building artifact no longer matches the pinned `BUILDING_ARTIFACT_SHA256` on the GitHub runner. A workflow re-run on the parent commit `38d1515` fails identically, so this is **infrastructure/live-source drift, not an implementation failure** of this change. A fresh local staging on this exact head still compiles the pinned `678c5960…` building artifact and passes.
+- Hosted green on this head: `baseline`, `world-viewer-vite`, `viewer-benchmark`, `nvdb-road-semantics-proof`, `visual-source-probe`, both asset inventories.
+
 **Next**
-- `WEB-REALISM-07` real-GPU gate: capture the exact deployed branch on hardware (WebGPU first) with `device-evidence.html`/visual proof, judge the IBL + ultra SSR/god-ray image and frame cost, and only then consider moving heavier passes down to `high`.
+- `WEB-REALISM-07` real-GPU gate: once the CI staging blocker is resolved (recalibrate the pinned building SHA or restore the upstream snapshot), capture the exact deployed branch on hardware (WebGPU first) with `device-evidence.html`/visual proof, judge the IBL + ultra SSR/god-ray image and frame cost, and only then consider moving heavier passes down to `high`.

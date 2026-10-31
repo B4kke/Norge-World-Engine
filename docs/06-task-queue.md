@@ -162,6 +162,16 @@ accepted asphalt calibration (NVDB geometry/source semantics) is untouched.
 with hardware) to judge the `ultra` SSR/god-ray/IBL image and frame cost before
 enabling anything heavier on `high`.
 
+**Known CI blocker (infrastructure, not this change):** `preview1-visual-proof`
+and `preview1-realdata-publish` currently fail on this branch — and identically
+on parent `38d1515` — because the runner's freshly compiled OSM building artifact
+no longer matches the pinned `BUILDING_ARTIFACT_SHA256` during snapshot staging,
+before any rendering. Hosted green on this head: `baseline`,
+`world-viewer-vite`, `viewer-benchmark`, `nvdb-road-semantics-proof`,
+`visual-source-probe` and both asset inventories. Recalibrate/promote the pinned
+building artifact or restore the upstream snapshot, then re-run the browser
+proofs.
+
 ---
 
 # P1 — NEXT WEB QUALITY
