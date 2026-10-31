@@ -129,6 +129,41 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 
 ---
 
+## WEB-REALISM-07 — Advanced photoreal graphics pipeline
+**Priority:** IMPLEMENTED / CI-SAFE ON `high`, FULL STACK ON `ultra`
+**Owner:** LUMEN
+
+**Implemented (web-native, no world-truth change):**
+- sky image-based lighting: one-time PMREM capture from the same physical sky that
+  is visible, feeding `scene.environment` / `environmentIntensity`; the hemisphere
+  fill is scaled by the environment intensity so ambient is never double-counted;
+- ordered, fail-closed TSL post graph (schema `nwe.ground-post-processing/0.2`
+  over visual style `nwe.ground-visual-style/0.3`): screen-space reflections →
+  GTAO → god rays (bilateral-blurred, depth-aware composite) → bokeh DOF → bloom →
+  chromatic aberration → film grain;
+- profile gating: `low`/`balanced` keep sky IBL + cheap paths; `high` keeps
+  GTAO + bloom + subtle lens passes; `ultra` carries SSR, god rays and bokeh;
+- software-rasterizer detection: the PMREM capture is skipped with an explicit
+  `skip_reason` in the renderer stats instead of stalling headless capture.
+
+**Measured evidence (2026-10-31):**
+- exact-head headless SwiftShader capture at `high`: `REAL WORLD READY`, 759,097 B
+  PNG, ~53 s wall clock against the CI 90 s screenshot budget, scene healthy with
+  subtle lens treatment;
+- local viewer chain: all 37 `apps/world-viewer` structural tests PASS;
+- the ultra SSR + god-ray + bokeh stack cannot finish inside a software capture
+  window, which is exactly why those passes stay ultra-gated (FACT, measured).
+
+**Truth guard:** IBL and every post pass are presentation-only; no albedo, road
+width, building height/roof, tree position or world-truth value changes. The
+accepted asphalt calibration (NVDB geometry/source semantics) is untouched.
+
+**Next gate:** exact-hosted browser proof on the real GPU path (WebGPU/WebGL2
+with hardware) to judge the `ultra` SSR/god-ray/IBL image and frame cost before
+enabling anything heavier on `high`.
+
+---
+
 # P1 — NEXT WEB QUALITY
 
 ## P1-SIGN-SEMANTICS

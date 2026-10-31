@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 
 export const GROUND_VISUAL_STYLE = Object.freeze({
-  schema: 'nwe.ground-visual-style/0.2',
+  schema: 'nwe.ground-visual-style/0.3',
   toneMapping: 'ACESFilmicToneMapping',
   toneMappingExposure: 1.04,
   outputColorSpace: 'SRGBColorSpace',
@@ -25,6 +25,12 @@ export const GROUND_VISUAL_STYLE = Object.freeze({
   hemisphereGroundColor: 0x4b5544,
   sunOffset: Object.freeze([-72, 125, 52]),
   sunTargetHeightM: 1,
+  // Image-based lighting is generated once from the same physical sky that is
+  // visible, so ambient/reflection light matches the visible atmosphere. The
+  // hemisphere fill light is scaled down as environment intensity rises so the
+  // two ambient contributions never double-light the accepted geometry.
+  environmentIntensity: 0.75,
+  environmentHemisphereFillScale: 0.55,
 });
 
 export function resolveGroundVisualStyle(profile = {}) {
@@ -41,7 +47,13 @@ export function resolveGroundVisualStyle(profile = {}) {
     shadowAnchorUpdateDistanceM: profile.shadowAnchorUpdateDistanceM ?? GROUND_VISUAL_STYLE.shadowAnchorUpdateDistanceM,
     hemisphereIntensity: profile.hemisphereIntensity ?? GROUND_VISUAL_STYLE.hemisphereIntensity,
     sunIntensity: profile.sunIntensity ?? GROUND_VISUAL_STYLE.sunIntensity,
-  });
+
+    environmentIntensity: typeof profile.environmentIntensity === 'number' && Number.isFinite(profile.environmentIntensity)
+      ? Math.max(0, profile.environmentIntensity)
+      : GROUND_VISUAL_STYLE.environmentIntensity,
+    environmentCaptureRadiusM: typeof profile.cameraFarM === 'number' && Number.isFinite(profile.cameraFarM)
+      ? Math.max(16, profile.cameraFarM * 0.9)
+      : 2160,  });
 }
 
 function finitePosition(position) {
@@ -90,9 +102,90 @@ export function configureObjectShadowRole(root, options) {
   return meshCount;
 }
 
-export function createGroundLighting(scene, profile) {
+/**
+ * Builds the presentation-only image-based lighting environment from the same
+ * physical sky parameters that drive the visible sky mesh. The captured cubemap
+ * feeds `scene.environment` so accepted PBR geometry receives sky ambient and
+ * environment reflections instead of a flat hemisphere approximation alone.
+ */
+const SOFTWARE_RENDERER_PATTERN = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
+
+/**
+ * Reports the unmasked rasterizer name when the backend exposes one. Software
+ * rasterizers (headless CI, `device-evidence` capture without a GPU) cannot pay
+ * for a one-time cubemap PMREM capture without stalling the first frame.
+ */
+export function detectSoftwareRenderer(renderer) {
+  const context = typeof renderer?.getContext === 'function' ? renderer.getContext() : null;
+  if (!context || typeof context.getExtension !== 'function' || typeof context.getParameter !== 'function') {
+    return { software: false, renderer_name: null };
+  }
+  let name = null;
+  try {
+    const debugInfo = context.getExtension('WEBGL_debug_renderer_info');
+    name = debugInfo ? String(context.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : null;
+  } catch { name = null; }
+  return { software: name === null ? false : SOFTWARE_RENDERER_PATTERN.test(name), renderer_name: name };
+}
+
+export function createGroundEnvironment(renderer, scene, style) {
+  const environmentIntensity = style.environmentIntensity;
+  const rasterizer = detectSoftwareRenderer(renderer);
+  if (!renderer || !scene?.add || !(environmentIntensity > 0) || rasterizer.software) {
+    return {
+      available: false,
+      skip_reason: environmentIntensity > 0 && rasterizer.software ? 'software-rasterizer' : null,
+      renderer_name: rasterizer.renderer_name,
+      texture: null,
+      hemisphereFillScale: 1,
+      dispose() {},
+    };
+  }
+  const environment = new SkyMesh();
+  environment.scale.setScalar(style.environmentCaptureRadiusM);
+  environment.sunPosition.value.set(...style.sunOffset).normalize();
+  environment.turbidity.value = 2;
+  environment.rayleigh.value = 1.5;
+  environment.material.depthWrite = false;
+  environment.material.fog = false;
+  environment.frustumCulled = false;
+  const environmentScene = new THREE.Scene();
+  environmentScene.add(environment);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  let texture = null;
+  try {
+    texture = pmrem.fromScene(environmentScene, 0, 1, style.environmentCaptureRadiusM * 2).texture;
+  } catch (error) {
+    environmentScene.remove(environment);
+    environment.geometry.dispose();
+    environment.material.dispose();
+    pmrem.dispose();
+    throw new Error(`GROUND_ENVIRONMENT_CAPTURE_FAILED: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  environmentScene.remove(environment);
+  environment.geometry.dispose();
+  environment.material.dispose();
+  pmrem.dispose();
+  scene.environment = texture;
+  scene.environmentIntensity = environmentIntensity;
+  return {
+    available: true,
+    skip_reason: null,
+    renderer_name: rasterizer.renderer_name,
+    texture,
+    hemisphereFillScale: 1 - style.environmentHemisphereFillScale * Math.min(1, environmentIntensity),
+    dispose() {
+      if (scene.environment === texture) scene.environment = null;
+      texture.dispose();
+    },
+  };
+}
+
+export function createGroundLighting(scene, profile, options = {}) {
   if (!scene?.add) throw new TypeError('scene is required');
   const style = resolveGroundVisualStyle(profile);
+  const environmentIntensity = style.environmentIntensity;
+  const environment = createGroundEnvironment(options.renderer, scene, style);
   scene.background = new THREE.Color(style.skyColor);
   const sky = new SkyMesh();
   sky.scale.setScalar((profile?.cameraFarM ?? 2400) * 0.9);
@@ -109,7 +202,7 @@ export function createGroundLighting(scene, profile) {
   const hemisphere = new THREE.HemisphereLight(
     style.hemisphereSkyColor,
     style.hemisphereGroundColor,
-    style.hemisphereIntensity,
+    Math.max(0, style.hemisphereIntensity * environment.hemisphereFillScale),
   );
   const sunTarget = new THREE.Object3D();
   const sun = new THREE.DirectionalLight(style.sunColor, style.sunIntensity);
@@ -185,6 +278,14 @@ export function createGroundLighting(scene, profile) {
         update_distance_m: style.shadowAnchorUpdateDistanceM,
         update_count: shadowUpdates,
       }),
+      environment: Object.freeze({
+        available: environment.available,
+        skip_reason: environment.skip_reason ?? null,
+        renderer_name: environment.renderer_name ?? null,
+        intensity: environmentIntensity,
+        hemisphere_fill_scale: environment.hemisphereFillScale,
+        capture_radius_m: style.environmentCaptureRadiusM,
+      }),
     });
   }
 
@@ -201,6 +302,7 @@ export function createGroundLighting(scene, profile) {
       sky.material.dispose();
       sun.dispose();
       hemisphere.dispose();
+      environment.dispose();
     },
   };
 }

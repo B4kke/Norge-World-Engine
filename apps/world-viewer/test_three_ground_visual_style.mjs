@@ -6,7 +6,9 @@ import {
   configureGroundRendererVisualStyle,
   configureMeshShadowRole,
   configureObjectShadowRole,
+  createGroundEnvironment,
   createGroundLighting,
+  detectSoftwareRenderer,
 } from './src/threeGroundVisualStyle.mjs';
 
 const renderer = {
@@ -80,6 +82,46 @@ assert.equal(mesh.castShadow, true);
 assert.equal(mesh.receiveShadow, true);
 
 assert.throws(() => lighting.updateAnchor([0, Number.NaN, 0]), /visual anchor/);
+
+// The sky IBL capture is one-time and GPU-cheap but stalls a software
+// rasterizer; it must fail closed to the hemisphere path there instead of
+// stalling the first frame, and the skip must be reported, never hidden.
+function stubContext(rendererName) {
+  return {
+    getExtension(name) {
+      return name === 'WEBGL_debug_renderer_info'
+        ? { UNMASKED_RENDERER_WEBGL: 37446 }
+        : null;
+    },
+    getParameter(token) { return token === 37446 ? rendererName : null; },
+  };
+}
+const software = detectSoftwareRenderer({ getContext: () => stubContext('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)))') });
+assert.equal(software.software, true);
+const hardware = detectSoftwareRenderer({ getContext: () => stubContext('ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)') });
+assert.equal(hardware.software, false);
+const unknown = detectSoftwareRenderer({ getContext: () => null });
+assert.equal(unknown.software, false);
+assert.equal(unknown.renderer_name, null);
+const contextless = detectSoftwareRenderer({});
+assert.equal(contextless.software, false);
+
+const softwareEnvironment = createGroundEnvironment(
+  { getContext: () => stubContext('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))') },
+  new THREE.Scene(),
+  { ...GROUND_VISUAL_STYLE, environmentIntensity: 1, environmentCaptureRadiusM: 1200 },
+);
+assert.equal(softwareEnvironment.available, false);
+assert.equal(softwareEnvironment.skip_reason, 'software-rasterizer');
+assert.equal(softwareEnvironment.hemisphereFillScale, 1, 'the hemisphere fill light must stay full when IBL is skipped');
+assert.equal(softwareEnvironment.texture, null);
+softwareEnvironment.dispose();
+
+const offEnvironment = createGroundEnvironment({}, new THREE.Scene(), { ...GROUND_VISUAL_STYLE, environmentIntensity: 0 });
+assert.equal(offEnvironment.available, false);
+assert.equal(offEnvironment.skip_reason, null);
+assert.equal(highLighting.snapshot().environment.available, false, 'the stub renderer exposes no rasterizer, so high lighting reports IBL unavailable');
+assert.equal(highLighting.snapshot().environment.intensity, 0.85);
 
 mesh.geometry.dispose();
 mesh.material.dispose();

@@ -125,7 +125,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const rendererVisualStyle = configureGroundRendererVisualStyle(renderer, profile);
 
   const scene = new THREE.Scene();
-  const lighting = createGroundLighting(scene, profile);
+  const lighting = createGroundLighting(scene, profile, { renderer });
   const [terrainExtentE, terrainExtentN] = terrainExtentMeters(terrainPayload);
   const materialLoadStartedAt = monotonicNow();
   const materialLibrary = await createGroundMaterialLibrary({ renderer, profile, terrainExtentM: [terrainExtentE, terrainExtentN], groundImagery });
@@ -191,7 +191,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const camera = new THREE.PerspectiveCamera(58, 1, 0.15, profile.cameraFarM ?? 2400);
   const cameraTarget = [0, centerGround + 1.55, -28];
   camera.position.set(0, centerGround + 1.7, 14); camera.lookAt(...cameraTarget);
-  const postProcessing = createGroundPostProcessing({ renderer, scene, camera, profile });
+  const postProcessing = createGroundPostProcessing({ renderer, scene, camera, profile, light: lighting.sun });
 
   let stopped = false; let dirty = true; let lastDrawAt = 0; let lastAnimationAt = 0;
   let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;

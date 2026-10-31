@@ -584,3 +584,35 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `WEB-REALISM-06`: run the exact `e57f574...` device-evidence page on one genuine physical Android Chrome device with `renderer=webgpu&target=android-chrome&physical=1&frames=90`, retain the generated JSON and judge the recorded real-device metrics before closing P0.
+
+## 2026-10-31 19:42 CET — LUMEN — WEB-REALISM-07
+
+**What**
+- Added sky image-based lighting to the ground renderer: a one-time PMREM capture of the same physical sky that is visible now feeds `scene.environment` / `environmentIntensity`, and the hemisphere fill light is scaled by the environment intensity so ambient light is never double-counted.
+- Rebuilt the post-processing stack as an ordered, fail-closed TSL graph (`nwe.ground-post-processing/0.2` over `nwe.ground-visual-style/0.3`): screen-space reflections → GTAO → god rays (bilateral-blurred, depth-aware composite) → bokeh depth of field → bloom → chromatic aberration → film grain. Each effect is profile-gated and reports itself in the renderer stats; the UI label is now data-driven from that effect list.
+- Added a software-rasterizer guard: the PMREM capture is skipped with an explicit `skip_reason` instead of stalling a headless/software first frame.
+- Split the profiles from measurement: `high` keeps GTAO + bloom + subtle lens passes; `ultra` carries SSR, god rays and bokeh; `low`/`balanced` get IBL plus the cheap paths.
+- Added regressions: environment rasterizer detection + fail-closed skip, profile gating, texture-node input contracts for the depth-aware/DOF nodes, and negative assertions that non-existent enum/flag combinations never half-wire.
+
+**Why**
+- The user asked for a photorealistic Three.js web representation using the advanced graphics the engine offers; the queue already treats the WebUI as the active Nannestad delivery surface.
+- IBL from the visible sky is the correct physical foundation for a PBR scene, and the ordered post graph replaces the bare GTAO+bloom pair with the full three r185 TSL capability set (SSR, god rays, bokeh, lens, grain) without touching world truth.
+
+**Result / evidence**
+- FACT: all 37 `apps/world-viewer` structural tests PASS locally, including the new environment/post contracts.
+- FACT: exact-head headless SwiftShader capture at `high` on this branch reaches `REAL WORLD READY`, produces a healthy 759,097-byte frame in ~53 s (CI screenshot budget 90 s), with the scene, GTAO+bloom+lens passes and no black frame.
+- FACT (negative, measured): the ultra SSR + god-ray + bokeh stack cannot finish inside a software capture window (>10 min), so those passes are ultra-gated; the software PMREM capture alone also stalls, hence the rasterizer guard.
+- FACT (debugging evidence): three addons in r185.0 required texture-node inputs (`convertToTexture`), an explicit `metalnessNode`/`roughnessNode` for SSR, an explicit chromatic-aberration center and `getTextureNode()` for the bilateral-blur result; these are now pinned by structural tests.
+- LIMITATION: no real-GPU frame evidence yet; the ultra stack image/frame cost still needs the exact-hosted browser proof on hardware.
+
+**Changed**
+- `apps/world-viewer/src/graphicsProfiles.mjs` (advanced effect knobs + gating).
+- `apps/world-viewer/src/threeGroundVisualStyle.mjs` (IBL environment, rasterizer guard, stats, schema 0.3).
+- `apps/world-viewer/src/threeGroundPostProcessing.mjs` (ordered TSL stack, schema 0.2).
+- `apps/world-viewer/src/threeGroundRenderer.mjs` (renderer/light wiring for IBL + god rays).
+- `apps/world-viewer/src/main.ts` (data-driven post-effects label).
+- `apps/world-viewer/test_three_ground_visual_style.mjs`, `test_three_ground_post_processing.mjs`.
+- `docs/06-task-queue.md`, `docs/05-worklog.md`.
+
+**Next**
+- `WEB-REALISM-07` real-GPU gate: capture the exact deployed branch on hardware (WebGPU first) with `device-evidence.html`/visual proof, judge the IBL + ultra SSR/god-ray image and frame cost, and only then consider moving heavier passes down to `high`.
