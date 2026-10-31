@@ -524,3 +524,35 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `UE5-RUN-01`: execute the integrated foundation on a UE 5.8 Windows runner and retain compile, map creation, movement/collision and frame/performance evidence.
 
+
+## 2026-10-31 11:36 CET — LUMEN — UE5-FOUNDATION-PACKET-INTEGRITY
+
+**What**
+- Completed and validated the in-progress UE runtime hardening: `FNweMeshPacketReader::Load` now requires a 64-hexadecimal expected SHA-256, validates the expected digest's shape, and hashes the exact buffer it decodes with engine-bundled OpenSSL 1.1.1 before any geometry interpretation, so a same-size payload change fails closed.
+- Wired the digest check through `NweWorldBootstrap` (which already read `sha256` from the derived package manifest), added `AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL")` and made the missing JSON object field null-safe (`(*Source).IsValid()`).
+- Made `SetupNannestad.ps1` self-contained: it installs the narrow `@nwe/schemas-js` Node workspace (RFC 8785 `canonicalize`) before data verification and documents this in the operator README.
+- Fixed a latent level-creation crash: the level script used `unreal.TextureFilter.TF_ANISOTROPIC`, which does not exist in the UE `TextureFilter` enum (verified: engine source `TextureDefines.h` defines only Nearest/Bilinear/Trilinear/Default). It now uses `TF_DEFAULT`, which keeps texture-group filtering and scalability-bounded anisotropy.
+- Added narrow structural regressions pinning all four contracts, including a negative test that the non-existent `TF_ANISOTROPIC` value does not return.
+
+**Why**
+- `UE5-RUN-01` is the active P0 gate but cannot run in this Linux environment (no Windows UE 5.8 runner). The highest-value adjacent work that advances that same gate is removing unverified runtime failure modes that would otherwise be discovered during the single Windows run.
+- The setup script's Node verifier import previously depended on a pre-existing `node_modules`; a clean checkout would have failed in `SetupNannestad.ps1`.
+
+**Result / evidence**
+- FACT: `pytest -q apps/unreal-runtime/tests` → 32 passed (30 pre-existing + 2 new contract tests), Python 3.13 container with `requirements-dev.txt` + `engine/compiler`.
+- FACT: `pytest -q engine/compiler/tests` → 179 passed; `scripts/validate_agent_skills.py` → PASS (22 skills).
+- FACT: without `node_modules/canonicalize` the Node verifier fails with `ERR_MODULE_NOT_FOUND`; `npm install --workspace @nwe/schemas-js --include-workspace-root=false --package-lock=false` exits 0, restores resolution, and `engine/schemas/js/test/canonical.test.mjs` PASS (`expectedSha c07d22a6…`) and `engine/streaming/test_runtime_verifier.mjs` PASS (11 cases, browser parity 11, webcrypto 1).
+- FACT (API verification against primary engine sources): UE 5.x bundles OpenSSL 1.1.1t as third-party module `OpenSSL`; `AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL")` is the standard consumer pattern; `FString BytesToHex` is a global uppercase-hex helper, compared case-insensitively.
+- FACT: the Python pipeline already wrote `sha256` into every mesh packet descriptor (`nwe_unreal_pipeline.py` `_sha256_bytes`), so the C++ check verifies an identity the pipeline guarantees.
+- LIMITATION: no UE 5.8 Windows compile/PIE evidence is produced or claimed here; `UE5-RUN-01` remains open.
+
+**Changed**
+- `apps/unreal-runtime/Source/Nannestad/{Nannestad.Build.cs,Private/NweMeshPacket.cpp,Public/NweMeshPacket.h,Private/NweWorldBootstrap.cpp}`.
+- `apps/unreal-runtime/SetupNannestad.ps1`, `apps/unreal-runtime/README.md`.
+- `apps/unreal-runtime/Content/Python/create_nannestad_level.py`.
+- `apps/unreal-runtime/tests/test_unreal_source_contracts.py`.
+- `docs/06-task-queue.md`, `docs/09-unreal-game-plan.md`, `docs/05-worklog.md`.
+- Branch `agent/lumen-unreal-packet-integrity` (draft PR, dependency on #84).
+
+**Next**
+- `UE5-RUN-01` (still the only open P0 gate): run the exact branch on a Windows UE 5.8 machine, capture compile/map/PIE/collision/packet-load/frame evidence, then fold the hardening into the UE5-FOUNDATION merge.

@@ -41,6 +41,10 @@ lighting and disposable runtime realization.
   resolves 15 OSM source heights + 105 guarded DOM-derived presentation heights
   + 15 explicit fallbacks while preserving exact footprint/building identity;
 - collision on terrain/building bootstrap geometry;
+- fail-closed SHA-256 integrity check of every derived mesh packet against the
+  package manifest before decode, using the engine-bundled OpenSSL 1.1.1;
+- setup script installs the `@nwe/schemas-js` Node workspace (RFC 8785
+  `canonicalize`) so the canonical provenance verifier runs on a clean checkout;
 - code-owned third-person character using Epic's Quinn mesh and animation
   content, with keyboard/gamepad movement, jumping and follow camera;
 - Open World template setup script and hash-verified local CC0 PBR material import;
