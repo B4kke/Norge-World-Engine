@@ -539,6 +539,7 @@ Every completed work session appends exactly one entry using this structure:
 - The setup script's Node verifier import previously depended on a pre-existing `node_modules`; a clean checkout would have failed in `SetupNannestad.ps1`.
 
 **Result / evidence**
+- FACT: hosted exact-head CI on PR #86 (`baseline` run `41193934133`, job `124516182278`) is fully green: `pytest -q apps/unreal-runtime/tests` → 32 passed, Preview 1 change-gate PASS, `engine/compiler/tests` → 179 passed, SMIA baseline PASS, world-coordinate/character/network/simulation contracts PASS, cross-language RFC 8785 PASS (`c07d22a6…`), and the real Nannestad package integration is deterministic for `all` and `build` (snapshot `e827b37f`, 25 mesh packets, 105 DOM heights, 15 fallbacks, 819 vegetation instances).
 - FACT: `pytest -q apps/unreal-runtime/tests` → 32 passed (30 pre-existing + 2 new contract tests), Python 3.13 container with `requirements-dev.txt` + `engine/compiler`.
 - FACT: `pytest -q engine/compiler/tests` → 179 passed; `scripts/validate_agent_skills.py` → PASS (22 skills).
 - FACT: without `node_modules/canonicalize` the Node verifier fails with `ERR_MODULE_NOT_FOUND`; `npm install --workspace @nwe/schemas-js --include-workspace-root=false --package-lock=false` exits 0, restores resolution, and `engine/schemas/js/test/canonical.test.mjs` PASS (`expectedSha c07d22a6…`) and `engine/streaming/test_runtime_verifier.mjs` PASS (11 cases, browser parity 11, webcrypto 1).
