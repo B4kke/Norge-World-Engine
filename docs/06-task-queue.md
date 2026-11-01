@@ -36,30 +36,34 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 # P0 — NANNESTAD 1×1 WEB REALISM
 
 ## P0-HYPERREAL-LIDAR-01 — Nannestad LiDAR gold-tile source gate
-**Priority:** 1 — ACTIVE / SOURCE-PROBE IMPLEMENTED  
+**Priority:** 1 — ACTIVE / PUBLIC SOURCE DISCOVERY PASS; LAZ BYTE GATE OPEN  
 **Owner:** FORGE + LUMEN + SENTINEL  
 
-**Goal:** determine from exact source bytes whether open Nannestad LiDAR materially improves roof geometry, canopy/tree candidates and near-field terrain enough to justify a production reconstruction layer.
+**Goal:** determine from exact source bytes whether openly obtainable Nannestad LiDAR materially improves roof geometry, canopy/tree candidates and near-field terrain enough to justify a production reconstruction layer.
 
 **Implemented:**
-- exact accepted tile query for `epsg25832_611000_6677000_1000m` / EPSG:25832 / NN2000 against Kartverket Høydedata `projectMetadata.ashx`;
-- deterministic parser/regressions for list and GeoJSON responses;
-- explicit access handling where `TILGANG=2` is closed and open candidates rank ahead of unknown/closed candidates;
-- provider/network failure is reported as `PROVIDER_UNAVAILABLE`, never as proof of missing LiDAR coverage;
-- historical `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is retained only as a cross-check, not as live acquisition authority;
-- PR CI validates parser/request contracts without making provider availability a normal merge gate;
-- manual `workflow_dispatch` performs the live official metadata query and requires at least one explicitly open candidate.
+- public, key-free source discovery through Kartverket/Geonorge `Høydedata Metadata prosjekt WFS` using exact tile BBOX `611000,6677000,612000,6678000,EPSG:25832`;
+- WFS response is restricted to source fields rather than multi-megabyte project geometry; BBOX result is explicitly classified as **intersection**, not complete tile coverage;
+- deterministic GML parser/regressions and candidate policy for laser `TYPE=1`, `TILGANG`, publication, year and ordered point density;
+- live legacy `projectMetadata.ashx` returned `499: Token Required`; auth/provider errors are now fail-closed and can never become `NO_CANDIDATE`;
+- exact WFS query reported `numberMatched=9` / `numberReturned=9` project footprints intersecting the tile;
+- observed published/open laser overlaps include `Ullensaker Nes Nannestad 2010` (0.7 pkt/m²), `Romeriksåsene 2013` (0.7), `NDH Akershus 5pkt 2015` (5) and `NDH Akershus 2pkt 2015` (2);
+- `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is confirmed as `TILGANG=2` closed and is therefore rejected as the anonymous/open default despite its 5 pkt/m² metadata;
+- current `Romerike laser 2025` / `LACIAK53` is a freshness cross-check only while its project state remains ongoing rather than a delivered open source;
+- fail-closed export request builder for exact polygon/LAZ/EPSG:25832, requiring explicit project, explicit `ProjectProduct`, explicit `CopyEmail` or BAAT user, and explicit `--submit`; operator identity/credentials are redacted from evidence;
+- chunked/NumPy-vectorized LAZ inspector records exact SHA-256, bounds/CRS, point count, exact-tile measured density and LAS class counts for ground/vegetation/buildings;
+- normal PR CI validates source/export/inspection contracts without making provider availability a merge gate; the live WFS probe remains manual-only.
 
-**Current evidence:** local deterministic probe tests PASS (4 cases). Live official exact-tile metadata and LAZ byte acquisition are **not yet claimed PASS**.
+**Current evidence:** public source discovery is proven; exact LAZ bytes are **not yet acquired or admitted**. The provider metadata establishes overlap and access state only. See `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
 
 **Acceptance sequence:**
-1. run the manual live Høydedata metadata gate for the exact tile;
-2. acquire the selected open LAZ source through the official provider path;
-3. SHA-bind the exact source bytes and record project/source metadata;
-4. inspect LAS/LAZ header, coordinate/vertical frame, point count, classes, tile coverage and measured density from bytes;
+1. evaluate the complete public WFS response and select the highest-value explicitly open/published laser overlap;
+2. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it;
+3. make one explicit operator export with a supplied delivery identity; raw LAZ stays outside Git/runtime;
+4. SHA-bind the delivered bytes and inspect LAS header, CRS/vertical frame, point count, exact-tile coverage/density and source classes;
 5. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.
 
-**Truth guard:** metadata saying “5 pkt/m²”, a project name, or a historical report does not prove the exact tile's actual point density, LAS classes, roof reconstructability or individual-tree observations.
+**Truth guard:** WFS overlap, metadata saying “5 pkt/m²”, a project name or a historical report does not prove complete exact-tile coverage, actual delivered density, LAS classes, roof reconstructability or individual-tree observations.
 
 ## P0-HYPERREAL-LIDAR-02 — Gold-tile reconstruction A/B
 **Priority:** 2 — BLOCKED ON `P0-HYPERREAL-LIDAR-01`  
