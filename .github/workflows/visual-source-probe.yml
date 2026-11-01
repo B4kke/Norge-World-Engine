@@ -32,7 +32,10 @@ jobs:
           python -m py_compile tools/visual-data/verify_vegetation_source_sample.py
           python -m py_compile tools/visual-data/compile_vegetation_representative_sample.py
           python -m py_compile tools/visual-data/verify_vegetation_representative_sample.py
+          python -m py_compile tools/visual-data/generate_trellis_asset.py
+          python -m py_compile tools/visual-data/test_generate_trellis_asset.py
           python -m py_compile tools/visual-data/run_visual_source_probes.py
+          python tools/visual-data/test_generate_trellis_asset.py
           python tools/visual-data/test_run_visual_source_probes.py
           python tools/visual-data/test_visual_source_active_dependency_classification.py
 
