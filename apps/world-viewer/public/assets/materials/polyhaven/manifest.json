@@ -1,0 +1,133 @@
+{
+  "schema": "nwe.polyhaven-material-catalog/0.1",
+  "license": "CC0-1.0",
+  "license_url": "https://polyhaven.com/license",
+  "runtime_policy": "same-origin-local-assets-only",
+  "texture_resolution": "1k",
+  "assets": {
+    "terrain": {
+      "asset_id": "forest_ground_04",
+      "source_page": "https://polyhaven.com/a/forest_ground_04",
+      "tile_size_m": 4,
+      "maps": {
+        "diffuse": {
+          "path": "forest_ground_04/forest_ground_04_diff_1k.jpg",
+          "byte_size": 1113899,
+          "md5": "6ad9df4d731a238299806f739a26af83",
+          "sha256": "50a4dda30875020c64385261aa7e00e2155b592302fa6794165f58fae73cbd2c"
+        },
+        "normal_gl": {
+          "path": "forest_ground_04/forest_ground_04_nor_gl_1k.jpg",
+          "byte_size": 1326812,
+          "md5": "a010a0802c2d9a930c6f00d3b1f196d2",
+          "sha256": "9c3a0200e02ce40edffbbf9f5f623ef08ea9b1b7812b556182ec978f88887151"
+        },
+        "normal_dx": {
+          "path": "forest_ground_04/forest_ground_04_nor_dx_1k.jpg",
+          "byte_size": 1323911,
+          "md5": "c6b4962593e905353e66937ad392a4ca",
+          "sha256": "0750ab3a2464b3cb60ae2d894a70d8d32502845ebb9ef3547f261e223d434b9d"
+        },
+        "roughness": {
+          "path": "forest_ground_04/forest_ground_04_rough_1k.jpg",
+          "byte_size": 627507,
+          "md5": "b5c7ba5c16f00261e9a765d52cf7e0ac",
+          "sha256": "89d4d50395eb92824a64132c4bc8a5a09009071e0b325ab66dc3104c7a3090ed"
+        }
+      }
+    },
+    "road_asphalt": {
+      "asset_id": "asphalt_02",
+      "source_page": "https://polyhaven.com/a/asphalt_02",
+      "tile_size_m": 4,
+      "maps": {
+        "diffuse": {
+          "path": "asphalt_02/asphalt_02_diff_1k.jpg",
+          "byte_size": 731707,
+          "md5": "fa19772d4817754c3efab708c651f5a8",
+          "sha256": "1aa5ce99f58a625c71d48cfc3e68b65ca85ccb00f39e045c0a928608a0ea25ed"
+        },
+        "normal_gl": {
+          "path": "asphalt_02/asphalt_02_nor_gl_1k.jpg",
+          "byte_size": 1240122,
+          "md5": "338da8de636ea36133170578cac82e8e",
+          "sha256": "42a1c381b53204e83a982db2864479a30bc127bbdeebb1006f8ee51bff099df3"
+        },
+        "normal_dx": {
+          "path": "asphalt_02/asphalt_02_nor_dx_1k.jpg",
+          "byte_size": 1259681,
+          "md5": "5a2aace5e0fa3b515871228a1caf9d39",
+          "sha256": "789ceaee56f6e85b7e5837e8b0fd472ff3637ec7c72b1002b7b56eaf667d9b8c"
+        },
+        "roughness": {
+          "path": "asphalt_02/asphalt_02_rough_1k.jpg",
+          "byte_size": 544032,
+          "md5": "ec80a2929797c1b3ffc121c4f665585a",
+          "sha256": "70ba3edc65525eb4dc366cf010ca7ae0bd34e0251ff0225c2dad627a873d0712"
+        }
+      }
+    },
+    "building_walls": {
+      "asset_id": "weathered_plank_siding",
+      "source_page": "https://polyhaven.com/a/weathered_plank_siding",
+      "tile_size_m": 4,
+      "maps": {
+        "diffuse": {
+          "path": "weathered_plank_siding/weathered_plank_siding_diff_1k.jpg",
+          "byte_size": 567956,
+          "md5": "90f818fd61602ac7268ee89857e77396",
+          "sha256": "dad0442114f1efd9a25195f2e2ac480693c2a6199f3987f4cfac4002b2820fbd"
+        },
+        "normal_gl": {
+          "path": "weathered_plank_siding/weathered_plank_siding_nor_gl_1k.jpg",
+          "byte_size": 609905,
+          "md5": "e2db9c3a055a85707eb453ee09624cfb",
+          "sha256": "229440bb21992d7f97bbbe03f6488e21cc061119ab3774ad0c30e352c9690a74"
+        },
+        "normal_dx": {
+          "path": "weathered_plank_siding/weathered_plank_siding_nor_dx_1k.jpg",
+          "byte_size": 612683,
+          "md5": "ebb52c8aa39fd4ca644bb821c74f3963",
+          "sha256": "474b15d6bd7ca3b38395bb6816a03037995f94302041f5c11517d66969dd8d5e"
+        },
+        "roughness": {
+          "path": "weathered_plank_siding/weathered_plank_siding_rough_1k.jpg",
+          "byte_size": 381425,
+          "md5": "1473bc74c994faf339fc69009d90bb94",
+          "sha256": "1f4707c748102d1faf275d35dea798e2e51dcc0d425ddd2121643b08d2b3af3e"
+        }
+      }
+    },
+    "building_roofs": {
+      "asset_id": "grey_roof_01",
+      "source_page": "https://polyhaven.com/a/grey_roof_01",
+      "tile_size_m": 4,
+      "maps": {
+        "diffuse": {
+          "path": "grey_roof_01/grey_roof_01_diff_1k.jpg",
+          "byte_size": 419760,
+          "md5": "f58db8b990cc7ad0405ad86d6427b923",
+          "sha256": "d988fc8e8dcf3d817d15d84e1cb1d9131095184c74c5f7b18b6491103489c2bd"
+        },
+        "normal_gl": {
+          "path": "grey_roof_01/grey_roof_01_nor_gl_1k.jpg",
+          "byte_size": 623013,
+          "md5": "dc0fd84b608c1329fe60a6f304a680eb",
+          "sha256": "2d37930361e93495706b43b9406744c43c9c86eb1b813562e787f9ead2c429cd"
+        },
+        "normal_dx": {
+          "path": "grey_roof_01/grey_roof_01_nor_dx_1k.jpg",
+          "byte_size": 627664,
+          "md5": "de3d5b5b9b50e815edd169d3124f8bf7",
+          "sha256": "8d7d83ef700eb35ecc8cef876b6117f06dde2ba5bda364b7016221735e306392"
+        },
+        "roughness": {
+          "path": "grey_roof_01/grey_roof_01_rough_1k.jpg",
+          "byte_size": 404455,
+          "md5": "06b200f384bb438da3612b39432cd2a7",
+          "sha256": "f01f3377de6da22beecd69bc54b498b1bbf81184504b90589242f51a0488f041"
+        }
+      }
+    }
+  }
+}

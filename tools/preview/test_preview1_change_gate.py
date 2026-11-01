@@ -54,6 +54,7 @@ def main() -> None:
 
         assert run("pull_request", "synchronize", base, head, cwd=repo)["heavy"] == "true"
         assert run("pull_request", "synchronize", code, head, cwd=repo)["heavy"] == "false"
+        assert run("pull_request", "synchronize", code, head, base, cwd=repo)["heavy"] == "true"
 
         streaming = repo / "engine/streaming/runtime.mjs"
         streaming.parent.mkdir(parents=True)
@@ -68,6 +69,7 @@ def main() -> None:
         assert run("pull_request", "synchronize", streaming_head, compiler_head, cwd=repo)["heavy"] == "true"
 
         assert run("pull_request", "synchronize", "", compiler_head, cwd=repo)["heavy"] == "true"
+        assert run("pull_request", "synchronize", head, compiler_head, base, cwd=repo)["heavy"] == "true"
         assert run("pull_request", "opened", "", "", cwd=repo)["heavy"] == "true"
         assert run("push", "", "", "", cwd=repo)["heavy"] == "true"
 

@@ -1,0 +1,47 @@
+name: nhm-dom-source-probe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/geo/probe_nhm_dom_wcs.py'
+      - '.github/workflows/nhm-dom-source-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Syntax gate
+        run: python -m py_compile tools/geo/probe_nhm_dom_wcs.py
+
+      - name: Probe official Kartverket NHM DOM WCS
+        run: |
+          python tools/geo/probe_nhm_dom_wcs.py --output /tmp/nwe-nhm-dom-source-probe.json
+          python -m json.tool /tmp/nwe-nhm-dom-source-probe.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-nhm-dom-source-probe.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nhm-dom-wcs-source-probe/0.1'
+          assert value['status'] == 'PASS'
+          assert value['publisher'] == 'Statens kartverk'
+          assert value['horizontal_crs'] == 'EPSG:25832'
+          assert 'dom' in value['coverage'].lower()
+          assert '25832' in value['coverage']
+          assert value['truth'] == 'source-service-admission-only-no-dom-raster-downloaded'
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nhm-dom-source-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/nwe-nhm-dom-source-probe.json
+          if-no-files-found: error
+          retention-days: 14

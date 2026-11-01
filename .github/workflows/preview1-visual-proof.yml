@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/nwe_unreal_pipeline.py'
+      - 'apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs'
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
+      - 'apps/unreal-runtime/requirements-authoring.txt'
+      - 'engine/streaming/runtime_verifier*.mjs'
       - '.github/workflows/preview1-visual-proof.yml'
   workflow_dispatch:
 
@@ -15,8 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout exact commit
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -26,22 +34,69 @@ jobs:
       - name: Install World Viewer dependencies
         run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
 
+      - name: Set up Python for source-safe visual authoring
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install pinned imagery authoring dependencies
+        run: python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+
       - name: Build exact World Viewer
         run: npm run build --workspace @nwe/world-viewer
+
+      - name: Materialize and verify pinned runtime snapshot
+        run: |
+          rm -rf apps/unreal-runtime/Saved/NWE/Snapshot
+          python apps/unreal-runtime/Tools/nwe_unreal_pipeline.py fetch \
+            --snapshot-dir apps/unreal-runtime/Saved/NWE/Snapshot
+          node apps/unreal-runtime/Tools/verify_runtime_snapshot.mjs \
+            apps/unreal-runtime/Saved/NWE/Snapshot
+
+      - name: Materialize pinned legal Sentinel-2 ground color
+        run: |
+          python apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py \
+            --item-id S2B_T32VPM_20260723T104808_L2A \
+            --refresh \
+            > /tmp/nwe-sentinel-ground.json
+          python -m json.tool /tmp/nwe-sentinel-ground.json
+          mkdir -p apps/unreal-runtime/Saved/NWE/Snapshot/ground
+          cp apps/unreal-runtime/Saved/NWE/PrivateVisual/ground/ground-imagery.json \
+            apps/unreal-runtime/Saved/NWE/Snapshot/ground/ground-imagery.json
+          cp apps/unreal-runtime/Saved/NWE/PrivateVisual/ground/nannestad_ground_color.png \
+            apps/unreal-runtime/Saved/NWE/Snapshot/ground/nannestad_ground_color.png
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('apps/unreal-runtime/Saved/NWE/Snapshot/ground')
+          manifest = json.loads((root / 'ground-imagery.json').read_text())
+          texture = root / manifest['texture']['path']
+          assert manifest['schema'] == 'nwe.private-ground-imagery/0.1'
+          assert manifest['tile_id'] == 'epsg25832_611000_6677000_1000m'
+          assert manifest['horizontal_crs'] == 'EPSG:25832'
+          assert manifest['source']['redistribution'] == 'allowed-by-license'
+          assert manifest['source']['stac_item_id'] == 'S2B_T32VPM_20260723T104808_L2A'
+          assert manifest['source']['native_ground_sample_distance_m'] == 10.0
+          assert manifest['transform']['geometry_displacement'] is False
+          assert hashlib.sha256(texture.read_bytes()).hexdigest() == manifest['texture']['sha256']
+          assert texture.stat().st_size == manifest['texture']['byte_size']
+          PY
 
       - name: Capture REAL WORLD READY screenshot
         run: |
           mkdir -p artifacts
           node apps/world-viewer/capture_preview1_screenshot.mjs \
             --dist-root apps/world-viewer/dist \
-            --manifest-url https://raw.githubusercontent.com/B4kke/Norge-World-Engine/preview-runtime/nannestad-preview-1/manifest.json \
+            --runtime-root apps/unreal-runtime/Saved/NWE/Snapshot \
+            --ground-imagery-manifest ground/ground-imagery.json \
             --output artifacts/preview1-ground-ready.png \
             --timeout-ms 90000
 
       - name: Upload exact visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: preview1-visual-proof-${{ github.sha }}
+          name: preview1-visual-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/preview1-ground-ready.png
           if-no-files-found: error
           retention-days: 14

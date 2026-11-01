@@ -58,10 +58,11 @@ export async function runPreview1CharacterMovementProbe({ runtime, renderer, ani
     throw new Error(`CHARACTER_MOVEMENT_RENDER_POSE_DIVERGED: ${JSON.stringify({ derived: derivedPose.position, rendered: renderedPose.position })}`);
   }
 
+  const targetHeight = followCamera?.mode === 'first-person' ? 1.7 : FOLLOW_TARGET_HEIGHT_M;
   const cameraTarget = followCamera?.target;
   if (!Array.isArray(cameraTarget) || cameraTarget.length !== 3
     || Math.abs(Number(cameraTarget[0]) - Number(derivedPose.position[0])) > 1e-5
-    || Math.abs(Number(cameraTarget[1]) - (Number(derivedPose.position[1]) + FOLLOW_TARGET_HEIGHT_M)) > 1e-5
+    || Math.abs(Number(cameraTarget[1]) - (Number(derivedPose.position[1]) + targetHeight)) > 1e-5
     || Math.abs(Number(cameraTarget[2]) - Number(derivedPose.position[2])) > 1e-5) {
     throw new Error(`CHARACTER_MOVEMENT_CAMERA_FOLLOW_FAILED: ${JSON.stringify({ cameraTarget, derived: [...derivedPose.position] })}`);
   }
@@ -77,6 +78,6 @@ export async function runPreview1CharacterMovementProbe({ runtime, renderer, ani
     idle_state_observed_after_stop: idleRenderer.state,
     renderer_pose_matches_derived: true,
     presentation_ground_lift_m: 0.02,
-    camera_follow: Object.freeze({ status: 'PASS', target: Object.freeze([...cameraTarget]), target_height_m: FOLLOW_TARGET_HEIGHT_M }),
+    camera_follow: Object.freeze({ status: 'PASS', target: Object.freeze([...cameraTarget]), target_height_m: targetHeight }),
   });
 }

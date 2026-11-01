@@ -9,6 +9,59 @@ from nwe_compiler.acquisition import acquire_source, nvdb_contract, osm_contract
 from nwe_compiler.vector_artifacts import compile_building_artifact, compile_road_artifact, persist_compiled_artifact
 
 
+BUILDING_SEMANTIC_FIELDS = (
+    "roof_shape",
+    "roof_height",
+    "roof_levels",
+    "roof_direction",
+    "roof_orientation",
+    "roof_material",
+    "roof_colour",
+    "building_material",
+    "building_colour",
+)
+
+
+def building_semantic_stats(artifact_payload: dict) -> dict:
+    features = artifact_payload.get("features")
+    if not isinstance(features, list):
+        raise ValueError("building artifact lacks features for semantic stats")
+    field_counts = {
+        field: sum(
+            1
+            for feature in features
+            if isinstance(feature, dict) and feature.get(field) not in (None, "")
+        )
+        for field in BUILDING_SEMANTIC_FIELDS
+    }
+    building_types: dict[str, int] = {}
+    source_height_count = 0
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        building_type = str(feature.get("building") or "yes")
+        building_types[building_type] = building_types.get(building_type, 0) + 1
+        if feature.get("height_m") is not None and feature.get("height_source") != "unresolved":
+            source_height_count += 1
+    roof_fields = ("roof_shape", "roof_height", "roof_levels", "roof_direction", "roof_orientation", "roof_material", "roof_colour")
+    surface_fields = ("roof_material", "roof_colour", "building_material", "building_colour")
+    return {
+        "feature_count": len(features),
+        "source_height_count": source_height_count,
+        "unresolved_height_count": len(features) - source_height_count,
+        "features_with_any_roof_semantics": sum(
+            1 for feature in features
+            if isinstance(feature, dict) and any(feature.get(field) not in (None, "") for field in roof_fields)
+        ),
+        "features_with_any_surface_semantics": sum(
+            1 for feature in features
+            if isinstance(feature, dict) and any(feature.get(field) not in (None, "") for field in surface_fields)
+        ),
+        "field_counts": field_counts,
+        "building_type_counts": {key: building_types[key] for key in sorted(building_types)},
+    }
+
+
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(description="Acquire/cache and compile deterministic Nannestad vector artifacts")
     command.add_argument("--cache-root", type=Path, default=Path("data"))
@@ -28,7 +81,7 @@ def _one(source: str, args) -> dict:
     t2 = perf_counter()
     persisted = persist_compiled_artifact(compiled, args.cache_root)
     t3 = perf_counter()
-    return {
+    result = {
         "source": source,
         "request_url": contract.request_url,
         "raw_cache_hit": acquired.cache_hit,
@@ -49,6 +102,9 @@ def _one(source: str, args) -> dict:
             "total": round((t3 - t0) * 1000, 3),
         },
     }
+    if source == "buildings":
+        result["semantic_stats"] = building_semantic_stats(persisted.artifact_payload)
+    return result
 
 
 def main() -> int:

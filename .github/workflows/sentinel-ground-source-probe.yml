@@ -1,0 +1,58 @@
+name: sentinel-ground-source-probe
+
+on:
+  pull_request:
+    paths:
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/tests/test_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/requirements-authoring.txt'
+      - '.github/workflows/sentinel-ground-source-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install pinned authoring geospatial dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
+          python -m pip install --disable-pip-version-check pytest==9.1.1
+
+      - name: Unit regressions
+        run: pytest -q apps/unreal-runtime/tests/test_sentinel_ground_imagery.py
+
+      - name: Probe real Earth Search Sentinel-2 source metadata
+        run: |
+          python apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py \
+            --probe-only \
+            --max-cloud-percent 20 \
+            > /tmp/nwe-sentinel-ground-source-probe.json
+          python -m json.tool /tmp/nwe-sentinel-ground-source-probe.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-sentinel-ground-source-probe.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.sentinel-ground-source-probe/0.1'
+          assert value['status'] == 'PASS'
+          assert value['all_asset_hrefs_https'] is True
+          assert value['asset_mode'] in {'visual', 'reflectance-rgb'}
+          assert value['stac_collection'] in {'sentinel-2-c1-l2a', 'sentinel-2-l2a'}
+          assert 0 <= value['eo_cloud_cover_percent'] <= 20
+          assert value['truth'] == 'metadata-source-admission-only-no-imagery-bytes-downloaded'
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-ground-source-probe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/nwe-sentinel-ground-source-probe.json
+          if-no-files-found: error
+          retention-days: 14

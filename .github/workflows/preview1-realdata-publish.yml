@@ -58,7 +58,8 @@ jobs:
             "${{ github.event_name }}" \
             "${{ github.event.action }}" \
             "${{ github.event.before }}" \
-            "${{ github.event.after }}")"
+            "${{ github.event.pull_request.head.sha || github.sha }}" \
+            "${{ github.event.pull_request.base.sha }}")"
           printf '%s\n' "$decision"
           printf '%s\n' "$decision" >> "$GITHUB_OUTPUT"
 
@@ -67,8 +68,12 @@ jobs:
     if: needs.change-gate.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      NWE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -84,7 +89,7 @@ jobs:
           python tools/preview/stage_preview1_snapshot.py \
             --cache-root /tmp/nwe-preview-cache \
             --output /tmp/nwe-preview \
-            --commit-sha "$GITHUB_SHA" \
+            --commit-sha "$NWE_SOURCE_SHA" \
             | tee /tmp/nwe-preview-stage.json
           python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
           du -ah /tmp/nwe-preview | sort -h | tail -20
@@ -141,7 +146,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: preview1-browser-proof-${{ github.sha }}
+          name: preview1-browser-proof-${{ github.event.pull_request.head.sha || github.sha }}
           path: /tmp/nwe-preview1-browser-proof.json
           if-no-files-found: error
           retention-days: 7
@@ -169,6 +174,6 @@ jobs:
           This is not the selected long-term runtime object-store/CDN architecture.
           TXT
           git add README.md nannestad-preview-1
-          git commit -m "Publish Nannestad Preview 1 runtime snapshot ${GITHUB_SHA}"
+          git commit -m "Publish Nannestad Preview 1 runtime snapshot ${NWE_SOURCE_SHA}"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force origin HEAD:preview-runtime

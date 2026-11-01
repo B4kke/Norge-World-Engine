@@ -136,6 +136,8 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
                 "compiled_count": item["compiled_count"],
             }
         )
+        if "semantic_stats" in item:
+            layer["semantic_stats"] = item["semantic_stats"]
         layers[source] = layer
 
     header = terrain_header
