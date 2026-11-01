@@ -30,19 +30,19 @@ const buildingsArtifact = {
   ],
 };
 
-const layer = createThreeBuildingFacadeLayer({
-  buildingsArtifact,
-  terrainPayload,
-  profile: { id: 'high' },
-});
-assert.equal(layer.stats.schema, 'nwe.three-building-facade-layer/0.1');
+const layer = createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPayload, profile: { id: 'high' } });
+assert.equal(layer.stats.schema, 'nwe.three-building-facade-layer/0.2');
 assert.equal(layer.stats.source_building_count, 1);
 assert.ok(layer.stats.rendered_window_count > 0);
+assert.equal(layer.stats.rendered_window_frame_count, layer.stats.rendered_window_count);
 assert.equal(layer.stats.rendered_door_count, 1);
-assert.equal(layer.stats.draw_calls, 2);
+assert.equal(layer.stats.draw_calls, 3);
+assert.match(layer.stats.material_model.glazing, /reflective/);
 assert.match(layer.stats.semantics, /renderer-only/);
 assert.match(layer.stats.truth_guard, /not source-backed/);
-assert.equal(layer.root.children.length, 2);
+assert.equal(layer.root.children.length, 3);
+assert.ok(layer.root.children.some((child) => child.name === 'NWE_Procedural_Window_Glass' && child.material?.isMeshPhysicalMaterial));
+assert.ok(layer.root.children.some((child) => child.name === 'NWE_Procedural_Window_Frames'));
 for (const child of layer.root.children) assert.equal(child.isInstancedMesh, true);
 layer.dispose();
 assert.equal(layer.root.parent, null);

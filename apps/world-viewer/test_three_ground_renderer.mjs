@@ -11,7 +11,7 @@ const facadeLayer = readFileSync(new URL('./src/threeBuildingFacadeLayer.mjs', i
 const adapter = readFileSync(new URL('./src/preview1Renderer.mjs', import.meta.url), 'utf8');
 const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
-assert.equal(packageJson.dependencies.three, '0.185.0', 'Three.js version must be pinned');
+assert.equal(packageJson.dependencies.three, '0.187.0', 'Three.js version must be pinned to the latest verified release');
 assert.match(renderer, /from 'three\/webgpu'/, 'ground renderer must use the Three WebGPU-capable build');
 assert.match(renderer, /new THREE\.WebGPURenderer/, 'ground renderer must instantiate Three WebGPURenderer');
 assert.match(renderer, /forceWebGL/, 'ground renderer must retain an explicit WebGL2 fallback\/baseline path');
@@ -41,7 +41,7 @@ assert.match(renderer, /draw_calls_per_frame:\s*colorDrawCalls/, 'draw-call stat
 assert.match(renderer, /shadow_draw_candidates:\s*shadowDrawCandidates/, 'shadow pass cost must be visible in runtime stats');
 assert.match(renderer, /draw_call_semantics:/, 'draw-call stats must explain shadow-pass semantics');
 assert.match(renderer, /camera\.position\.set\(0, centerGround \+ 1\.7, 14\)/, 'camera must start at human eye height over sampled ground');
-assert.match(renderer, /renderer_adapter:\s*'three-ground\/0\.5'/, 'runtime stats must identify the facade-and-street-detail capable Three renderer adapter');
+assert.match(renderer, /renderer_adapter:\s*'three-ground\/0\.5'/, 'runtime stats must identify the current Three renderer adapter');
 assert.match(renderer, /terrain_material:\s*\{/, 'runtime stats must expose terrain material evidence');
 assert.match(renderer, /renderer_visual_style:/, 'runtime stats must expose visual style/shadow evidence');
 assert.match(renderer, /web_realism:\s*realismEvidence/, 'runtime stats must expose realism transport/enrichment evidence');
@@ -54,8 +54,12 @@ assert.match(renderer, /createThreeBuildingFacadeLayer/, 'renderer must compose 
 assert.match(vegetationLayer, /new THREE\.InstancedMesh/, 'vegetation must use instancing rather than per-tree draw calls');
 assert.match(vegetationLayer, /near_field_authored_asset:\s*false/, 'procedural vegetation proxy must remain explicit instead of claiming authored photoreal assets');
 assert.match(streetDetailLayer, /new THREE\.InstancedMesh/, 'street point objects must use instancing');
+assert.match(streetDetailLayer, /source_sign_support_count/, 'street detail must consume admitted sign support semantics when available');
+assert.match(streetDetailLayer, /source_thickness_marking_parts/, 'street detail must expose admitted marking thickness use');
+assert.match(streetDetailLayer, /sign_face_semantics:/, 'street detail must refuse invented traffic symbols');
 assert.match(streetDetailLayer, /truth_guard:/, 'street detail must expose its source-vs-presentation truth guard');
-assert.match(facadeLayer, /new THREE\.InstancedMesh/, 'facade detail must be bounded through instancing');
+assert.match(facadeLayer, /new THREE\.MeshPhysicalMaterial/, 'facade glazing must use a physically based reflective presentation material');
+assert.match(facadeLayer, /NWE_Procedural_Window_Frames/, 'facade detail must include bounded frame geometry instead of flat panes only');
 assert.match(facadeLayer, /truth_guard:/, 'facade detail must explicitly deny source-backed window/door truth');
 assert.match(renderer, /lighting\.updateAnchor\(\[\.\.\.pose\.position\]\)/, 'bounded sun/shadow anchor must follow the derived character pose');
 assert.match(renderer, /configureObjectShadowRole\(humanoid\.root/, 'humanoid must participate in the bounded shadow pass');

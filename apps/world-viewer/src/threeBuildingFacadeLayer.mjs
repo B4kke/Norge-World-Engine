@@ -33,11 +33,11 @@ function sampleTerrain(payload, easting, northing) {
 
 function profileBudgets(profile) {
   switch (profile?.id) {
-    case 'low': return { windows: 750, doors: 80 };
-    case 'balanced': return { windows: 1600, doors: 110 };
-    case 'high': return { windows: 3000, doors: 160 };
-    case 'ultra': return { windows: 4800, doors: 200 };
-    default: return { windows: 1600, doors: 110 };
+    case 'low': return { windows: 650, doors: 70 };
+    case 'balanced': return { windows: 1450, doors: 105 };
+    case 'high': return { windows: 2700, doors: 155 };
+    case 'ultra': return { windows: 4300, doors: 195 };
+    default: return { windows: 1450, doors: 105 };
   }
 }
 
@@ -142,6 +142,36 @@ function makeInstanced(root, geometry, material, transforms, name, shadow) {
   return mesh;
 }
 
+function windowFrameGeometry() {
+  const outerHalf = 0.5;
+  const innerHalfX = 0.405;
+  const innerHalfY = 0.39;
+  const shape = new THREE.Shape();
+  shape.moveTo(-outerHalf, -outerHalf);
+  shape.lineTo(outerHalf, -outerHalf);
+  shape.lineTo(outerHalf, outerHalf);
+  shape.lineTo(-outerHalf, outerHalf);
+  shape.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-innerHalfX, -innerHalfY);
+  hole.lineTo(-innerHalfX, innerHalfY);
+  hole.lineTo(innerHalfX, innerHalfY);
+  hole.lineTo(innerHalfX, -innerHalfY);
+  hole.closePath();
+  shape.holes.push(hole);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.07,
+    steps: 1,
+    bevelEnabled: true,
+    bevelThickness: 0.006,
+    bevelSize: 0.008,
+    bevelSegments: 1,
+  });
+  geometry.translate(0, 0, -0.035);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPayload, profile } = {}) {
   if (!Array.isArray(buildingsArtifact?.features)) throw new TypeError('BUILDING_FACADE_FEATURES_REQUIRED');
   if (!terrainPayload?.artifact?.header || !(terrainPayload?.elevations instanceof Float32Array)) throw new TypeError('BUILDING_FACADE_TERRAIN_REQUIRED');
@@ -155,18 +185,24 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
 
   const root = new THREE.Group();
   root.name = 'NWE_Building_Facade_Detail';
-  const windowGeometry = new THREE.BoxGeometry(1, 1, 0.055);
+  const windowPaneGeometry = new THREE.BoxGeometry(1, 1, 0.035);
+  const windowFrame = windowFrameGeometry();
   const doorGeometry = new THREE.BoxGeometry(1, 1, 0.075);
-  const windowMaterial = new THREE.MeshStandardMaterial({ color: 0x30434a, roughness: 0.42, metalness: 0.08 });
-  const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x594333, roughness: 0.82, metalness: 0 });
-  const windowMesh = makeInstanced(root, windowGeometry, windowMaterial, windowTransforms, 'NWE_Procedural_Windows', false);
+  const windowGlassMaterial = new THREE.MeshPhysicalMaterial({ color: 0x263c46, roughness: 0.16, metalness: 0.08, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 1.15 });
+  const windowFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x353b3c, roughness: 0.5, metalness: 0.28 });
+  const doorMaterial = new THREE.MeshPhysicalMaterial({ color: 0x5b4432, roughness: 0.72, metalness: 0.02, clearcoat: 0.12, clearcoatRoughness: 0.55 });
+
+  const windowPaneMesh = makeInstanced(root, windowPaneGeometry, windowGlassMaterial, windowTransforms, 'NWE_Procedural_Window_Glass', false);
+  const windowFrameMesh = makeInstanced(root, windowFrame, windowFrameMaterial, windowTransforms, 'NWE_Procedural_Window_Frames', true);
   const doorMesh = makeInstanced(root, doorGeometry, doorMaterial, doorTransforms, 'NWE_Procedural_Doors', true);
 
   function dispose() {
     root.removeFromParent();
-    windowGeometry.dispose();
+    windowPaneGeometry.dispose();
+    windowFrame.dispose();
     doorGeometry.dispose();
-    windowMaterial.dispose();
+    windowGlassMaterial.dispose();
+    windowFrameMaterial.dispose();
     doorMaterial.dispose();
   }
 
@@ -174,15 +210,21 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
     root,
     dispose,
     stats: Object.freeze({
-      schema: 'nwe.three-building-facade-layer/0.1',
+      schema: 'nwe.three-building-facade-layer/0.2',
       source_building_count: buildingsArtifact.features.length,
       rendered_window_count: windowTransforms.length,
+      rendered_window_frame_count: windowTransforms.length,
       rendered_door_count: doorTransforms.length,
-      draw_calls: Number(Boolean(windowMesh)) + Number(Boolean(doorMesh)),
+      draw_calls: Number(Boolean(windowPaneMesh)) + Number(Boolean(windowFrameMesh)) + Number(Boolean(doorMesh)),
       profile: profile?.id ?? 'unknown',
       budgets: Object.freeze({ ...budgets }),
+      material_model: Object.freeze({
+        glazing: 'clearcoated-dark-reflective-presentation-glass-no-interior-transmission',
+        frames: 'bounded-instanced-metallic-frame',
+        doors: 'clearcoated-painted-wood-like-presentation',
+      }),
       semantics: 'deterministic-renderer-only-facade-detail-over-source-footprints-and-best-available-building-height',
-      truth_guard: 'window and door positions/counts/dimensions are not source-backed and must never be presented as observed Nannestad facade truth',
+      truth_guard: 'window and door positions/counts/dimensions/materials are not source-backed and must never be presented as observed Nannestad facade truth',
     }),
   });
 }

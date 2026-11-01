@@ -130,7 +130,30 @@ function markingColor(feature) {
 function markingWidth(feature) {
   const sourceWidth = finite(feature?.properties?.['Bredde, enkeltlinje'], Number.NaN);
   if (Number.isFinite(sourceWidth) && sourceWidth >= 0.05 && sourceWidth <= 1) return { width: sourceWidth, source: true };
+  const transverseWidth = finite(feature?.properties?.Bredde, Number.NaN);
+  if (feature?.source_type_id === TYPE.MARKING_TRANSVERSE && Number.isFinite(transverseWidth) && transverseWidth >= 0.05 && transverseWidth <= 6) {
+    return { width: Math.min(0.5, transverseWidth), source: true };
+  }
   return { width: feature.source_type_id === TYPE.MARKING_TRANSVERSE ? 0.3 : 0.1, source: false };
+}
+
+function markingMaterialKind(feature) {
+  const material = String(feature?.properties?.Materialtype ?? '').toLowerCase();
+  return material.includes('plast') ? 'plastic' : 'paint';
+}
+
+function markingThickness(feature) {
+  const mm = finite(feature?.properties?.Tykkelse, Number.NaN);
+  if (Number.isFinite(mm) && mm >= 0.5 && mm <= 20) return { meters: mm / 1000, source: true };
+  return { meters: markingMaterialKind(feature) === 'plastic' ? 0.003 : 0.0015, source: false };
+}
+
+function markingLift(feature) {
+  const thickness = markingThickness(feature);
+  return {
+    lift: Math.max(0.0035, Math.min(0.012, thickness.meters * 0.85 + 0.0015)),
+    sourceThickness: thickness.source,
+  };
 }
 
 function isDashed(feature) {
@@ -177,6 +200,61 @@ function addInstanced(root, geometry, material, count, name, disposables) {
   return mesh;
 }
 
+function signSupportProfile(feature) {
+  const raw = String(feature?.properties?.Oppsettingsutstyr ?? '').toLowerCase();
+  if (raw.includes('gittermast')) return { id: 'lattice', diameterM: 0.22, segments: 4, source: true };
+  if (raw.includes('søyle') && raw.includes('150')) return { id: 'column-150', diameterM: 0.15, segments: 8, source: true };
+  if (raw.includes('søyle') && raw.includes('120')) return { id: 'column-120', diameterM: 0.12, segments: 8, source: true };
+  if (raw.includes('88,9') || raw.includes('88.9')) return { id: 'pole-88.9', diameterM: 0.0889, segments: 12, source: true };
+  if (raw.includes('60,3') || raw.includes('60.3')) return { id: 'pole-60.3', diameterM: 0.0603, segments: 12, source: true };
+  if (raw.includes('lysmast')) return { id: 'light-mast-support', diameterM: 0.12, segments: 12, source: true };
+  return { id: 'generic-pole', diameterM: 0.0603, segments: 10, source: false };
+}
+
+function signMountHeight(feature) {
+  const source = finite(feature?.properties?.['Høyde over vegkant'], Number.NaN);
+  if (Number.isFinite(source) && source >= 1.2 && source <= 6) return { bottomM: source, source: true };
+  return { bottomM: 1.75, source: false };
+}
+
+function roundedRectangleGeometry(width = 0.62, height = 0.62, radius = 0.055, depth = 0.038) {
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const r = Math.min(radius, halfW, halfH);
+  const shape = new THREE.Shape();
+  shape.moveTo(-halfW + r, -halfH);
+  shape.lineTo(halfW - r, -halfH);
+  shape.quadraticCurveTo(halfW, -halfH, halfW, -halfH + r);
+  shape.lineTo(halfW, halfH - r);
+  shape.quadraticCurveTo(halfW, halfH, halfW - r, halfH);
+  shape.lineTo(-halfW + r, halfH);
+  shape.quadraticCurveTo(-halfW, halfH, -halfW, halfH - r);
+  shape.lineTo(-halfW, -halfH + r);
+  shape.quadraticCurveTo(-halfW, -halfH, -halfW + r, -halfH);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    steps: 1,
+    bevelEnabled: true,
+    bevelThickness: 0.004,
+    bevelSize: 0.006,
+    bevelSegments: 1,
+    curveSegments: 4,
+  });
+  geometry.translate(0, 0, -depth / 2);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function groupBy(values, keyFn) {
+  const groups = new Map();
+  for (const value of values) {
+    const key = keyFn(value);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(value);
+  }
+  return groups;
+}
+
 export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile } = {}) {
   if (artifact?.schema !== 'nwe.nvdb-street-detail-artifact/0.1-candidate') throw new TypeError('STREET_DETAIL_ARTIFACT_REQUIRED');
   if (artifact?.tile_id !== terrainPayload?.artifact?.header?.tile_id) throw new Error('STREET_DETAIL_TILE_MISMATCH');
@@ -185,11 +263,20 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
   root.name = 'NWE_NVDB_Street_Detail';
   const disposables = { geometries: new Set(), materials: new Set() };
   const buckets = {
-    white: createBucket(), yellow: createBucket(), kerb: createBucket(), sidewalk: createBucket(), ditch: createBucket(), guardrail: createBucket(),
+    whitePaint: createBucket(),
+    whitePlastic: createBucket(),
+    yellowPaint: createBucket(),
+    yellowPlastic: createBucket(),
+    kerb: createBucket(),
+    sidewalk: createBucket(),
+    ditch: createBucket(),
+    guardrail: createBucket(),
   };
   let sourceWidthMarkings = 0;
   let fallbackWidthMarkings = 0;
+  let sourceThicknessMarkings = 0;
   let skippedUnsupported = 0;
+  const markingMaterialParts = { paint: 0, plastic: 0 };
 
   const signFeatures = [];
   const mastFeatures = [];
@@ -207,56 +294,116 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       continue;
     }
     if (feature.geometry_type !== 'line') { skippedUnsupported += 1; continue; }
-    const lift = (typeId === TYPE.MARKING_LONGITUDINAL || typeId === TYPE.MARKING_TRANSVERSE) ? 0.085
-      : typeId === TYPE.KERB ? 0.07
-        : typeId === TYPE.SIDEWALK ? 0.04 : 0.025;
-    const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight, lift));
+
     if (typeId === TYPE.MARKING_LONGITUDINAL || typeId === TYPE.MARKING_TRANSVERSE) {
       const width = markingWidth(feature);
+      const materialKind = markingMaterialKind(feature);
+      const lift = markingLift(feature);
       if (width.source) sourceWidthMarkings += 1; else fallbackWidthMarkings += 1;
-      const bucket = buckets[markingColor(feature)];
-      if (isDashed(feature)) appendDashed(bucket, points, width.width);
-      else appendContinuous(bucket, points, width.width);
-    } else if (typeId === TYPE.KERB) appendContinuous(buckets.kerb, points, 0.18);
+      if (lift.sourceThickness) sourceThicknessMarkings += 1;
+      markingMaterialParts[materialKind] += 1;
+      const color = markingColor(feature);
+      const bucketName = `${color}${materialKind === 'plastic' ? 'Plastic' : 'Paint'}`;
+      const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight, lift.lift));
+      if (isDashed(feature)) appendDashed(buckets[bucketName], points, width.width);
+      else appendContinuous(buckets[bucketName], points, width.width);
+      continue;
+    }
+
+    const lift = typeId === TYPE.KERB ? 0.07 : typeId === TYPE.SIDEWALK ? 0.04 : 0.025;
+    const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight, lift));
+    if (typeId === TYPE.KERB) appendContinuous(buckets.kerb, points, 0.18);
     else if (typeId === TYPE.SIDEWALK || typeId === TYPE.BIKE_LANE) appendContinuous(buckets.sidewalk, points, typeId === TYPE.SIDEWALK ? 1.5 : 1.2);
     else if (typeId === TYPE.DITCH) appendContinuous(buckets.ditch, points, 0.45);
     else if (typeId === TYPE.GUARDRAIL) appendContinuous(buckets.guardrail, points, 0.12);
     else skippedUnsupported += 1;
   }
 
+  const markingBase = { metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 };
   const lineMaterials = {
-    white: new THREE.MeshStandardMaterial({ color: 0xe8e8df, roughness: 0.78, metalness: 0 }),
-    yellow: new THREE.MeshStandardMaterial({ color: 0xe8c84d, roughness: 0.8, metalness: 0 }),
+    whitePaint: new THREE.MeshStandardMaterial({ ...markingBase, color: 0xeeeade, roughness: 0.68 }),
+    whitePlastic: new THREE.MeshPhysicalMaterial({ ...markingBase, color: 0xf1eee4, roughness: 0.44, clearcoat: 0.2, clearcoatRoughness: 0.42 }),
+    yellowPaint: new THREE.MeshStandardMaterial({ ...markingBase, color: 0xe6c338, roughness: 0.7 }),
+    yellowPlastic: new THREE.MeshPhysicalMaterial({ ...markingBase, color: 0xe9c93f, roughness: 0.46, clearcoat: 0.18, clearcoatRoughness: 0.45 }),
     kerb: new THREE.MeshStandardMaterial({ color: 0xa7a7a2, roughness: 0.92, metalness: 0 }),
     sidewalk: new THREE.MeshStandardMaterial({ color: 0x676964, roughness: 0.96, metalness: 0 }),
     ditch: new THREE.MeshStandardMaterial({ color: 0x385337, roughness: 1, metalness: 0 }),
-    guardrail: new THREE.MeshStandardMaterial({ color: 0x9ca1a3, roughness: 0.55, metalness: 0.45 }),
+    guardrail: new THREE.MeshStandardMaterial({ color: 0xaab0b2, roughness: 0.42, metalness: 0.58 }),
   };
-  const lineMeshes = Object.entries(buckets).map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables, `NWE_Street_${name}`)).filter(Boolean);
+  const lineMeshes = Object.entries(buckets)
+    .map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables, `NWE_Street_${name}`))
+    .filter(Boolean);
 
   const mastPositionKeys = new Set(mastFeatures.map((feature) => roundedPointKey(feature.point)));
   const uniqueLightFeatures = lightFeatures.filter((feature) => !mastPositionKeys.has(roundedPointKey(feature.point)));
-  const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x72797b, roughness: 0.55, metalness: 0.45 });
-  const darkMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x3c4143, roughness: 0.5, metalness: 0.5 });
-  const signFaceMaterial = new THREE.MeshStandardMaterial({ color: 0xd7d9d7, roughness: 0.72, metalness: 0.08 });
-  const reflectorMaterial = new THREE.MeshStandardMaterial({ color: 0xe5e2d2, roughness: 0.7, metalness: 0.02 });
 
-  const signPoles = addInstanced(root, new THREE.CylinderGeometry(0.04, 0.04, 2.2, 8), poleMaterial, signFeatures.length, 'NWE_Sign_Poles', disposables);
-  const signPlates = addInstanced(root, new THREE.BoxGeometry(0.62, 0.62, 0.055), signFaceMaterial, signFeatures.length, 'NWE_Sign_Plates_GenericBack', disposables);
+  const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x8d9496, roughness: 0.38, metalness: 0.62 });
+  const latticeMaterial = new THREE.MeshStandardMaterial({ color: 0x777e80, roughness: 0.48, metalness: 0.58 });
+  const darkMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x3c4143, roughness: 0.42, metalness: 0.58 });
+  const woodPoleMaterial = new THREE.MeshStandardMaterial({ color: 0x5b4534, roughness: 0.88, metalness: 0 });
+  const signFaceMaterial = new THREE.MeshPhysicalMaterial({ color: 0xd9dcda, roughness: 0.38, metalness: 0.3, clearcoat: 0.35, clearcoatRoughness: 0.32 });
+  const reflectorMaterial = new THREE.MeshPhysicalMaterial({ color: 0xece9dc, roughness: 0.45, metalness: 0.03, clearcoat: 0.45, clearcoatRoughness: 0.25 });
+
+  const signSupportGroups = groupBy(signFeatures, (feature) => signSupportProfile(feature).id);
+  const signMeshes = [];
+  const signSupportCounts = {};
+  let sourceSupportCount = 0;
+  let sourceMountHeightCount = 0;
+
+  for (const [supportId, features] of signSupportGroups.entries()) {
+    const support = signSupportProfile(features[0]);
+    signSupportCounts[supportId] = features.length;
+    sourceSupportCount += features.filter((feature) => signSupportProfile(feature).source).length;
+    const geometry = supportId === 'lattice'
+      ? new THREE.BoxGeometry(support.diameterM, 1, support.diameterM)
+      : new THREE.CylinderGeometry(support.diameterM / 2, support.diameterM / 2 * 1.08, 1, support.segments);
+    const material = supportId === 'lattice' ? latticeMaterial : poleMaterial;
+    const mesh = addInstanced(root, geometry, material, features.length, `NWE_Sign_Support_${supportId}`, disposables);
+    features.forEach((feature, index) => {
+      const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
+      const mount = signMountHeight(feature);
+      if (mount.source) sourceMountHeightCount += 1;
+      const plateCenter = mount.bottomM + 0.31;
+      const supportHeight = Math.max(1.9, plateCenter + 0.18);
+      mesh?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + supportHeight / 2, ground.z), [1, supportHeight, 1]));
+    });
+    signMeshes.push(mesh);
+  }
+
+  const plateGeometry = roundedRectangleGeometry();
+  const signPlates = addInstanced(root, plateGeometry, signFaceMaterial, signFeatures.length, 'NWE_Sign_Plates_GenericNeutral', disposables);
   signFeatures.forEach((feature, index) => {
     const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
-    signPoles?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 1.1, ground.z), [1, 1, 1]));
-    signPlates?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 2.05, ground.z), [1, 1, 1]));
+    const mount = signMountHeight(feature);
+    signPlates?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + mount.bottomM + 0.31, ground.z), [1, 1, 1]));
   });
+  signMeshes.push(signPlates);
 
   const allMasts = [...mastFeatures, ...uniqueLightFeatures];
-  const mastPoles = addInstanced(root, new THREE.CylinderGeometry(0.065, 0.09, 7, 9), poleMaterial, allMasts.length, 'NWE_Light_Masts', disposables);
-  const mastHeads = addInstanced(root, new THREE.BoxGeometry(0.85, 0.16, 0.28), darkMetalMaterial, allMasts.length, 'NWE_Light_Heads', disposables);
+  const steelMasts = allMasts.filter((feature) => !String(feature?.properties?.Type ?? '').toLowerCase().includes('tre'));
+  const woodMasts = allMasts.filter((feature) => String(feature?.properties?.Type ?? '').toLowerCase().includes('tre'));
+  const mastMeshes = [];
+
+  const steelPoles = addInstanced(root, new THREE.CylinderGeometry(0.065, 0.09, 7, 12), poleMaterial, steelMasts.length, 'NWE_Light_Masts_Steel', disposables);
+  steelMasts.forEach((feature, index) => {
+    const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
+    steelPoles?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 3.5, ground.z), [1, 1, 1]));
+  });
+  mastMeshes.push(steelPoles);
+
+  const woodPoles = addInstanced(root, new THREE.CylinderGeometry(0.09, 0.13, 7, 10), woodPoleMaterial, woodMasts.length, 'NWE_Light_Masts_Wood', disposables);
+  woodMasts.forEach((feature, index) => {
+    const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
+    woodPoles?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 3.5, ground.z), [1, 1, 1]));
+  });
+  mastMeshes.push(woodPoles);
+
+  const mastHeads = addInstanced(root, new THREE.BoxGeometry(0.85, 0.14, 0.24), darkMetalMaterial, allMasts.length, 'NWE_Light_Heads', disposables);
   allMasts.forEach((feature, index) => {
     const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
-    mastPoles?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 3.5, ground.z), [1, 1, 1]));
     mastHeads?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x + 0.28, ground.y + 6.92, ground.z), [1, 1, 1]));
   });
+  mastMeshes.push(mastHeads);
 
   const edgePosts = addInstanced(root, new THREE.BoxGeometry(0.11, 1.05, 0.11), reflectorMaterial, edgePostFeatures.length, 'NWE_Edge_Posts', disposables);
   edgePostFeatures.forEach((feature, index) => {
@@ -264,13 +411,13 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     edgePosts?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + 0.525, ground.z), [1, 1, 1]));
   });
 
-  for (const mesh of [signPoles, signPlates, mastPoles, mastHeads, edgePosts]) {
+  for (const mesh of [...signMeshes, ...mastMeshes, edgePosts]) {
     if (!mesh) continue;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere?.();
   }
 
-  const instancedMeshes = [signPoles, signPlates, mastPoles, mastHeads, edgePosts].filter(Boolean);
+  const instancedMeshes = [...signMeshes, ...mastMeshes, edgePosts].filter(Boolean);
   const drawCalls = lineMeshes.length + instancedMeshes.length;
 
   function dispose() {
@@ -283,7 +430,7 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     root,
     dispose,
     stats: Object.freeze({
-      schema: 'nwe.three-street-detail-layer/0.1',
+      schema: 'nwe.three-street-detail-layer/0.2',
       source_feature_part_count: artifact.stats?.feature_part_count ?? artifact.features?.length ?? 0,
       source_feature_parts_by_type_id: Object.freeze({ ...(artifact.stats?.feature_parts_by_type_id ?? {}) }),
       rendered_line_mesh_count: lineMeshes.length,
@@ -291,14 +438,22 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       draw_calls: drawCalls,
       source_width_marking_parts: sourceWidthMarkings,
       renderer_fallback_width_marking_parts: fallbackWidthMarkings,
+      source_thickness_marking_parts: sourceThicknessMarkings,
+      marking_material_parts: Object.freeze({ ...markingMaterialParts }),
       sign_point_count: signFeatures.length,
+      source_sign_support_count: sourceSupportCount,
+      source_sign_mount_height_count: sourceMountHeightCount,
+      sign_support_counts: Object.freeze({ ...signSupportCounts }),
+      sign_face_semantics: 'generic-neutral-backplate-no-traffic-symbol-without-admitted-sign-face-relation',
       source_light_mast_count: mastFeatures.length,
       source_light_point_count: lightFeatures.length,
       deduplicated_additional_light_point_count: uniqueLightFeatures.length,
+      steel_light_mast_count: steelMasts.length,
+      wood_light_mast_count: woodMasts.length,
       edge_post_count: edgePostFeatures.length,
       skipped_unsupported_count: skippedUnsupported,
       profile: profile?.id ?? 'unknown',
-      truth_guard: 'source positions/types/properties are NVDB-backed; sign face identity, pole/plate dimensions, missing line widths and visual ditch/sidewalk widths are renderer presentation only',
+      truth_guard: 'NVDB positions/types/properties drive marking width/material/thickness where present plus sign support family/mount-height and light-mast material class; sign face identity/orientation and unresolved dimensions remain renderer presentation only',
     }),
   });
 }

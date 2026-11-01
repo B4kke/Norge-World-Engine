@@ -28,7 +28,7 @@ const artifact = {
       part_index: 0,
       geometry_type: 'line',
       points: [[0.4, 0.4], [1.6, 0.4]],
-      properties: { Farge: 'Hvit', Type: 'Kantlinje, heltrukken', 'Bredde, enkeltlinje': 0.12 },
+      properties: { Farge: 'Hvit', Type: 'Skillelinje (1008)', Materialtype: 'Ekstrudert plast', Tykkelse: 3, 'Bredde, enkeltlinje': 0.12 },
     },
     {
       source_type_id: 95,
@@ -37,7 +37,7 @@ const artifact = {
       part_index: 0,
       geometry_type: 'point',
       point: [0.6, 1.4],
-      properties: { Oppsettingsutstyr: 'Stolpe' },
+      properties: { Oppsettingsutstyr: 'Stolpe 88,9 mm (3")', 'Høyde over vegkant': 2.3 },
     },
     {
       source_type_id: 181,
@@ -48,29 +48,42 @@ const artifact = {
       point: [1.4, 1.4],
       properties: { Type: 'Stålmast, konisk' },
     },
+    {
+      source_type_id: 181,
+      source_type_name: 'Lysmast',
+      source_object_id: 4,
+      part_index: 0,
+      geometry_type: 'point',
+      point: [1.6, 1.6],
+      properties: { Type: 'Tremast' },
+    },
   ],
-  stats: {
-    feature_part_count: 3,
-    feature_parts_by_type_id: { '99': 1, '95': 1, '181': 1 },
-  },
+  stats: { feature_part_count: 4, feature_parts_by_type_id: { '99': 1, '95': 1, '181': 2 } },
 };
 
 const layer = createThreeStreetDetailLayer({ artifact, terrainPayload, profile: { id: 'high' } });
-assert.equal(layer.stats.schema, 'nwe.three-street-detail-layer/0.1');
-assert.equal(layer.stats.source_feature_part_count, 3);
+assert.equal(layer.stats.schema, 'nwe.three-street-detail-layer/0.2');
+assert.equal(layer.stats.source_feature_part_count, 4);
 assert.equal(layer.stats.source_width_marking_parts, 1);
 assert.equal(layer.stats.renderer_fallback_width_marking_parts, 0);
+assert.equal(layer.stats.source_thickness_marking_parts, 1);
+assert.equal(layer.stats.marking_material_parts.plastic, 1);
 assert.equal(layer.stats.sign_point_count, 1);
-assert.equal(layer.stats.source_light_mast_count, 1);
-assert.equal(layer.stats.source_light_point_count, 0);
+assert.equal(layer.stats.source_sign_support_count, 1);
+assert.equal(layer.stats.source_sign_mount_height_count, 1);
+assert.equal(layer.stats.sign_support_counts['pole-88.9'], 1);
+assert.match(layer.stats.sign_face_semantics, /no-traffic-symbol/);
+assert.equal(layer.stats.source_light_mast_count, 2);
+assert.equal(layer.stats.steel_light_mast_count, 1);
+assert.equal(layer.stats.wood_light_mast_count, 1);
 assert.ok(layer.stats.rendered_line_mesh_count >= 1);
-assert.ok(layer.stats.rendered_instanced_mesh_count >= 4);
-assert.ok(layer.stats.draw_calls >= 5);
-assert.match(layer.stats.truth_guard, /renderer presentation only/);
+assert.ok(layer.stats.rendered_instanced_mesh_count >= 5);
+assert.ok(layer.stats.draw_calls >= 6);
+assert.match(layer.stats.truth_guard, /sign face identity\/orientation/);
 assert.equal(layer.root.children.length, layer.stats.draw_calls);
-for (const child of layer.root.children) {
-  assert.equal(child.isMesh || child.isInstancedMesh, true);
-}
+assert.ok(layer.root.children.some((child) => child.name === 'NWE_Sign_Support_pole-88.9'));
+assert.ok(layer.root.children.some((child) => child.name === 'NWE_Light_Masts_Wood'));
+for (const child of layer.root.children) assert.equal(child.isMesh || child.isInstancedMesh, true);
 layer.dispose();
 assert.equal(layer.root.parent, null);
 console.log('three street detail layer regression passed');
