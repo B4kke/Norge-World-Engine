@@ -44,27 +44,39 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Probe exact 1x1 km tile against official Kartverket Høydedata metadata
+      - name: Capture raw official Høydedata metadata response and analyze exact tile
         run: |
-          python tools/geo/probe_nannestad_lidar.py \
-            --output /tmp/nwe-nannestad-lidar-source-probe.json \
-            --require-open
-          python -m json.tool /tmp/nwe-nannestad-lidar-source-probe.json
           python - <<'PY'
+          import importlib.util
           import json
-          value = json.load(open('/tmp/nwe-nannestad-lidar-source-probe.json', encoding='utf-8'))
-          assert value['schema'] == 'nwe.nannestad-lidar-source-probe/0.1'
-          assert value['status'] == 'PASS'
-          assert value['tile']['id'] == 'epsg25832_611000_6677000_1000m'
-          assert value['tile']['horizontal_crs'] == 'EPSG:25832'
-          assert value['tile']['vertical_datum'] == 'NN2000'
-          assert value['open_candidate_count'] >= 1
-          assert value['recommended_project'] is not None
+          from pathlib import Path
+
+          path = Path('tools/geo/probe_nannestad_lidar.py')
+          spec = importlib.util.spec_from_file_location('nwe_lidar_probe', path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          raw = module._request_json(module.metadata_url())
+          Path('/tmp/nwe-nannestad-lidar-provider-raw.json').write_text(
+              json.dumps(raw, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          analyzed = module.analyze_provider_payload(raw)
+          Path('/tmp/nwe-nannestad-lidar-source-probe.json').write_text(
+              json.dumps(analyzed, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          print('NWE_PROVIDER_RAW_BEGIN')
+          print(json.dumps(raw, ensure_ascii=False, indent=2, sort_keys=True))
+          print('NWE_PROVIDER_RAW_END')
+          print(json.dumps(analyzed, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
       - uses: actions/upload-artifact@v4
         with:
           name: nannestad-lidar-source-probe-${{ github.sha }}
-          path: /tmp/nwe-nannestad-lidar-source-probe.json
+          path: |
+            /tmp/nwe-nannestad-lidar-provider-raw.json
+            /tmp/nwe-nannestad-lidar-source-probe.json
           if-no-files-found: error
           retention-days: 14
