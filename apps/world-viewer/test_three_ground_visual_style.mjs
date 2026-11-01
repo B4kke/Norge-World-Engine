@@ -96,8 +96,11 @@ assert.ok(scene.fog.far < GROUND_VISUAL_STYLE.fogFarM);
 assert.equal(lighting.sky.cloudCoverage.value, 0.97);
 
 // The shadow window must follow a detached bird camera horizontally while
-// retaining the latest grounded anchor height.
+// retaining the latest grounded anchor height. Bring the solar clock back to
+// "now" first so this assertion measures only the camera-anchor transition,
+// not a simultaneous scheduled solar refresh.
 lighting.updateAnchor([10, 12, 20]);
+lighting.updateSolar(Date.now(), true);
 const beforeCameraShadow = lighting.snapshot().shadow.update_count;
 lighting.sky.onBeforeRender(null, scene, { position: new THREE.Vector3(80, 140, -90) });
 const afterCameraShadow = lighting.snapshot();
