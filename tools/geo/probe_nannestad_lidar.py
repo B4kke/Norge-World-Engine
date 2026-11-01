@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Probe Kartverket Høydedata metadata for the accepted Nannestad 1×1 km tile.
+"""Discover Høydedata laser projects intersecting the accepted Nannestad tile.
 
-This is a source-admission probe only. It does not start an export job and does
-not download LAZ bytes. The output distinguishes provider/auth failures from
-"no covering open laser project" so a Høydedata failure cannot be misread as
-missing source coverage.
+Source discovery uses Kartverket's public Geonorge WFS rather than the legacy
+projectMetadata REST endpoint, which returned ``499: Token Required`` during a
+2026-11-01 live probe. The WFS BBOX query proves project-footprint intersection
+with the exact 1×1 km tile; it does *not* prove that one project completely
+covers the tile. Complete usable coverage is measured from delivered LAZ bytes
+by ``inspect_nannestad_laz.py``.
 """
 from __future__ import annotations
 
@@ -12,19 +14,36 @@ import argparse
 import json
 import math
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+SCHEMA = "nwe.nannestad-lidar-source-probe/0.2"
 TILE_ID = "epsg25832_611000_6677000_1000m"
 HORIZONTAL_CRS = "EPSG:25832"
-INPUT_WKID = 25832
 TILE_BOUNDS = (611000.0, 6677000.0, 612000.0, 6678000.0)
-METADATA_ENDPOINT = "https://hoydedata.no/laserservices/rest/projectMetadata.ashx"
+WFS_ENDPOINT = "https://wfs.geonorge.no/skwms1/wfs.hoyde-hoydedata-metadata-prosjekt"
+WFS_TYPE_NAME = "metadata_prosjekt:Prosjektavgrensning"
+LEGACY_METADATA_ENDPOINT = "https://hoydedata.no/laserservices/rest/projectMetadata.ashx"
 USER_AGENT = "NorgeWorldEngine/0.1 nannestad-lidar-source-probe"
-SCHEMA = "nwe.nannestad-lidar-source-probe/0.1"
+PROPERTY_NAMES = (
+    "LAS_PROJECT_ID",
+    "LAS_PROJECT_NAME",
+    "TYPE",
+    "TILGANG",
+    "PROSJEKTNR",
+    "KOORDINATSYSTEM",
+    "HOYDESYSTEM",
+    "PUNKTTETTHET",
+    "AARSTALL",
+    "SISTEFLYDATO",
+    "PUBLISERT",
+    "OPPLOSNING",
+    "PUBLISHED_DATE",
+)
 
 
 class LidarProbeError(RuntimeError):
@@ -35,51 +54,32 @@ class ProviderUnavailable(LidarProbeError):
     pass
 
 
-def _closed_coordinate_string(bounds: tuple[float, float, float, float]) -> str:
-    min_e, min_n, max_e, max_n = bounds
-    points = (
-        (min_e, min_n),
-        (max_e, min_n),
-        (max_e, max_n),
-        (min_e, max_n),
-        (min_e, min_n),
-    )
-    return ";".join(f"{int(e)},{int(n)}" for e, n in points)
-
-
-def metadata_request_payload() -> dict[str, Any]:
-    return {
-        "Coordinates": _closed_coordinate_string(TILE_BOUNDS),
-        "InputWKID": INPUT_WKID,
-        "OutputWKID": INPUT_WKID,
-        "OutputFormat": "GeoJSON",
-        "ReturnMetadata": True,
-        "ReturnGeometry": True,
-        "StopOnCover": False,
-        "Type": 1,
-        "Verticaldatum": "NN2000",
+def wfs_url() -> str:
+    min_e, min_n, max_e, max_n = TILE_BOUNDS
+    params = {
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typeNames": WFS_TYPE_NAME,
+        "count": "200",
+        "srsName": HORIZONTAL_CRS,
+        "bbox": f"{int(min_e)},{int(min_n)},{int(max_e)},{int(max_n)},{HORIZONTAL_CRS}",
+        "propertyName": ",".join(PROPERTY_NAMES),
     }
+    return WFS_ENDPOINT + "?" + urlencode(params)
 
 
-def metadata_url() -> str:
-    request_json = json.dumps(metadata_request_payload(), ensure_ascii=False, separators=(",", ":"))
-    return METADATA_ENDPOINT + "?" + urlencode({"request": request_json})
-
-
-def _request_json(url: str, timeout: float = 90.0) -> Any:
+def _request_bytes(url: str, timeout: float = 90.0) -> bytes:
     request = Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json,application/geo+json;q=0.9,*/*;q=0.1",
-        },
+        headers={"User-Agent": USER_AGENT, "Accept": "application/gml+xml,application/xml,text/xml;q=0.9,*/*;q=0.1"},
     )
     try:
         with urlopen(request, timeout=timeout) as response:
             status = getattr(response, "status", 200)
             if status != 200:
                 raise ProviderUnavailable(f"HTTP {status}")
-            raw = response.read()
+            return response.read()
     except HTTPError as exc:
         raise ProviderUnavailable(f"HTTP {exc.code}") from exc
     except URLError as exc:
@@ -89,101 +89,56 @@ def _request_json(url: str, timeout: float = 90.0) -> Any:
     except OSError as exc:
         raise ProviderUnavailable(f"network error: {exc}") from exc
 
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def parse_wfs_gml(raw: bytes) -> tuple[list[dict[str, str]], int | None, int | None]:
     try:
-        return json.loads(raw.decode("utf-8-sig"))
-    except Exception as exc:
-        raise LidarProbeError("provider response is not valid UTF-8 JSON") from exc
+        root = ET.fromstring(raw)
+    except ET.ParseError as exc:
+        raise LidarProbeError(f"public WFS returned malformed/truncated XML: {exc}") from exc
 
+    exceptions = [
+        " ".join("".join(node.itertext()).split())
+        for node in root.iter()
+        if _local_name(node.tag) in {"ExceptionText", "ServiceException"}
+    ]
+    if exceptions:
+        raise LidarProbeError("public WFS exception: " + " | ".join(exceptions))
+    if _local_name(root.tag) != "FeatureCollection":
+        raise LidarProbeError(f"unexpected WFS root element: {_local_name(root.tag)}")
 
-def _casefold_map(value: dict[str, Any]) -> dict[str, tuple[str, Any]]:
-    return {str(key).casefold(): (str(key), item) for key, item in value.items()}
+    def attr_int(name: str) -> int | None:
+        value = root.attrib.get(name)
+        if value is None or not value.isdigit():
+            return None
+        return int(value)
 
-
-def _get_any(value: dict[str, Any], names: tuple[str, ...]) -> Any:
-    lowered = _casefold_map(value)
-    for name in names:
-        hit = lowered.get(name.casefold())
-        if hit is not None:
-            return hit[1]
-    return None
-
-
-def _provider_error(payload: Any) -> tuple[str, str] | None:
-    """Return fail-closed status/message for successful-HTTP error payloads."""
-    if not isinstance(payload, dict):
-        return None
-    raw = _get_any(payload, ("error", "errors", "exception", "message"))
-    if raw is None:
-        return None
-    if isinstance(raw, (dict, list)):
-        message = json.dumps(raw, ensure_ascii=False, sort_keys=True)
-    else:
-        message = str(raw).strip()
-    if not message:
-        return None
-    lowered = message.casefold()
-    if "token required" in lowered or "499" in lowered:
-        return "PROVIDER_AUTH_REQUIRED", message
-    return "PROVIDER_ERROR", message
-
-
-def _looks_like_project(value: dict[str, Any]) -> bool:
-    keys = {str(key).casefold() for key in value}
-    markers = (
-        "prosjektnavn",
-        "projectname",
-        "prosjekt",
-        "project",
-        "aarstall",
-        "årstall",
-        "bestilt_punkttetthet",
-        "punkttetthet",
-        "tilgang",
-        "prosjektnr",
-    )
-    return any(marker in keys for marker in markers)
-
-
-def _extract_project_dicts(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        result: list[dict[str, Any]] = []
-        for item in payload:
-            if isinstance(item, dict):
-                if isinstance(item.get("properties"), dict):
-                    merged = dict(item["properties"])
-                    if item.get("geometry") is not None:
-                        merged["_geometry"] = item["geometry"]
-                    result.append(merged)
-                elif _looks_like_project(item):
-                    result.append(item)
-        return result
-
-    if not isinstance(payload, dict):
-        return []
-
-    if isinstance(payload.get("features"), list):
-        return _extract_project_dicts(payload["features"])
-
-    for key in ("projects", "Projects", "results", "Results", "data", "Data"):
-        if isinstance(payload.get(key), list):
-            return _extract_project_dicts(payload[key])
-
-    if isinstance(payload.get("properties"), dict):
-        merged = dict(payload["properties"])
-        if payload.get("geometry") is not None:
-            merged["_geometry"] = payload["geometry"]
-        return [merged]
-
-    return [payload] if _looks_like_project(payload) else []
+    projects: list[dict[str, str]] = []
+    for member in root.iter():
+        if _local_name(member.tag) not in {"member", "featureMember"}:
+            continue
+        feature = next(iter(member), None)
+        if feature is None:
+            continue
+        props: dict[str, str] = {}
+        for child in feature:
+            key = _local_name(child.tag)
+            text = " ".join("".join(child.itertext()).split())
+            if text:
+                props[key] = text
+        projects.append(props)
+    return projects, attr_int("numberMatched"), attr_int("numberReturned")
 
 
 def _as_number(value: Any) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value) if math.isfinite(float(value)) else None
     if isinstance(value, str):
-        cleaned = value.strip().replace(",", ".")
         try:
-            parsed = float(cleaned)
+            parsed = float(value.strip().replace(",", "."))
         except ValueError:
             return None
         return parsed if math.isfinite(parsed) else None
@@ -194,187 +149,176 @@ def _as_int(value: Any) -> int | None:
     number = _as_number(value)
     if number is None:
         return None
-    rounded = int(number)
-    return rounded if abs(number - rounded) < 1e-9 else None
+    integer = int(number)
+    return integer if abs(number - integer) < 1e-9 else None
 
 
-def _project_name(project: dict[str, Any]) -> str | None:
-    value = _get_any(
-        project,
-        ("PROSJEKTNAVN", "PROJECTNAME", "PROSJEKT", "PROJECT", "NAVN", "NAME"),
-    )
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _access_state(project: dict[str, Any]) -> tuple[str, Any]:
-    raw = _get_any(project, ("TILGANG", "ACCESS"))
-    if raw is None:
-        return "unknown", None
-    normalized = str(raw).strip().casefold()
+def _access_state(value: Any) -> str:
+    normalized = str(value).strip().casefold() if value is not None else ""
+    if normalized in {"1", "open", "åpen", "aapen"}:
+        return "open"
     if normalized in {"2", "closed", "lukket"}:
-        return "closed", raw
-    if normalized in {"0", "1", "open", "åpen", "aapen"}:
-        return "open", raw
-    return "unknown", raw
+        return "closed"
+    return "unknown"
 
 
 def _candidate(project: dict[str, Any]) -> dict[str, Any]:
-    name = _project_name(project)
-    access, access_raw = _access_state(project)
-    year = _as_int(_get_any(project, ("AARSTALL", "ÅRSTALL", "YEAR")))
-    density = _as_number(
-        _get_any(
-            project,
-            (
-                "BESTILT_PUNKTTETTHET",
-                "PUNKTTETTHET",
-                "POINT_DENSITY",
-                "PUNKTER_PR_M2",
-            ),
-        )
-    )
-    project_number = _get_any(project, ("PROSJEKTNR", "PROJECTNO", "PROJECTNUMBER"))
-    vertical = _get_any(project, ("HOYDESYSTEM", "HØYDESYSTEM", "VERTICALDATUM"))
-    crs = _get_any(project, ("KOORDINATSYSTEM", "CRS", "WKID"))
-    resolution = _as_number(_get_any(project, ("OPPLOSNING", "OPPLØSNING", "RESOLUTION")))
+    project_type = _as_int(project.get("TYPE"))
+    published_raw = project.get("PUBLISERT")
+    published = str(published_raw).strip().casefold() == "published" if published_raw is not None else None
     return {
-        "name": name,
-        "project_number": None if project_number is None else str(project_number),
-        "year": year,
-        "access": access,
-        "access_raw": access_raw,
-        "ordered_point_density_per_m2": density,
-        "resolution_m": resolution,
-        "horizontal_crs_raw": crs,
-        "vertical_datum_raw": vertical,
+        "project_id": None if project.get("LAS_PROJECT_ID") is None else str(project.get("LAS_PROJECT_ID")),
+        "name": None if project.get("LAS_PROJECT_NAME") is None else str(project.get("LAS_PROJECT_NAME")).strip(),
+        "project_number": None if project.get("PROSJEKTNR") is None else str(project.get("PROSJEKTNR")).strip(),
+        "project_type": project_type,
+        "project_type_label": "laser" if project_type == 1 else "non-laser-or-unknown",
+        "access": _access_state(project.get("TILGANG")),
+        "access_raw": project.get("TILGANG"),
+        "published": published,
+        "published_raw": published_raw,
+        "year": _as_int(project.get("AARSTALL")),
+        "last_flight_date": project.get("SISTEFLYDATO"),
+        "published_date": project.get("PUBLISHED_DATE"),
+        "ordered_point_density_per_m2": _as_number(project.get("PUNKTTETTHET")),
+        "resolution_m": _as_number(project.get("OPPLOSNING")),
+        "horizontal_crs_raw": project.get("KOORDINATSYSTEM"),
+        "vertical_datum_raw": project.get("HOYDESYSTEM"),
         "raw_metadata": project,
     }
 
 
-def _score(candidate: dict[str, Any]) -> tuple[int, int, float, str]:
-    access_score = 2 if candidate["access"] == "open" else 1 if candidate["access"] == "unknown" else 0
+def _score(candidate: dict[str, Any]) -> tuple[int, int, int, float, str]:
+    open_score = 2 if candidate["access"] == "open" else 1 if candidate["access"] == "unknown" else 0
+    published_score = 1 if candidate["published"] is True else 0
     year = candidate["year"] if isinstance(candidate["year"], int) else -1
     density = candidate["ordered_point_density_per_m2"]
-    density_score = density if isinstance(density, (int, float)) else -1.0
-    name = candidate["name"] or ""
-    return (access_score, year, density_score, name.casefold())
+    density_score = float(density) if isinstance(density, (int, float)) else -1.0
+    return (open_score, published_score, year, density_score, (candidate["name"] or "").casefold())
 
 
-def _base_result() -> dict[str, Any]:
+def analyze_wfs_projects(
+    projects: list[dict[str, Any]],
+    *,
+    number_matched: int | None = None,
+    number_returned: int | None = None,
+) -> dict[str, Any]:
+    overlaps = [_candidate(project) for project in projects]
+    laser = [candidate for candidate in overlaps if candidate["project_type"] == 1]
+    laser.sort(key=_score, reverse=True)
+    open_laser = [candidate for candidate in laser if candidate["access"] == "open"]
+    recommended_pool = [candidate for candidate in open_laser if candidate["published"] is not False]
+    recommended = recommended_pool[0] if recommended_pool else None
     return {
         "schema": SCHEMA,
-        "provider": "Kartverket Høydedata",
-        "endpoint": METADATA_ENDPOINT,
-        "query_url": metadata_url(),
+        "status": "PASS" if laser else "NO_LASER_CANDIDATE",
+        "provider": "Kartverket / Geonorge Høydedata Metadata prosjekt WFS",
+        "endpoint": WFS_ENDPOINT,
+        "query_url": wfs_url(),
         "tile": {
             "id": TILE_ID,
             "horizontal_crs": HORIZONTAL_CRS,
-            "vertical_datum": "NN2000",
+            "vertical_datum_expected": "NN2000",
             "bounds": list(TILE_BOUNDS),
         },
-    }
-
-
-def analyze_provider_payload(payload: Any) -> dict[str, Any]:
-    provider_error = _provider_error(payload)
-    if provider_error is not None:
-        status, message = provider_error
-        return {
-            **_base_result(),
-            "status": status,
-            "candidate_count": 0,
-            "open_candidate_count": 0,
-            "candidates": [],
-            "recommended_project": None,
-            "error": message,
-            "truth": "provider/auth failure is not evidence of missing LiDAR coverage",
-        }
-
-    projects = _extract_project_dicts(payload)
-    candidates = [_candidate(project) for project in projects]
-    candidates.sort(key=_score, reverse=True)
-    open_candidates = [candidate for candidate in candidates if candidate["access"] == "open"]
-    recommended_pool = open_candidates or [candidate for candidate in candidates if candidate["access"] == "unknown"]
-    recommended = recommended_pool[0] if recommended_pool else None
-
-    return {
-        **_base_result(),
-        "status": "PASS" if candidates else "NO_CANDIDATE",
-        "candidate_count": len(candidates),
-        "open_candidate_count": len(open_candidates),
-        "candidates": candidates,
+        "wfs_number_matched": number_matched,
+        "wfs_number_returned": number_returned,
+        "overlap_candidate_count": len(overlaps),
+        "laser_candidate_count": len(laser),
+        "open_laser_candidate_count": len(open_laser),
+        "candidates": laser,
         "recommended_project": recommended,
-        "known_2020_anchor": {
-            "name": "Gjerdrum Ullensaker Nannestad 5pkt 2020",
-            "project_number": "LACHVI04",
-            "source_epoch": 2020,
-            "documented_density_points_per_m2": 5,
-            "role": "cross-check-only; live provider metadata remains authoritative for acquisition",
+        "known_cross_checks": [
+            {
+                "name": "Gjerdrum Ullensaker Nannestad 5pkt 2020",
+                "project_number": "LACHVI04",
+                "documented_density_points_per_m2": 5,
+                "role": "historical/independent cross-check; WFS overlap result remains acquisition input",
+            },
+            {
+                "name": "Romerike laser 2025",
+                "project_number": "LACIAK53",
+                "observed_project_state": "pågående",
+                "role": "freshness cross-check only; do not prefer until delivered/published source overlaps the tile",
+            },
+        ],
+        "legacy_metadata_endpoint": {
+            "url": LEGACY_METADATA_ENDPOINT,
+            "observed_2026_11_01": "499 Token Required",
+            "role": "not used for public source discovery",
         },
         "truth": (
-            "metadata/source-admission only; no LAZ bytes downloaded, no point classes or actual "
-            "density measured, no roof/tree/terrain reconstruction claim"
+            "WFS BBOX proves project-footprint intersection with the exact tile only. It does not prove complete "
+            "1x1 km coverage, actual delivered density/classification, roof reconstruction quality or observed "
+            "individual trees. Those claims require clipped LAZ byte inspection."
         ),
     }
 
 
 def probe_live(timeout: float = 90.0) -> dict[str, Any]:
-    return analyze_provider_payload(_request_json(metadata_url(), timeout=timeout))
+    projects, number_matched, number_returned = parse_wfs_gml(_request_bytes(wfs_url(), timeout=timeout))
+    return analyze_wfs_projects(projects, number_matched=number_matched, number_returned=number_returned)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output")
-    parser.add_argument("--offline-input", help="Replay a saved provider JSON response instead of using network")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--offline-input", type=Path, help="Replay a saved WFS GML response instead of using network")
     parser.add_argument("--timeout", type=float, default=90.0)
-    parser.add_argument(
-        "--require-open",
-        action="store_true",
-        help="Fail unless the provider response contains at least one explicitly open project",
-    )
+    parser.add_argument("--require-open", action="store_true")
     args = parser.parse_args()
 
     try:
         if args.offline_input:
-            payload = json.loads(Path(args.offline_input).read_text(encoding="utf-8"))
-            result = analyze_provider_payload(payload)
+            projects, number_matched, number_returned = parse_wfs_gml(args.offline_input.read_bytes())
+            result = analyze_wfs_projects(
+                projects,
+                number_matched=number_matched,
+                number_returned=number_returned,
+            )
         else:
             result = probe_live(timeout=args.timeout)
     except ProviderUnavailable as exc:
         result = {
-            **_base_result(),
+            "schema": SCHEMA,
             "status": "PROVIDER_UNAVAILABLE",
+            "provider": "Kartverket / Geonorge Høydedata Metadata prosjekt WFS",
+            "endpoint": WFS_ENDPOINT,
+            "tile": {"id": TILE_ID, "bounds": list(TILE_BOUNDS)},
             "error": str(exc),
             "truth": "provider failure is not evidence of missing LiDAR coverage",
         }
         encoded = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         if args.output:
-            output = Path(args.output)
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(encoded, encoding="utf-8")
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(encoded, encoding="utf-8")
+        print(encoded, end="")
+        return 2
+    except LidarProbeError as exc:
+        result = {
+            "schema": SCHEMA,
+            "status": "PROVIDER_INVALID_RESPONSE",
+            "provider": "Kartverket / Geonorge Høydedata Metadata prosjekt WFS",
+            "endpoint": WFS_ENDPOINT,
+            "tile": {"id": TILE_ID, "bounds": list(TILE_BOUNDS)},
+            "error": str(exc),
+            "truth": "invalid/truncated provider response is not evidence of missing LiDAR coverage",
+        }
+        encoded = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(encoded, encoding="utf-8")
         print(encoded, end="")
         return 2
 
     encoded = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if args.output:
-        output = Path(args.output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(encoded, encoding="utf-8")
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(encoded, encoding="utf-8")
     print(encoded, end="")
-
-    if result.get("status") in {"PROVIDER_AUTH_REQUIRED", "PROVIDER_ERROR"}:
-        return 2
-    if args.require_open and result.get("open_candidate_count", 0) < 1:
+    if args.require_open and result.get("open_laser_candidate_count", 0) < 1:
         return 3
     return 0
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except LidarProbeError as exc:
-        print(f"NWE_NANNESTAD_LIDAR_PROBE_REJECTED: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+    raise SystemExit(main())
