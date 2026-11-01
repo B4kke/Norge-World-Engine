@@ -36,32 +36,35 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 # P0 — NANNESTAD 1×1 WEB REALISM
 
 ## P0-HYPERREAL-LIDAR-01 — Nannestad LiDAR gold-tile source gate
-**Priority:** 1 — ACTIVE / PUBLIC SOURCE DISCOVERY PASS; LAZ BYTE GATE OPEN  
+**Priority:** 1 — ACTIVE / SOURCE SELECTED; LAZ BYTE GATE OPEN  
 **Owner:** FORGE + LUMEN + SENTINEL  
 
 **Goal:** determine from exact source bytes whether openly obtainable Nannestad LiDAR materially improves roof geometry, canopy/tree candidates and near-field terrain enough to justify a production reconstruction layer.
 
-**Implemented:**
+**Implemented and proven:**
 - public, key-free source discovery through Kartverket/Geonorge `Høydedata Metadata prosjekt WFS` using exact tile BBOX `611000,6677000,612000,6678000,EPSG:25832`;
 - WFS response is restricted to source fields rather than multi-megabyte project geometry; BBOX result is explicitly classified as **intersection**, not complete tile coverage;
-- deterministic GML parser/regressions and candidate policy for laser `TYPE=1`, `TILGANG`, publication, year and ordered point density;
-- live legacy `projectMetadata.ashx` returned `499: Token Required`; auth/provider errors are now fail-closed and can never become `NO_CANDIDATE`;
-- exact WFS query reported `numberMatched=9` / `numberReturned=9` project footprints intersecting the tile;
-- observed published/open laser overlaps include `Ullensaker Nes Nannestad 2010` (0.7 pkt/m²), `Romeriksåsene 2013` (0.7), `NDH Akershus 5pkt 2015` (5) and `NDH Akershus 2pkt 2015` (2);
-- `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is confirmed as `TILGANG=2` closed and is therefore rejected as the anonymous/open default despite its 5 pkt/m² metadata;
-- current `Romerike laser 2025` / `LACIAK53` is a freshness cross-check only while its project state remains ongoing rather than a delivered open source;
+- deterministic GML parser/regressions and candidate policy for laser `TYPE=1`, `TILGANG`, publication, source frame, year and ordered point density;
+- live legacy `projectMetadata.ashx` returned `499: Token Required`; auth/provider errors are fail-closed and can never become `NO_CANDIDATE`;
+- exact WFS query reported `numberMatched=9` / `numberReturned=9`; six metadata-bearing project objects were returned, while three provider-declared features lacked requested admission metadata and are surfaced as unresolved rather than silently admitted;
+- metadata-complete published/open laser overlaps include `Ullensaker Nes Nannestad 2010` (0.7 pkt/m²), `Romeriksåsene 2013` (0.7), `NDH Akershus 5pkt 2015` (5) and `NDH Akershus 2pkt 2015` (2), all in EPSG:25832 + EPSG:5941/NN2000;
+- **first gold-tile acquisition source selected:** `NDH Akershus 5pkt 2015` / `LACH0002`, because it is the highest-density metadata-complete candidate proven published, explicitly open and frame-compatible;
+- `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is confirmed `TILGANG=2` closed and rejected as the anonymous/open default despite the same 5 pkt/m² ordered density;
+- current `Romerike laser 2025` / `LACIAK53` remains a freshness cross-check while its project state is ongoing rather than a delivered open source;
 - fail-closed export request builder for exact polygon/LAZ/EPSG:25832, requiring explicit project, explicit `ProjectProduct`, explicit `CopyEmail` or BAAT user, and explicit `--submit`; operator identity/credentials are redacted from evidence;
 - chunked/NumPy-vectorized LAZ inspector records exact SHA-256, bounds/CRS, point count, exact-tile measured density and LAS class counts for ground/vegetation/buildings;
-- normal PR CI validates source/export/inspection contracts without making provider availability a merge gate; the live WFS probe remains manual-only.
+- normal PR CI validates source/export/inspection contracts without making provider availability a merge gate; manual live discovery remains `workflow_dispatch` only.
 
-**Current evidence:** public source discovery is proven; exact LAZ bytes are **not yet acquired or admitted**. The provider metadata establishes overlap and access state only. See `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
+**Validation evidence:**
+- diagnostic live WFS run `41308978719`: contract PASS + live-provider PASS; exact source-field artifact `13084781636`;
+- current source/export/inspection contract head `ba40c08604232fbb71ce5c4885a548d9288e54fd`: `nannestad-lidar-source-probe` run `41309741805` PASS, `baseline` run `41309741814` PASS, `world-viewer-vite` run `41309741822` PASS and `viewer-benchmark` run `41309741806` PASS;
+- actual LAZ bytes are **not yet acquired or admitted**. See `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
 
-**Acceptance sequence:**
-1. evaluate the complete public WFS response and select the highest-value explicitly open/published laser overlap;
-2. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it;
-3. make one explicit operator export with a supplied delivery identity; raw LAZ stays outside Git/runtime;
-4. SHA-bind the delivered bytes and inspect LAS header, CRS/vertical frame, point count, exact-tile coverage/density and source classes;
-5. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.
+**Remaining acceptance sequence:**
+1. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it;
+2. make one explicit operator export of `NDH Akershus 5pkt 2015` with a supplied delivery identity; raw LAZ stays outside Git/runtime;
+3. SHA-bind the delivered bytes and inspect LAS header, CRS/vertical frame, point count, exact-tile coverage/density and source classes;
+4. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.
 
 **Truth guard:** WFS overlap, metadata saying “5 pkt/m²”, a project name or a historical report does not prove complete exact-tile coverage, actual delivered density, LAS classes, roof reconstructability or individual-tree observations.
 
@@ -158,7 +161,7 @@ When exact LAZ bytes pass source admission, compile a separately versioned deriv
 
 **Milestone-grade device-evidence gate implemented:**
 - ordinary runtime/provenance capture `PASS` is explicitly separate from WebGPU milestone readiness;
-- milestone assessment is `nwe.webgpu-milestone-evidence-assessment/0.1` and reports `READY_FOR_REVIEW` only when viewer/runtime build identity is bound, capture session exists, Android Chrome is detected, the operator explicitly attests a physical device, requested+active backend are both WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/streaming-lifecycle gates pass, and the 90-frame measurement window contains first-visible, frame-gap, draw-CPU and GPU resource observations;
+- milestone assessment is `nwe.webgpu-milestone-evidence-assessment/0.1` and reports `READY_FOR_REVIEW` only when viewer/runtime build identity is bound, capture session exists, Android Chrome is detected, the operator explicitly attests a physical device, requested+active backend are both WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/strict streaming lifecycle gates pass, and the 90-frame measurement window contains first-visible, frame-gap, draw-CPU and GPU resource observations;
 - timestamp-query support is recorded as a capability and is not required to be available;
 - no arbitrary FPS/frame-time target is invented.
 
