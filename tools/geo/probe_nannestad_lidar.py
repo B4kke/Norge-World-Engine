@@ -129,7 +129,8 @@ def parse_wfs_gml(raw: bytes) -> tuple[list[dict[str, str]], int | None, int | N
             text = " ".join("".join(child.itertext()).split())
             if text:
                 props[key] = text
-        projects.append(props)
+        if props:
+            projects.append(props)
     return projects, attr_int("numberMatched"), attr_int("numberReturned")
 
 
@@ -162,10 +163,23 @@ def _access_state(value: Any) -> str:
     return "unknown"
 
 
+def _frame_compatible(horizontal: Any, vertical: Any) -> bool:
+    horizontal_value = str(horizontal).strip().casefold() if horizontal is not None else ""
+    vertical_value = str(vertical).strip().casefold() if vertical is not None else ""
+    horizontal_ok = horizontal_value in {"25832", "epsg:25832"}
+    # EPSG:5941 is NN2000:2018 height, the vertical frame used by the admitted
+    # source-era datasets in this tile. Newer EPSG revisions must be admitted
+    # explicitly rather than silently treated as byte-equivalent.
+    vertical_ok = vertical_value in {"5941", "epsg:5941", "nn2000", "nn2000:2018"}
+    return horizontal_ok and vertical_ok
+
+
 def _candidate(project: dict[str, Any]) -> dict[str, Any]:
     project_type = _as_int(project.get("TYPE"))
     published_raw = project.get("PUBLISERT")
     published = str(published_raw).strip().casefold() == "published" if published_raw is not None else None
+    horizontal = project.get("KOORDINATSYSTEM")
+    vertical = project.get("HOYDESYSTEM")
     return {
         "project_id": None if project.get("LAS_PROJECT_ID") is None else str(project.get("LAS_PROJECT_ID")),
         "name": None if project.get("LAS_PROJECT_NAME") is None else str(project.get("LAS_PROJECT_NAME")).strip(),
@@ -181,19 +195,21 @@ def _candidate(project: dict[str, Any]) -> dict[str, Any]:
         "published_date": project.get("PUBLISHED_DATE"),
         "ordered_point_density_per_m2": _as_number(project.get("PUNKTTETTHET")),
         "resolution_m": _as_number(project.get("OPPLOSNING")),
-        "horizontal_crs_raw": project.get("KOORDINATSYSTEM"),
-        "vertical_datum_raw": project.get("HOYDESYSTEM"),
+        "horizontal_crs_raw": horizontal,
+        "vertical_datum_raw": vertical,
+        "frame_compatible_with_nannestad": _frame_compatible(horizontal, vertical),
         "raw_metadata": project,
     }
 
 
-def _score(candidate: dict[str, Any]) -> tuple[int, int, int, float, str]:
+def _score(candidate: dict[str, Any]) -> tuple[int, int, int, int, float, str]:
     open_score = 2 if candidate["access"] == "open" else 1 if candidate["access"] == "unknown" else 0
     published_score = 1 if candidate["published"] is True else 0
+    frame_score = 1 if candidate["frame_compatible_with_nannestad"] else 0
     year = candidate["year"] if isinstance(candidate["year"], int) else -1
     density = candidate["ordered_point_density_per_m2"]
     density_score = float(density) if isinstance(density, (int, float)) else -1.0
-    return (open_score, published_score, year, density_score, (candidate["name"] or "").casefold())
+    return (open_score, published_score, frame_score, year, density_score, (candidate["name"] or "").casefold())
 
 
 def analyze_wfs_projects(
@@ -206,8 +222,17 @@ def analyze_wfs_projects(
     laser = [candidate for candidate in overlaps if candidate["project_type"] == 1]
     laser.sort(key=_score, reverse=True)
     open_laser = [candidate for candidate in laser if candidate["access"] == "open"]
-    recommended_pool = [candidate for candidate in open_laser if candidate["published"] is not False]
-    recommended = recommended_pool[0] if recommended_pool else None
+    admissible = [
+        candidate
+        for candidate in open_laser
+        if candidate["published"] is True and candidate["frame_compatible_with_nannestad"]
+    ]
+    recommended = admissible[0] if admissible else None
+    unresolved = (
+        max(0, number_returned - len(projects))
+        if isinstance(number_returned, int)
+        else None
+    )
     return {
         "schema": SCHEMA,
         "status": "PASS" if laser else "NO_LASER_CANDIDATE",
@@ -222,9 +247,13 @@ def analyze_wfs_projects(
         },
         "wfs_number_matched": number_matched,
         "wfs_number_returned": number_returned,
+        "metadata_complete_feature_count": len(projects),
+        "unresolved_wfs_feature_count": unresolved,
+        "provider_response_metadata_complete": unresolved == 0 if unresolved is not None else None,
         "overlap_candidate_count": len(overlaps),
         "laser_candidate_count": len(laser),
         "open_laser_candidate_count": len(open_laser),
+        "admissible_open_laser_candidate_count": len(admissible),
         "candidates": laser,
         "recommended_project": recommended,
         "known_cross_checks": [
@@ -232,7 +261,8 @@ def analyze_wfs_projects(
                 "name": "Gjerdrum Ullensaker Nannestad 5pkt 2020",
                 "project_number": "LACHVI04",
                 "documented_density_points_per_m2": 5,
-                "role": "historical/independent cross-check; WFS overlap result remains acquisition input",
+                "observed_access": "closed (TILGANG=2)",
+                "role": "cross-check only; current public WFS rejects it as anonymous/open acquisition source",
             },
             {
                 "name": "Romerike laser 2025",
@@ -247,9 +277,10 @@ def analyze_wfs_projects(
             "role": "not used for public source discovery",
         },
         "truth": (
-            "WFS BBOX proves project-footprint intersection with the exact tile only. It does not prove complete "
-            "1x1 km coverage, actual delivered density/classification, roof reconstruction quality or observed "
-            "individual trees. Those claims require clipped LAZ byte inspection."
+            "WFS BBOX proves project-footprint intersection with the exact tile only. Provider-declared returned "
+            "features without requested metadata are reported as unresolved and are not silently admitted. Complete "
+            "1x1 km coverage, actual delivered density/classification, roof reconstruction quality and observed "
+            "individual trees require clipped LAZ byte inspection."
         ),
     }
 
@@ -315,7 +346,7 @@ def main() -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(encoded, encoding="utf-8")
     print(encoded, end="")
-    if args.require_open and result.get("open_laser_candidate_count", 0) < 1:
+    if args.require_open and result.get("admissible_open_laser_candidate_count", 0) < 1:
         return 3
     return 0
 
