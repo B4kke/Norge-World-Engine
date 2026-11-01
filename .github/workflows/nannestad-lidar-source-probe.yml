@@ -38,88 +38,38 @@ jobs:
             tools/geo/test_prepare_nannestad_laz_export.py
 
   live-provider:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
-      - name: Query public Geonorge Høydedata project source fields for exact tile
+      - name: Probe public Geonorge Høydedata projects intersecting exact tile
         run: |
+          python tools/geo/probe_nannestad_lidar.py \
+            --output /tmp/nwe-nannestad-lidar-source-probe.json \
+            --require-open
+          python -m json.tool /tmp/nwe-nannestad-lidar-source-probe.json
           python - <<'PY'
           import json
-          import urllib.parse
-          import urllib.request
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          base = 'https://wfs.geonorge.no/skwms1/wfs.hoyde-hoydedata-metadata-prosjekt'
-          property_names = [
-              'LAS_PROJECT_ID', 'LAS_PROJECT_NAME', 'TYPE', 'TILGANG', 'PROSJEKTNR',
-              'KOORDINATSYSTEM', 'HOYDESYSTEM', 'PUNKTTETTHET', 'AARSTALL',
-              'SISTEFLYDATO', 'PUBLISERT', 'OPPLOSNING', 'PUBLISHED_DATE',
-          ]
-          params = {
-              'service': 'WFS',
-              'version': '2.0.0',
-              'request': 'GetFeature',
-              'typeNames': 'metadata_prosjekt:Prosjektavgrensning',
-              'count': '200',
-              'srsName': 'EPSG:25832',
-              'bbox': '611000,6677000,612000,6678000,EPSG:25832',
-              'propertyName': ','.join(property_names),
-          }
-          url = base + '?' + urllib.parse.urlencode(params)
-          request = urllib.request.Request(
-              url,
-              headers={'User-Agent': 'NorgeWorldEngine/0.1 nannestad-lidar-source-probe'},
-          )
-          with urllib.request.urlopen(request, timeout=90) as response:
-              raw = response.read()
-          root = ET.fromstring(raw)
-          local = lambda tag: tag.rsplit('}', 1)[-1]
-          exception_nodes = [node for node in root.iter() if local(node.tag) in {'ExceptionText', 'ServiceException'}]
-          if exception_nodes:
-              messages = [''.join(node.itertext()).strip() for node in exception_nodes]
-              raise SystemExit('WFS exception: ' + ' | '.join(messages))
-          members = [node for node in root.iter() if local(node.tag) in {'member', 'featureMember'}]
-          summaries = []
-          for member in members:
-              feature = next(iter(member), None)
-              if feature is None:
-                  continue
-              props = {}
-              for child in feature:
-                  text = ' '.join(''.join(child.itertext()).split())
-                  if text:
-                      props[local(child.tag)] = text
-              summaries.append(props)
-          evidence = {
-              'schema': 'nwe.nannestad-hoydedata-wfs-discovery/0.1',
-              'tile_id': 'epsg25832_611000_6677000_1000m',
-              'query_url': url,
-              'number_matched': root.attrib.get('numberMatched'),
-              'number_returned': root.attrib.get('numberReturned'),
-              'projects': summaries,
-          }
-          Path('/tmp/nwe-hoydedata-wfs-projects.json').write_text(
-              json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
-              encoding='utf-8',
-          )
-          print('NWE_WFS_PROJECTS_BEGIN')
-          print(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
-          print('NWE_WFS_PROJECTS_END')
+          value = json.load(open('/tmp/nwe-nannestad-lidar-source-probe.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nannestad-lidar-source-probe/0.2'
+          assert value['status'] == 'PASS'
+          assert value['tile']['id'] == 'epsg25832_611000_6677000_1000m'
+          assert value['tile']['horizontal_crs'] == 'EPSG:25832'
+          assert value['open_laser_candidate_count'] >= 1
+          assert value['recommended_project'] is not None
+          assert value['recommended_project']['project_type'] == 1
+          assert value['recommended_project']['access'] == 'open'
           PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nannestad-hoydedata-wfs-source-fields-${{ github.sha }}
-          path: /tmp/nwe-hoydedata-wfs-projects.json
+          name: nannestad-lidar-source-probe-${{ github.sha }}
+          path: /tmp/nwe-nannestad-lidar-source-probe.json
           if-no-files-found: error
           retention-days: 14
