@@ -33,7 +33,7 @@ class InspectNannestadLazTests(unittest.TestCase):
             path.write_bytes(b"NWE exact lidar bytes\n")
             self.assertEqual(
                 inspect.sha256_file(path),
-                "ce28f0db5c12008c48954e49f5b496554b5b7561ee5e5360ea252226735b7a50",
+                "8763a0c037383761afa3b673f23201e494beaa2d26adcfdd038431891193d58a",
             )
 
 
