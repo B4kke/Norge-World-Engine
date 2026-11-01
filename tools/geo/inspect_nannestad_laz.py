@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Inspect exact Nannestad LAS/LAZ bytes before any reconstruction claim.
 
-The tool intentionally reports source facts rather than deciding that a point
-cloud is "good enough" from a project label. It measures byte identity, bounds,
-point count, in-tile density and LAS classification counts. laspy/lazrs are
-loaded lazily so parser/helper regressions do not require LiDAR dependencies.
+The tool reports source facts rather than deciding that a point cloud is "good
+enough" from a project label. It measures byte identity, bounds, point count,
+in-tile density and LAS classification counts. laspy/lazrs are loaded lazily so
+parser/helper regressions do not require LiDAR dependencies.
 """
 from __future__ import annotations
 
@@ -66,6 +66,10 @@ def summarize_classifications(values: Iterable[int]) -> dict[str, Any]:
     }
 
 
+def summarize_class_counter(counts: Counter[int]) -> dict[str, Any]:
+    return summarize_classifications(counts.elements())
+
+
 def _finite_vector(values: Iterable[Any]) -> list[float]:
     result = [float(value) for value in values]
     if not all(math.isfinite(value) for value in result):
@@ -76,6 +80,7 @@ def _finite_vector(values: Iterable[Any]) -> list[float]:
 def inspect_laz(path: Path, *, source_project: str | None = None) -> dict[str, Any]:
     try:
         import laspy  # type: ignore
+        import numpy as np  # type: ignore
     except ImportError as exc:
         raise RuntimeError(
             "laspy/lazrs are required for LAZ inspection; install tools/geo/requirements-lidar.txt"
@@ -87,8 +92,9 @@ def inspect_laz(path: Path, *, source_project: str | None = None) -> dict[str, A
     class_counts: Counter[int] = Counter()
     total_points = 0
     in_tile_points = 0
-    measured_min = [math.inf, math.inf, math.inf]
-    measured_max = [-math.inf, -math.inf, -math.inf]
+    measured_min = np.array([np.inf, np.inf, np.inf], dtype=np.float64)
+    measured_max = np.array([-np.inf, -np.inf, -np.inf], dtype=np.float64)
+    min_e, min_n, max_e, max_n = TILE_BOUNDS
 
     with laspy.open(path) as reader:
         header = reader.header
@@ -103,30 +109,33 @@ def inspect_laz(path: Path, *, source_project: str | None = None) -> dict[str, A
         offsets = _finite_vector(header.offsets)
 
         for points in reader.chunk_iterator(1_000_000):
-            xs = points.x
-            ys = points.y
-            zs = points.z
-            classes = points.classification
+            xs = np.asarray(points.x, dtype=np.float64)
+            ys = np.asarray(points.y, dtype=np.float64)
+            zs = np.asarray(points.z, dtype=np.float64)
+            classes = np.asarray(points.classification, dtype=np.uint8)
             chunk_count = len(points)
+            if chunk_count == 0:
+                continue
             total_points += chunk_count
-            class_counts.update(int(value) for value in classes)
-            for index in range(chunk_count):
-                x = float(xs[index])
-                y = float(ys[index])
-                z = float(zs[index])
-                measured_min[0] = min(measured_min[0], x)
-                measured_min[1] = min(measured_min[1], y)
-                measured_min[2] = min(measured_min[2], z)
-                measured_max[0] = max(measured_max[0], x)
-                measured_max[1] = max(measured_max[1], y)
-                measured_max[2] = max(measured_max[2], z)
-                if point_in_tile(x, y):
-                    in_tile_points += 1
+
+            codes, counts = np.unique(classes, return_counts=True)
+            for code, count in zip(codes.tolist(), counts.tolist(), strict=True):
+                class_counts[int(code)] += int(count)
+
+            chunk_min = np.array([xs.min(), ys.min(), zs.min()], dtype=np.float64)
+            chunk_max = np.array([xs.max(), ys.max(), zs.max()], dtype=np.float64)
+            measured_min = np.minimum(measured_min, chunk_min)
+            measured_max = np.maximum(measured_max, chunk_max)
+
+            in_tile = (xs >= min_e) & (xs <= max_e) & (ys >= min_n) & (ys <= max_n)
+            in_tile_points += int(np.count_nonzero(in_tile))
 
     if total_points != header_point_count:
         raise RuntimeError(f"LAS header point_count {header_point_count} != decoded {total_points}")
+    if total_points <= 0:
+        raise RuntimeError("LAS/LAZ contains no decoded points")
 
-    classes = summarize_classifications(class_counts.elements())
+    classes = summarize_class_counter(class_counts)
     density = in_tile_points / TILE_AREA_M2
     has_reconstruction_classes = {
         "ground": classes["ground_count"] > 0,
@@ -154,7 +163,7 @@ def inspect_laz(path: Path, *, source_project: str | None = None) -> dict[str, A
             "point_format_id": point_format_id,
             "header_point_count": header_point_count,
             "header_bounds": {"min": header_min, "max": header_max},
-            "measured_bounds": {"min": measured_min, "max": measured_max},
+            "measured_bounds": {"min": measured_min.tolist(), "max": measured_max.tolist()},
             "scales": scales,
             "offsets": offsets,
             "parsed_crs": crs_text,
