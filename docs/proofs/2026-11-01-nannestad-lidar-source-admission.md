@@ -31,22 +31,22 @@ Public discovery now uses:
 
 with WFS 2.0.0 `GetFeature`, feature type `metadata_prosjekt:Prosjektavgrensning`, exact EPSG:25832 BBOX, and only the small source fields needed for admission. Geometry is deliberately omitted from the response because the full project geometries made the provider response multi-megabyte and one observed response was truncated during XML transfer.
 
-The exact tile query reported `numberMatched=9` / `numberReturned=9`, proving nine project boundaries intersect the tile BBOX. BBOX intersection is deliberately a weaker claim than complete tile coverage.
+The exact tile query reported `numberMatched=9` / `numberReturned=9`, proving nine project-boundary features intersect the tile BBOX. The reduced source-field response contained six metadata-bearing project objects; the three provider-declared features without those requested metadata fields are now reported explicitly as unresolved and are never silently admitted. BBOX intersection is deliberately a weaker claim than complete tile coverage.
 
-Observed laser candidates include:
+Metadata-complete laser candidates are:
 
-| Project | Project no. | Year | Access | Ordered density | Publication |
-| --- | --- | ---: | --- | ---: | --- |
-| Ullensaker Nes Nannestad 2010 | LACHOA07 | 2010 | `TILGANG=1` open | 0.7 pkt/m² | published |
-| Romerike 07pkt 2007 | LACGOA71 | 2007 | `TILGANG=1` open | 0.7 pkt/m² | published |
-| Romeriksåsene 2013 | LACHOA33 | 2013 | `TILGANG=1` open | 0.7 pkt/m² | published |
-| NDH Akershus 5pkt 2015 | LACH0002 | 2015 | `TILGANG=1` open | 5 pkt/m² | published |
-| NDH Akershus 2pkt 2015 | LACH0002 | 2015 | `TILGANG=1` open | 2 pkt/m² | published |
-| Gjerdrum Ullensaker Nannestad 5pkt 2020 | LACHVI04 | 2020 | `TILGANG=2` closed | 5 pkt/m² | published |
+| Project | Project no. | Year | Access | Ordered density | Frame | Publication |
+| --- | --- | ---: | --- | ---: | --- | --- |
+| Ullensaker Nes Nannestad 2010 | LACHOA07 | 2010 | `TILGANG=1` open | 0.7 pkt/m² | EPSG:25832 + EPSG:5941 | published |
+| Romerike 07pkt 2007 | LACGOA71 | 2007 | `TILGANG=1` open | 0.7 pkt/m² | EPSG:25832 + EPSG:5941 | published |
+| Romeriksåsene 2013 | LACHOA33 | 2013 | `TILGANG=1` open | 0.7 pkt/m² | EPSG:25832 + EPSG:5941 | published |
+| **NDH Akershus 5pkt 2015** | **LACH0002** | **2015** | **`TILGANG=1` open** | **5 pkt/m²** | **EPSG:25832 + EPSG:5941** | **published** |
+| NDH Akershus 2pkt 2015 | LACH0002 | 2015 | `TILGANG=1` open | 2 pkt/m² | EPSG:25832 + EPSG:5941 | published |
+| Gjerdrum Ullensaker Nannestad 5pkt 2020 | LACHVI04 | 2020 | `TILGANG=2` closed | 5 pkt/m² | EPSG:25832 + EPSG:5941 | published |
 
-The 2020 project is therefore **not** an admissible anonymous/open acquisition source even though it is newer and denser than older candidates. Current Kartverket project-status evidence also describes `Romerike laser 2025` (`LACIAK53`) as ongoing rather than a delivered open replacement.
+`NDH Akershus 5pkt 2015` is selected as the **first gold-tile acquisition candidate** because it is the highest-density metadata-complete candidate that is simultaneously published, explicitly open and already in the Nannestad source frame. This is an experiment/source-selection decision, not a claim that it completely covers the tile or is the final whole-Norway LiDAR authority.
 
-The remaining WFS entries are retained in the live probe output; source selection is performed by code from the full response rather than from this human summary.
+The 2020 project is **not** an admissible anonymous/open acquisition source even though it is newer and has the same ordered density. Current Kartverket project-status evidence also describes `Romerike laser 2025` (`LACIAK53`) as ongoing rather than a delivered open replacement.
 
 ## Export boundary
 
@@ -90,8 +90,8 @@ The reader is chunked and NumPy-vectorized so a multi-million-point source does 
 
 ## Current conclusion
 
-**PASS:** a public, key-free project-discovery path exists and the exact tile intersects multiple laser projects; at least several are explicitly open and published.
+**PASS:** a public, key-free project-discovery path exists and the exact tile intersects multiple laser projects. `NDH Akershus 5pkt 2015` / `LACH0002` is the first openly obtainable gold-tile candidate based on explicit access, publication, source frame and ordered density.
 
 **REJECTED:** `Gjerdrum Ullensaker Nannestad 5pkt 2020` cannot be treated as the open default because current WFS metadata says `TILGANG=2`.
 
-**OPEN:** select the highest-value open candidate from the complete WFS response, make one explicit operator export, inspect the delivered LAZ bytes, and only then decide whether LiDAR supports roof reconstruction, canopy/tree candidates or a materially better near-field terrain representation.
+**OPEN:** resolve the export API's `ProjectProduct` ambiguity and provide an explicit delivery identity for one operator export. Then inspect the delivered LAZ bytes before deciding whether LiDAR supports roof reconstruction, canopy/tree candidates or a materially better near-field terrain representation.
