@@ -5,6 +5,9 @@ on:
     paths:
       - 'tools/geo/probe_nannestad_lidar.py'
       - 'tools/geo/test_probe_nannestad_lidar.py'
+      - 'tools/geo/inspect_nannestad_laz.py'
+      - 'tools/geo/test_inspect_nannestad_laz.py'
+      - 'tools/geo/requirements-lidar.txt'
       - '.github/workflows/nannestad-lidar-source-probe.yml'
   workflow_dispatch:
 
@@ -21,10 +24,12 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Syntax and deterministic parser regressions
+      - name: Syntax and deterministic source-gate regressions
         run: |
-          python -m py_compile tools/geo/probe_nannestad_lidar.py
-          python -m unittest -v tools/geo/test_probe_nannestad_lidar.py
+          python -m py_compile tools/geo/probe_nannestad_lidar.py tools/geo/inspect_nannestad_laz.py
+          python -m unittest -v \
+            tools/geo/test_probe_nannestad_lidar.py \
+            tools/geo/test_inspect_nannestad_laz.py
 
   live-provider:
     if: github.event_name == 'workflow_dispatch'
