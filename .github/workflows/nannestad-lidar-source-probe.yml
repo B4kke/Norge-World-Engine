@@ -44,7 +44,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Discover public Geonorge Høydedata project WFS for exact tile
+      - name: Inspect public Geonorge Høydedata project WFS GML for exact tile
         run: |
           python - <<'PY'
           import json
@@ -54,79 +54,65 @@ jobs:
           from pathlib import Path
 
           base = 'https://wfs.geonorge.no/skwms1/wfs.hoyde-hoydedata-metadata-prosjekt'
-          headers = {'User-Agent': 'NorgeWorldEngine/0.1 nannestad-lidar-source-probe'}
-
-          def get(url):
-              request = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(request, timeout=90) as response:
-                  return response.read()
-
-          cap_url = base + '?' + urllib.parse.urlencode({
+          params = {
               'service': 'WFS',
-              'request': 'GetCapabilities',
-          })
-          capabilities = get(cap_url)
-          Path('/tmp/nwe-hoydedata-wfs-capabilities.xml').write_bytes(capabilities)
-          root = ET.fromstring(capabilities)
-          names = []
-          for feature_type in root.findall('.//{*}FeatureType'):
-              name = feature_type.findtext('{*}Name')
-              if name:
-                  names.append(name)
-          print('NWE_WFS_FEATURE_TYPES=' + json.dumps(names, ensure_ascii=False))
-          Path('/tmp/nwe-hoydedata-wfs-feature-types.json').write_text(
-              json.dumps(names, ensure_ascii=False, indent=2) + '\n', encoding='utf-8'
+              'version': '2.0.0',
+              'request': 'GetFeature',
+              'typeNames': 'metadata_prosjekt:Prosjektavgrensning',
+              'count': '200',
+              'srsName': 'EPSG:25832',
+              'bbox': '611000,6677000,612000,6678000,EPSG:25832',
+          }
+          url = base + '?' + urllib.parse.urlencode(params)
+          request = urllib.request.Request(
+              url,
+              headers={'User-Agent': 'NorgeWorldEngine/0.1 nannestad-lidar-source-probe'},
           )
-          if not names:
-              raise SystemExit('No WFS feature types found')
+          with urllib.request.urlopen(request, timeout=90) as response:
+              raw = response.read()
+              content_type = response.headers.get('Content-Type')
+          Path('/tmp/nwe-hoydedata-wfs-projects.gml').write_bytes(raw)
+          print('NWE_WFS_CONTENT_TYPE=' + repr(content_type))
+          print('NWE_WFS_BYTES=' + str(len(raw)))
+          print('NWE_WFS_PREFIX_BEGIN')
+          print(raw[:4000].decode('utf-8', errors='replace'))
+          print('NWE_WFS_PREFIX_END')
 
-          results = []
-          for index, name in enumerate(names):
-              params = {
-                  'service': 'WFS',
-                  'version': '2.0.0',
-                  'request': 'GetFeature',
-                  'typeNames': name,
-                  'count': '200',
-                  'srsName': 'EPSG:25832',
-                  'bbox': '611000,6677000,612000,6678000,EPSG:25832',
-                  'outputFormat': 'application/json',
-              }
-              url = base + '?' + urllib.parse.urlencode(params)
-              try:
-                  raw = get(url)
-                  text = raw.decode('utf-8-sig')
-                  payload = json.loads(text)
-                  count = len(payload.get('features', [])) if isinstance(payload, dict) else None
-                  summary = {'type_name': name, 'url': url, 'feature_count': count}
-                  results.append(summary)
-                  Path(f'/tmp/nwe-hoydedata-wfs-{index}.json').write_text(
-                      json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
-                      encoding='utf-8',
-                  )
-                  print('NWE_WFS_RESULT=' + json.dumps(summary, ensure_ascii=False))
-                  if count:
-                      print('NWE_WFS_PAYLOAD_BEGIN')
-                      print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-                      print('NWE_WFS_PAYLOAD_END')
-              except Exception as exc:
-                  summary = {'type_name': name, 'url': url, 'error': repr(exc)}
-                  results.append(summary)
-                  print('NWE_WFS_RESULT=' + json.dumps(summary, ensure_ascii=False))
+          root = ET.fromstring(raw)
+          local = lambda tag: tag.rsplit('}', 1)[-1]
+          exception_nodes = [node for node in root.iter() if local(node.tag) in {'ExceptionText', 'ServiceException'}]
+          if exception_nodes:
+              messages = [''.join(node.itertext()).strip() for node in exception_nodes]
+              raise SystemExit('WFS exception: ' + ' | '.join(messages))
 
-          Path('/tmp/nwe-hoydedata-wfs-results.json').write_text(
-              json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+          members = [node for node in root.iter() if local(node.tag) in {'member', 'featureMember'}]
+          print('NWE_WFS_MEMBER_COUNT=' + str(len(members)))
+          summaries = []
+          for member in members:
+              feature = next(iter(member), None)
+              if feature is None:
+                  continue
+              props = {}
+              for child in feature:
+                  key = local(child.tag)
+                  text = ' '.join(''.join(child.itertext()).split())
+                  if text and key.lower() not in {'geom', 'geometry', 'område', 'omrade'}:
+                      props[key] = text[:2000]
+              summaries.append({'feature_tag': local(feature.tag), 'properties': props})
+          Path('/tmp/nwe-hoydedata-wfs-project-summary.json').write_text(
+              json.dumps(summaries, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
               encoding='utf-8',
           )
+          print('NWE_WFS_SUMMARY_BEGIN')
+          print(json.dumps(summaries, ensure_ascii=False, indent=2, sort_keys=True))
+          print('NWE_WFS_SUMMARY_END')
           PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nannestad-hoydedata-wfs-discovery-${{ github.sha }}
+          name: nannestad-hoydedata-wfs-gml-${{ github.sha }}
           path: |
-            /tmp/nwe-hoydedata-wfs-capabilities.xml
-            /tmp/nwe-hoydedata-wfs-feature-types.json
-            /tmp/nwe-hoydedata-wfs-results.json
-            /tmp/nwe-hoydedata-wfs-*.json
+            /tmp/nwe-hoydedata-wfs-projects.gml
+            /tmp/nwe-hoydedata-wfs-project-summary.json
           if-no-files-found: error
           retention-days: 14
