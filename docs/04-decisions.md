@@ -96,24 +96,24 @@ Only decisions with evidence or an explicit product requirement belong here. Ope
 
 **Status:** Accepted for the bounded Nannestad gold-tile source-admission experiment — 2026-11-01. This does not select a whole-Norway LiDAR runtime/source policy.
 
-**Decision:** discover candidate Høydedata projects through Kartverket/Geonorge's public `Høydedata Metadata prosjekt WFS` using the exact EPSG:25832 tile BBOX and a minimal source-field response. Treat WFS results only as project-boundary intersections. Keep provider export as a separate, explicit operator-side effect and admit no LiDAR-derived geometry until the delivered LAS/LAZ bytes are SHA-256-bound and inspected.
+**Decision:** discover candidate Høydedata projects through Kartverket/Geonorge's public `Høydedata Metadata prosjekt WFS` using the exact EPSG:25832 tile BBOX and a minimal source-field response. Treat WFS results only as project-boundary intersections. For the first bounded acquisition experiment, select `NDH Akershus 5pkt 2015` / `LACH0002` because it is the highest-density metadata-complete candidate currently proven published, explicitly open and already in the Nannestad EPSG:25832 + NN2000 source frame. Keep provider export as a separate, explicit operator-side effect and admit no LiDAR-derived geometry until the delivered LAS/LAZ bytes are SHA-256-bound and inspected.
 
 **Evidence:**
 - a live call to the legacy `projectMetadata.ashx` returned `499: Token Required`; provider/auth failures are now fail-closed and cannot become `NO_CANDIDATE`;
-- the public WFS exact-tile query reported nine intersecting project boundaries without credentials;
-- public WFS metadata shows multiple published/open laser candidates and shows `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` as `TILGANG=2`, so that newer 5 pkt/m² project is not the anonymous/open default;
+- the public WFS exact-tile query reported `numberMatched=9` / `numberReturned=9`; the reduced source-field response contained six metadata-bearing project objects, while three provider-declared features lacked the requested admission metadata and are therefore surfaced as unresolved rather than silently admitted;
+- the six metadata-complete laser records include four explicitly open/published candidates in EPSG:25832 + EPSG:5941/NN2000; `NDH Akershus 5pkt 2015` is open/published at 5 pkt/m²;
+- public WFS metadata shows `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` as `TILGANG=2`, so that newer 5 pkt/m² project is rejected as the anonymous/open default;
 - Kartverket's documented export API supports `Format=1` LAZ, exact polygon clipping and anonymous open-data export with explicit `CopyEmail`; the same API documentation makes `ProjectProduct` mandatory for project export but describes its values only as DTM/DOM/both, so NWE does not invent a point-cloud default.
 
 **Acquisition boundary:** `tools/geo/prepare_nannestad_laz_export.py` requires an explicit project, explicit `ProjectProduct`, explicit delivery identity (`CopyEmail` or BAAT username), and a separate `--submit` flag. Credentials are never written to evidence. Raw LAZ remains outside Git and normal runtime.
 
 **Admission boundary:** `tools/geo/inspect_nannestad_laz.py` records exact byte SHA-256, LAS header/point format, CRS, measured bounds, total/in-tile point count and density, plus source classification counts for ground, vegetation and buildings. Metadata density or project names are insufficient for reconstruction claims.
 
-**Consequence:** source selection may prefer an older open/published project over a newer closed project. Full 1×1 km coverage, roof reconstructability and individual-tree evidence remain open until measured from delivered bytes. Three.js/WebGPU and Unreal may consume only later engine-neutral derived artifacts; neither may stream raw provider data as world truth.
+**Consequence:** the 2015 source selection is only the first gold-tile acquisition hypothesis. Full 1×1 km coverage, actual density/classes, roof reconstructability and individual-tree evidence remain open until measured from delivered bytes. Three.js/WebGPU and Unreal may consume only later engine-neutral derived artifacts; neither may stream raw provider data as world truth.
 
 ## Open decisions
 
 - Exact `ProjectProduct` value/semantics for Kartverket `Format=1` LAZ project export; do not guess until provider behavior or documentation resolves the point-cloud ambiguity.
-- Which open/published WFS-overlap candidate becomes the first LiDAR gold-tile source after the complete provider response is evaluated and exact-byte coverage is measured.
 - Whether direct `NHM DTM 25832 WCS` should supersede the accepted D-007 Atom source path for Nannestad multi-tile terrain. Canonical multi-tile terrain authority remains fail-closed until source-family/seam authority is reconciled.
 - Whole-Norway coordinate/tile indexing strategy.
 - Whole-Norway terrain source/acquisition strategy across UTM zones and service/bulk-download limits.
