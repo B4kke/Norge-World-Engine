@@ -240,7 +240,14 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
     if layers["buildings"]["artifact_role"] != "building-footprints":
         raise RuntimeError(f"unexpected buildings role {layers['buildings']['artifact_role']}")
     if layers["buildings"]["artifact_sha256"] != BUILDING_ARTIFACT_SHA256:
-        raise RuntimeError("realism enrichment is calibrated only for the accepted Nannestad building artifact")
+        raise RuntimeError(
+            "realism enrichment is calibrated only for the accepted Nannestad building artifact"
+            f" (computed {layers['buildings']['artifact_sha256']}"
+            f" from raw {layers['buildings']['raw_sha256']}"
+            f" with {layers['buildings']['raw_object_count']} raw /"
+            f" {layers['buildings']['compiled_count']} compiled objects,"
+            f" pinned {BUILDING_ARTIFACT_SHA256})"
+        )
 
     realism_layers = stage_realism_layers(output, tile_id=tile_id)
     manifest = {
