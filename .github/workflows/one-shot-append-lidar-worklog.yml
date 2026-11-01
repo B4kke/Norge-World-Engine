@@ -1,0 +1,73 @@
+name: one-shot-append-lidar-worklog
+
+on:
+  push:
+    branches:
+      - agent/lumen-web-nannestad-1to1
+
+permissions:
+  contents: write
+
+jobs:
+  append:
+    if: github.event.head_commit.message == 'CI: one-shot append LiDAR worklog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/lumen-web-nannestad-1to1
+          fetch-depth: 0
+
+      - name: Append canonical worklog entry once
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/05-worklog.md')
+          marker = '## 2026-11-01 14:10 CET — LUMEN + FORGE + SENTINEL — P0-HYPERREAL-LIDAR-01'
+          text = path.read_text(encoding='utf-8')
+          if marker in text:
+              raise SystemExit('worklog entry already present')
+          entry = r'''
+
+## 2026-11-01 14:10 CET — LUMEN + FORGE + SENTINEL — P0-HYPERREAL-LIDAR-01
+
+**What**
+- Replaced the token-dependent Høydedata `projectMetadata.ashx` source-discovery path with Kartverket/Geonorge's public Høydedata Metadata prosjekt WFS for the exact accepted Nannestad tile.
+- Fixed the first probe so provider/auth error payloads can never be misreported as `NO_CANDIDATE`, and exposed provider-declared WFS features that lack requested admission metadata instead of silently accepting or discarding them.
+- Selected `NDH Akershus 5pkt 2015` / `LACH0002` as the first bounded gold-tile acquisition hypothesis: published, `TILGANG=1`, 5 pkt/m², EPSG:25832 + EPSG:5941/NN2000. Rejected the newer `LACHVI04` 2020 candidate as the open default because current WFS says `TILGANG=2`.
+- Added a fail-closed exact-tile LAZ export request builder and a chunked/NumPy-vectorized exact-byte LAS/LAZ inspector; raw source bytes remain outside Git/runtime.
+- Restored the provider call to manual-only CI after collecting the live source evidence.
+
+**Why**
+- Source-derived roof/canopy/near-field terrain fidelity is now the highest-value realism unknown. More renderer proxy/post-processing work cannot answer whether available source geometry materially improves the 1×1 km world.
+
+**Result / evidence**
+- FACT: legacy live metadata call returned `499: Token Required`; this is now classified as provider/auth failure, not missing coverage.
+- FACT: public exact-tile WFS reported `numberMatched=9` / `numberReturned=9`; six metadata-bearing laser records were returned and three provider-declared features without requested admission metadata are surfaced as unresolved.
+- FACT: diagnostic run `41308978719` passed both contract and live-provider jobs; source-field artifact `13084781636` was retained.
+- FACT: code head `ba40c08604232fbb71ce5c4885a548d9288e54fd` passed `nannestad-lidar-source-probe` run `41309741805`, baseline `41309741814`, `world-viewer-vite` `41309741822` and viewer-benchmark `41309741806`.
+- EXPERIMENT: `NDH Akershus 5pkt 2015` is selected only as the first acquisition hypothesis. Full 1 km² coverage, actual density/classes, roof reconstructability and individual-tree evidence remain unproven until delivered LAZ bytes pass the exact-byte gate.
+- LIMITATION: no export was submitted because Kartverket's documented `ProjectProduct` requirement is ambiguous for `Format=1` point-cloud LAZ and anonymous export also requires an explicit operator delivery identity. Neither value is guessed.
+
+**Changed**
+- PR #85 / branch `agent/lumen-web-nannestad-1to1`.
+- `tools/geo/probe_nannestad_lidar.py` + regressions.
+- `tools/geo/prepare_nannestad_laz_export.py` + regressions.
+- `tools/geo/inspect_nannestad_laz.py`, `requirements-lidar.txt` + regressions.
+- `.github/workflows/nannestad-lidar-source-probe.yml`.
+- `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
+- `docs/04-decisions.md` D-011 and `docs/06-task-queue.md`.
+
+**Next**
+- Resolve the official `ProjectProduct` semantics for a project-backed LAZ export, then perform one explicit `NDH Akershus 5pkt 2015` exact-tile delivery with an operator-supplied destination and run `inspect_nannestad_laz.py` before beginning `P0-HYPERREAL-LIDAR-02` reconstruction A/B.
+'''
+          path.write_text(text.rstrip() + entry + '\n', encoding='utf-8')
+          PY
+
+          git config user.name 'NWE one-shot worklog'
+          git config user.email 'noreply@github.com'
+          git add docs/05-worklog.md
+          git commit -m 'docs: append P0-HYPERREAL-LIDAR-01 worklog [skip ci]'
+          git push origin HEAD:agent/lumen-web-nannestad-1to1
