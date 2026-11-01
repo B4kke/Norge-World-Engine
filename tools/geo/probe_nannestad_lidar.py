@@ -2,8 +2,8 @@
 """Probe Kartverket Høydedata metadata for the accepted Nannestad 1×1 km tile.
 
 This is a source-admission probe only. It does not start an export job and does
-not download LAZ bytes. The output distinguishes provider unavailability from
-"no covering open laser project" so a Høydedata outage cannot be misread as
+not download LAZ bytes. The output distinguishes provider/auth failures from
+"no covering open laser project" so a Høydedata failure cannot be misread as
 missing source coverage.
 """
 from __future__ import annotations
@@ -106,6 +106,25 @@ def _get_any(value: dict[str, Any], names: tuple[str, ...]) -> Any:
         if hit is not None:
             return hit[1]
     return None
+
+
+def _provider_error(payload: Any) -> tuple[str, str] | None:
+    """Return fail-closed status/message for successful-HTTP error payloads."""
+    if not isinstance(payload, dict):
+        return None
+    raw = _get_any(payload, ("error", "errors", "exception", "message"))
+    if raw is None:
+        return None
+    if isinstance(raw, (dict, list)):
+        message = json.dumps(raw, ensure_ascii=False, sort_keys=True)
+    else:
+        message = str(raw).strip()
+    if not message:
+        return None
+    lowered = message.casefold()
+    if "token required" in lowered or "499" in lowered:
+        return "PROVIDER_AUTH_REQUIRED", message
+    return "PROVIDER_ERROR", message
 
 
 def _looks_like_project(value: dict[str, Any]) -> bool:
@@ -244,17 +263,9 @@ def _score(candidate: dict[str, Any]) -> tuple[int, int, float, str]:
     return (access_score, year, density_score, name.casefold())
 
 
-def analyze_provider_payload(payload: Any) -> dict[str, Any]:
-    projects = _extract_project_dicts(payload)
-    candidates = [_candidate(project) for project in projects]
-    candidates.sort(key=_score, reverse=True)
-    open_candidates = [candidate for candidate in candidates if candidate["access"] == "open"]
-    recommended_pool = open_candidates or [candidate for candidate in candidates if candidate["access"] == "unknown"]
-    recommended = recommended_pool[0] if recommended_pool else None
-
+def _base_result() -> dict[str, Any]:
     return {
         "schema": SCHEMA,
-        "status": "PASS" if candidates else "NO_CANDIDATE",
         "provider": "Kartverket Høydedata",
         "endpoint": METADATA_ENDPOINT,
         "query_url": metadata_url(),
@@ -264,6 +275,34 @@ def analyze_provider_payload(payload: Any) -> dict[str, Any]:
             "vertical_datum": "NN2000",
             "bounds": list(TILE_BOUNDS),
         },
+    }
+
+
+def analyze_provider_payload(payload: Any) -> dict[str, Any]:
+    provider_error = _provider_error(payload)
+    if provider_error is not None:
+        status, message = provider_error
+        return {
+            **_base_result(),
+            "status": status,
+            "candidate_count": 0,
+            "open_candidate_count": 0,
+            "candidates": [],
+            "recommended_project": None,
+            "error": message,
+            "truth": "provider/auth failure is not evidence of missing LiDAR coverage",
+        }
+
+    projects = _extract_project_dicts(payload)
+    candidates = [_candidate(project) for project in projects]
+    candidates.sort(key=_score, reverse=True)
+    open_candidates = [candidate for candidate in candidates if candidate["access"] == "open"]
+    recommended_pool = open_candidates or [candidate for candidate in candidates if candidate["access"] == "unknown"]
+    recommended = recommended_pool[0] if recommended_pool else None
+
+    return {
+        **_base_result(),
+        "status": "PASS" if candidates else "NO_CANDIDATE",
         "candidate_count": len(candidates),
         "open_candidate_count": len(open_candidates),
         "candidates": candidates,
@@ -306,17 +345,8 @@ def main() -> int:
             result = probe_live(timeout=args.timeout)
     except ProviderUnavailable as exc:
         result = {
-            "schema": SCHEMA,
+            **_base_result(),
             "status": "PROVIDER_UNAVAILABLE",
-            "provider": "Kartverket Høydedata",
-            "endpoint": METADATA_ENDPOINT,
-            "query_url": metadata_url(),
-            "tile": {
-                "id": TILE_ID,
-                "horizontal_crs": HORIZONTAL_CRS,
-                "vertical_datum": "NN2000",
-                "bounds": list(TILE_BOUNDS),
-            },
             "error": str(exc),
             "truth": "provider failure is not evidence of missing LiDAR coverage",
         }
@@ -335,6 +365,8 @@ def main() -> int:
         output.write_text(encoded, encoding="utf-8")
     print(encoded, end="")
 
+    if result.get("status") in {"PROVIDER_AUTH_REQUIRED", "PROVIDER_ERROR"}:
+        return 2
     if args.require_open and result.get("open_candidate_count", 0) < 1:
         return 3
     return 0
