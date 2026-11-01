@@ -68,37 +68,78 @@ class ProbeNannestadLidarTests(unittest.TestCase):
         self.assertEqual(projects[0]["LAS_PROJECT_NAME"], "Ullensaker Nes Nannestad 2010")
         self.assertEqual(projects[0]["PUNKTTETTHET"], "0.7")
 
-    def test_newer_closed_project_does_not_beat_open_2020_laser(self):
+    def test_closed_newer_project_does_not_beat_open_frame_compatible_source(self):
         projects = [
-            {
-                "LAS_PROJECT_NAME": "Closed future laser",
-                "TYPE": "1",
-                "TILGANG": "2",
-                "AARSTALL": "2026",
-                "PUNKTTETTHET": "20",
-                "PUBLISERT": "published",
-            },
             {
                 "LAS_PROJECT_NAME": "Gjerdrum Ullensaker Nannestad 5pkt 2020",
                 "PROSJEKTNR": "LACHVI04",
                 "TYPE": "1",
-                "TILGANG": "1",
+                "TILGANG": "2",
                 "AARSTALL": "2020",
                 "PUNKTTETTHET": "5",
                 "PUBLISERT": "published",
+                "KOORDINATSYSTEM": "25832",
+                "HOYDESYSTEM": "5941",
+            },
+            {
+                "LAS_PROJECT_NAME": "NDH Akershus 5pkt 2015",
+                "PROSJEKTNR": "LACH0002",
+                "TYPE": "1",
+                "TILGANG": "1",
+                "AARSTALL": "2015",
+                "PUNKTTETTHET": "5",
+                "PUBLISERT": "published",
+                "KOORDINATSYSTEM": "25832",
+                "HOYDESYSTEM": "5941",
             },
         ]
         result = probe.analyze_wfs_projects(projects, number_matched=2, number_returned=2)
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["laser_candidate_count"], 2)
         self.assertEqual(result["open_laser_candidate_count"], 1)
-        self.assertEqual(
-            result["recommended_project"]["name"],
-            "Gjerdrum Ullensaker Nannestad 5pkt 2020",
-        )
+        self.assertEqual(result["admissible_open_laser_candidate_count"], 1)
+        self.assertEqual(result["recommended_project"]["name"], "NDH Akershus 5pkt 2015")
         self.assertEqual(result["recommended_project"]["ordered_point_density_per_m2"], 5.0)
+        self.assertTrue(result["recommended_project"]["frame_compatible_with_nannestad"])
         self.assertIn("intersection", result["truth"])
         self.assertIn("clipped LAZ", result["truth"])
+
+    def test_wrong_source_frame_is_not_admissible_without_transform_contract(self):
+        result = probe.analyze_wfs_projects(
+            [{
+                "LAS_PROJECT_NAME": "Wrong frame",
+                "TYPE": "1",
+                "TILGANG": "1",
+                "PUBLISERT": "published",
+                "AARSTALL": "2026",
+                "PUNKTTETTHET": "20",
+                "KOORDINATSYSTEM": "25833",
+                "HOYDESYSTEM": "NN1954",
+            }],
+            number_matched=1,
+            number_returned=1,
+        )
+        self.assertEqual(result["open_laser_candidate_count"], 1)
+        self.assertEqual(result["admissible_open_laser_candidate_count"], 0)
+        self.assertIsNone(result["recommended_project"])
+
+    def test_provider_return_count_mismatch_is_visible_not_silently_discarded(self):
+        result = probe.analyze_wfs_projects(
+            [{
+                "LAS_PROJECT_NAME": "Visible candidate",
+                "TYPE": "1",
+                "TILGANG": "1",
+                "PUBLISERT": "published",
+                "KOORDINATSYSTEM": "25832",
+                "HOYDESYSTEM": "5941",
+            }],
+            number_matched=4,
+            number_returned=4,
+        )
+        self.assertEqual(result["metadata_complete_feature_count"], 1)
+        self.assertEqual(result["unresolved_wfs_feature_count"], 3)
+        self.assertFalse(result["provider_response_metadata_complete"])
+        self.assertIn("unresolved", result["truth"])
 
     def test_non_laser_overlap_is_not_admitted(self):
         result = probe.analyze_wfs_projects(
