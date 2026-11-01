@@ -21,7 +21,7 @@ TARGET_CRS = "EPSG:25832"
 SOURCE_SRID = 5973
 TILE_ID = "epsg25832_611000_6677000_1000m"
 SCHEMA = "nwe.nvdb-street-detail-artifact/0.1-candidate"
-ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.1"
+ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.2"
 X_CLIENT = "NorgeWorldEngine-Compiler"
 USER_AGENT = "NorgeWorldEngine/0.1 street-detail-compiler"
 
@@ -30,6 +30,7 @@ TYPE_NAMES = {
     519: "Vegoppmerking, tverrgående",
     174: "Gangfelt",
     95: "Skiltpunkt",
+    96: "Skiltplate",
     87: "Belysningspunkt",
     181: "Lysmast",
     20: "Kantstolper/Refleks",
@@ -57,7 +58,7 @@ def request_url(type_id: int) -> str:
         "srid": str(SOURCE_SRID),
         "antall": "1000",
         "inkluderAntall": "false",
-        "inkluder": "metadata,egenskaper,lokasjon,geometri",
+        "inkluder": "metadata,egenskaper,lokasjon,geometri,relasjoner",
     }, safe=",")
     return f"{BASE}/{type_id}?{query}"
 
@@ -93,6 +94,16 @@ def property_map(obj: dict[str, Any]) -> dict[str, Any]:
             if raw is None or isinstance(raw, (str, int, float, bool)):
                 out[str(key)] = raw
     return dict(sorted(out.items(), key=lambda item: item[0].casefold()))
+
+
+def relation_snapshot(obj: dict[str, Any]) -> Any | None:
+    """Preserve NVDB V4 relation evidence without assigning domain semantics yet."""
+    value = obj.get("relasjoner")
+    if not isinstance(value, (dict, list)):
+        return None
+    # JSON round-trip rejects non-serializable values and detaches from the
+    # provider response before the object becomes part of the deterministic artifact.
+    return json.loads(json.dumps(value, ensure_ascii=False, sort_keys=True))
 
 
 def _transform_point(coord: tuple[float, ...], transformer: Transformer) -> list[float]:
@@ -139,6 +150,7 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
     source_snapshots: list[dict[str, Any]] = []
     counts: dict[str, int] = {}
     geometry_counts: dict[str, int] = {"point": 0, "line": 0}
+    features_with_relations = 0
 
     for type_id, type_name in TYPE_NAMES.items():
         url = request_url(type_id)
@@ -146,12 +158,16 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
         payload = parse_payload(raw)
         objects = [item for item in payload["objekter"] if isinstance(item, dict)]
         emitted = 0
+        relation_objects = 0
         for obj in objects:
             parts = geometry_features(obj, transformer)
             if not parts:
                 continue
             source_id = obj.get("id")
             properties = property_map(obj)
+            relations = relation_snapshot(obj)
+            if relations is not None:
+                relation_objects += 1
             for part_index, part in enumerate(parts):
                 feature = {
                     "source_type_id": type_id,
@@ -161,6 +177,9 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
                     "properties": properties,
                     **part,
                 }
+                if relations is not None:
+                    feature["relations"] = relations
+                    features_with_relations += 1
                 features.append(feature)
                 geometry_counts[part["geometry_type"]] += 1
                 emitted += 1
@@ -173,6 +192,7 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
             "raw_byte_size": len(raw),
             "object_count": len(objects),
             "emitted_geometry_part_count": emitted,
+            "objects_with_relations": relation_objects,
             "license_profile": "NLOD-1.0",
         })
 
@@ -190,10 +210,12 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
             "feature_part_count": len(features),
             "feature_parts_by_type_id": counts,
             "geometry_type_counts": geometry_counts,
+            "features_with_relations": features_with_relations,
         },
         "policy": {
             "geometry": "only explicit NVDB object geometry is reprojected EPSG:25833->25832 and clipped to the exact Nannestad tile",
             "vertical": "point/line Z is intentionally not promoted; renderer grounds presentation against accepted NWE DTM",
+            "relations": "NVDB V4 relation payload is preserved as source evidence but receives no inferred sign/support semantics in this compiler",
             "appearance": "object appearance may be renderer-authored but source position/type/properties remain separately identifiable",
             "truth_guard": "absence of an object is not proof of physical absence; no procedural object is represented as NVDB source truth",
         },
@@ -207,6 +229,7 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
         "artifact_byte_size": len(encoded),
         "feature_part_count": len(features),
         "feature_parts_by_type_id": counts,
+        "features_with_relations": features_with_relations,
         "source_raw_sha256": {str(item["type_id"]): item["raw_sha256"] for item in source_snapshots},
     }
     return artifact, verification
