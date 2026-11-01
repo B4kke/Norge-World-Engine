@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   append:
-    if: github.event.head_commit.message == 'CI: one-shot append LiDAR worklog'
+    if: github.event.head_commit.message == 'CI: repair one-shot LiDAR worklog'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -20,8 +20,12 @@ jobs:
           fetch-depth: 0
 
       - name: Append canonical worklog entry once
+        env:
+          NWE_WORKLOG_ENTRY_B64: IyMgMjAyNi0xMS0wMSAxNDoxMCBDRVQg4oCUIExVTUVOICsgRk9SR0UgKyBTRU5USU5FTCDigJQgUDAtSFlQRVJSRUFMLUxJREFSLTAxCgoqKldoYXQqKgotIFJlcGxhY2VkIHRoZSB0b2tlbi1kZXBlbmRlbnQgSMO4eWRlZGF0YSBgcHJvamVjdE1ldGFkYXRhLmFzaHhgIHNvdXJjZS1kaXNjb3ZlcnkgcGF0aCB3aXRoIEthcnR2ZXJrZXQvR2Vvbm9yZ2UncyBwdWJsaWMgSMO4eWRlZGF0YSBNZXRhZGF0YSBwcm9zamVrdCBXRlMgZm9yIHRoZSBleGFjdCBhY2NlcHRlZCBOYW5uZXN0YWQgdGlsZS4KLSBGaXhlZCB0aGUgZmlyc3QgcHJvYmUgc28gcHJvdmlkZXIvYXV0aCBlcnJvciBwYXlsb2FkcyBjYW4gbmV2ZXIgYmUgbWlzcmVwb3J0ZWQgYXMgYE5PX0NBTkRJREFURWAsIGFuZCBleHBvc2VkIHByb3ZpZGVyLWRlY2xhcmVkIFdGUyBmZWF0dXJlcyB0aGF0IGxhY2sgcmVxdWVzdGVkIGFkbWlzc2lvbiBtZXRhZGF0YSBpbnN0ZWFkIG9mIHNpbGVudGx5IGFjY2VwdGluZyBvciBkaXNjYXJkaW5nIHRoZW0uCi0gU2VsZWN0ZWQgYE5ESCBBa2Vyc2h1cyA1cGt0IDIwMTVgIC8gYExBQ0gwMDAyYCBhcyB0aGUgZmlyc3QgYm91bmRlZCBnb2xkLXRpbGUgYWNxdWlzaXRpb24gaHlwb3RoZXNpczogcHVibGlzaGVkLCBgVElMR0FORz0xYCwgNSBwa3QvbcKyLCBFUFNHOjI1ODMyICsgRVBTRzo1OTQxL05OMjAwMC4gUmVqZWN0ZWQgdGhlIG5ld2VyIGBMQUNIVkkwNGAgMjAyMCBjYW5kaWRhdGUgYXMgdGhlIG9wZW4gZGVmYXVsdCBiZWNhdXNlIGN1cnJlbnQgV0ZTIHNheXMgYFRJTEdBTkc9MmAuCi0gQWRkZWQgYSBmYWlsLWNsb3NlZCBleGFjdC10aWxlIExBWiBleHBvcnQgcmVxdWVzdCBidWlsZGVyIGFuZCBhIGNodW5rZWQvTnVtUHktdmVjdG9yaXplZCBleGFjdC1ieXRlIExBUy9MQVogaW5zcGVjdG9yOyByYXcgc291cmNlIGJ5dGVzIHJlbWFpbiBvdXRzaWRlIEdpdC9ydW50aW1lLgotIFJlc3RvcmVkIHRoZSBwcm92aWRlciBjYWxsIHRvIG1hbnVhbC1vbmx5IENJIGFmdGVyIGNvbGxlY3RpbmcgdGhlIGxpdmUgc291cmNlIGV2aWRlbmNlLgoKKipXaHkqKgotIFNvdXJjZS1kZXJpdmVkIHJvb2YvY2Fub3B5L25lYXItZmllbGQgdGVycmFpbiBmaWRlbGl0eSBpcyBub3cgdGhlIGhpZ2hlc3QtdmFsdWUgcmVhbGlzbSB1bmtub3duLiBNb3JlIHJlbmRlcmVyIHByb3h5L3Bvc3QtcHJvY2Vzc2luZyB3b3JrIGNhbm5vdCBhbnN3ZXIgd2hldGhlciBhdmFpbGFibGUgc291cmNlIGdlb21ldHJ5IG1hdGVyaWFsbHkgaW1wcm92ZXMgdGhlIDHDlzEga20gd29ybGQuCgoqKlJlc3VsdCAvIGV2aWRlbmNlKioKLSBGQUNUOiBsZWdhY3kgbGl2ZSBtZXRhZGF0YSBjYWxsIHJldHVybmVkIGA0OTk6IFRva2VuIFJlcXVpcmVkYDsgdGhpcyBpcyBub3cgY2xhc3NpZmllZCBhcyBwcm92aWRlci9hdXRoIGZhaWx1cmUsIG5vdCBtaXNzaW5nIGNvdmVyYWdlLgotIEZBQ1Q6IHB1YmxpYyBleGFjdC10aWxlIFdGUyByZXBvcnRlZCBgbnVtYmVyTWF0Y2hlZD05YCAvIGBudW1iZXJSZXR1cm5lZD05YDsgc2l4IG1ldGFkYXRhLWJlYXJpbmcgbGFzZXIgcmVjb3JkcyB3ZXJlIHJldHVybmVkIGFuZCB0aHJlZSBwcm92aWRlci1kZWNsYXJlZCBmZWF0dXJlcyB3aXRob3V0IHJlcXVlc3RlZCBhZG1pc3Npb24gbWV0YWRhdGEgYXJlIHN1cmZhY2VkIGFzIHVucmVzb2x2ZWQuCi0gRkFDVDogZGlhZ25vc3RpYyBydW4gYDQxMzA4OTc4NzE5YCBwYXNzZWQgYm90aCBjb250cmFjdCBhbmQgbGl2ZS1wcm92aWRlciBqb2JzOyBzb3VyY2UtZmllbGQgYXJ0aWZhY3QgYDEzMDg0NzgxNjM2YCB3YXMgcmV0YWluZWQuCi0gRkFDVDogY29kZSBoZWFkIGBiYTQwYzA4NjA0MjMyZmJiNzFjZTVjNDg4NWE1NDhkOTI4OGU1NGZkYCBwYXNzZWQgYG5hbm5lc3RhZC1saWRhci1zb3VyY2UtcHJvYmVgIHJ1biBgNDEzMDk3NDE4MDVgLCBiYXNlbGluZSBgNDEzMDk3NDE4MTRgLCBgd29ybGQtdmlld2VyLXZpdGVgIGA0MTMwOTc0MTgyMmAgYW5kIHZpZXdlci1iZW5jaG1hcmsgYDQxMzA5NzQxODA2YC4KLSBFWFBFUklNRU5UOiBgTkRIIEFrZXJzaHVzIDVwa3QgMjAxNWAgaXMgc2VsZWN0ZWQgb25seSBhcyB0aGUgZmlyc3QgYWNxdWlzaXRpb24gaHlwb3RoZXNpcy4gRnVsbCAxIGttwrIgY292ZXJhZ2UsIGFjdHVhbCBkZW5zaXR5L2NsYXNzZXMsIHJvb2YgcmVjb25zdHJ1Y3RhYmlsaXR5IGFuZCBpbmRpdmlkdWFsLXRyZWUgZXZpZGVuY2UgcmVtYWluIHVucHJvdmVuIHVudGlsIGRlbGl2ZXJlZCBMQVogYnl0ZXMgcGFzcyB0aGUgZXhhY3QtYnl0ZSBnYXRlLgotIExJTUlUQVRJT046IG5vIGV4cG9ydCB3YXMgc3VibWl0dGVkIGJlY2F1c2UgS2FydHZlcmtldCdzIGRvY3VtZW50ZWQgYFByb2plY3RQcm9kdWN0YCByZXF1aXJlbWVudCBpcyBhbWJpZ3VvdXMgZm9yIGBGb3JtYXQ9MWAgcG9pbnQtY2xvdWQgTEFaIGFuZCBhbm9ueW1vdXMgZXhwb3J0IGFsc28gcmVxdWlyZXMgYW4gZXhwbGljaXQgb3BlcmF0b3IgZGVsaXZlcnkgaWRlbnRpdHkuIE5laXRoZXIgdmFsdWUgaXMgZ3Vlc3NlZC4KCioqQ2hhbmdlZCoqCi0gUFIgIzg1IC8gYnJhbmNoIGBhZ2VudC9sdW1lbi13ZWItbmFubmVzdGFkLTF0bzFgLgotIGB0b29scy9nZW8vcHJvYmVfbmFubmVzdGFkX2xpZGFyLnB5YCArIHJlZ3Jlc3Npb25zLgotIGB0b29scy9nZW8vcHJlcGFyZV9uYW5uZXN0YWRfbGF6X2V4cG9ydC5weWAgKyByZWdyZXNzaW9ucy4KLSBgdG9vbHMvZ2VvL2luc3BlY3RfbmFubmVzdGFkX2xhei5weWAsIGByZXF1aXJlbWVudHMtbGlkYXIudHh0YCArIHJlZ3Jlc3Npb25zLgotIGAuZ2l0aHViL3dvcmtmbG93cy9uYW5uZXN0YWQtbGlkYXItc291cmNlLXByb2JlLnltbGAuCi0gYGRvY3MvcHJvb2ZzLzIwMjYtMTEtMDEtbmFubmVzdGFkLWxpZGFyLXNvdXJjZS1hZG1pc3Npb24ubWRgLgotIGBkb2NzLzA0LWRlY2lzaW9ucy5tZGAgRC0wMTEgYW5kIGBkb2NzLzA2LXRhc2stcXVldWUubWRgLgoKKipOZXh0KioKLSBSZXNvbHZlIHRoZSBvZmZpY2lhbCBgUHJvamVjdFByb2R1Y3RgIHNlbWFudGljcyBmb3IgYSBwcm9qZWN0LWJhY2tlZCBMQVogZXhwb3J0LCB0aGVuIHBlcmZvcm0gb25lIGV4cGxpY2l0IGBOREggQWtlcnNodXMgNXBrdCAyMDE1YCBleGFjdC10aWxlIGRlbGl2ZXJ5IHdpdGggYW4gb3BlcmF0b3Itc3VwcGxpZWQgZGVzdGluYXRpb24gYW5kIHJ1biBgaW5zcGVjdF9uYW5uZXN0YWRfbGF6LnB5YCBiZWZvcmUgYmVnaW5uaW5nIGBQMC1IWVBFUlJFQUwtTElEQVItMDJgIHJlY29uc3RydWN0aW9uIEEvQi4K
         run: |
           python - <<'PY'
+          import base64
+          import os
           from pathlib import Path
 
           path = Path('docs/05-worklog.md')
@@ -29,41 +33,8 @@ jobs:
           text = path.read_text(encoding='utf-8')
           if marker in text:
               raise SystemExit('worklog entry already present')
-          entry = r'''
-
-## 2026-11-01 14:10 CET — LUMEN + FORGE + SENTINEL — P0-HYPERREAL-LIDAR-01
-
-**What**
-- Replaced the token-dependent Høydedata `projectMetadata.ashx` source-discovery path with Kartverket/Geonorge's public Høydedata Metadata prosjekt WFS for the exact accepted Nannestad tile.
-- Fixed the first probe so provider/auth error payloads can never be misreported as `NO_CANDIDATE`, and exposed provider-declared WFS features that lack requested admission metadata instead of silently accepting or discarding them.
-- Selected `NDH Akershus 5pkt 2015` / `LACH0002` as the first bounded gold-tile acquisition hypothesis: published, `TILGANG=1`, 5 pkt/m², EPSG:25832 + EPSG:5941/NN2000. Rejected the newer `LACHVI04` 2020 candidate as the open default because current WFS says `TILGANG=2`.
-- Added a fail-closed exact-tile LAZ export request builder and a chunked/NumPy-vectorized exact-byte LAS/LAZ inspector; raw source bytes remain outside Git/runtime.
-- Restored the provider call to manual-only CI after collecting the live source evidence.
-
-**Why**
-- Source-derived roof/canopy/near-field terrain fidelity is now the highest-value realism unknown. More renderer proxy/post-processing work cannot answer whether available source geometry materially improves the 1×1 km world.
-
-**Result / evidence**
-- FACT: legacy live metadata call returned `499: Token Required`; this is now classified as provider/auth failure, not missing coverage.
-- FACT: public exact-tile WFS reported `numberMatched=9` / `numberReturned=9`; six metadata-bearing laser records were returned and three provider-declared features without requested admission metadata are surfaced as unresolved.
-- FACT: diagnostic run `41308978719` passed both contract and live-provider jobs; source-field artifact `13084781636` was retained.
-- FACT: code head `ba40c08604232fbb71ce5c4885a548d9288e54fd` passed `nannestad-lidar-source-probe` run `41309741805`, baseline `41309741814`, `world-viewer-vite` `41309741822` and viewer-benchmark `41309741806`.
-- EXPERIMENT: `NDH Akershus 5pkt 2015` is selected only as the first acquisition hypothesis. Full 1 km² coverage, actual density/classes, roof reconstructability and individual-tree evidence remain unproven until delivered LAZ bytes pass the exact-byte gate.
-- LIMITATION: no export was submitted because Kartverket's documented `ProjectProduct` requirement is ambiguous for `Format=1` point-cloud LAZ and anonymous export also requires an explicit operator delivery identity. Neither value is guessed.
-
-**Changed**
-- PR #85 / branch `agent/lumen-web-nannestad-1to1`.
-- `tools/geo/probe_nannestad_lidar.py` + regressions.
-- `tools/geo/prepare_nannestad_laz_export.py` + regressions.
-- `tools/geo/inspect_nannestad_laz.py`, `requirements-lidar.txt` + regressions.
-- `.github/workflows/nannestad-lidar-source-probe.yml`.
-- `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
-- `docs/04-decisions.md` D-011 and `docs/06-task-queue.md`.
-
-**Next**
-- Resolve the official `ProjectProduct` semantics for a project-backed LAZ export, then perform one explicit `NDH Akershus 5pkt 2015` exact-tile delivery with an operator-supplied destination and run `inspect_nannestad_laz.py` before beginning `P0-HYPERREAL-LIDAR-02` reconstruction A/B.
-'''
-          path.write_text(text.rstrip() + entry + '\n', encoding='utf-8')
+          entry = base64.b64decode(os.environ['NWE_WORKLOG_ENTRY_B64']).decode('utf-8')
+          path.write_text(text.rstrip() + '\n\n' + entry.rstrip() + '\n', encoding='utf-8')
           PY
 
           git config user.name 'NWE one-shot worklog'
