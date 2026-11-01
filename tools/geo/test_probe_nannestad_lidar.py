@@ -79,6 +79,22 @@ class ProbeNannestadLidarTests(unittest.TestCase):
         self.assertEqual(result["candidate_count"], 0)
         self.assertEqual(result["open_candidate_count"], 0)
 
+    def test_token_required_payload_fails_closed_as_auth_error(self):
+        result = probe.analyze_provider_payload(
+            {"Error": "Error getting metadata: 499: Token Required"}
+        )
+        self.assertEqual(result["status"], "PROVIDER_AUTH_REQUIRED")
+        self.assertEqual(result["candidate_count"], 0)
+        self.assertEqual(result["open_candidate_count"], 0)
+        self.assertIsNone(result["recommended_project"])
+        self.assertIn("Token Required", result["error"])
+        self.assertIn("not evidence of missing LiDAR coverage", result["truth"])
+
+    def test_generic_provider_error_is_not_no_candidate(self):
+        result = probe.analyze_provider_payload({"message": "temporary provider failure"})
+        self.assertEqual(result["status"], "PROVIDER_ERROR")
+        self.assertEqual(result["candidate_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
