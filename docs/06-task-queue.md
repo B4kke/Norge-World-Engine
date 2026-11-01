@@ -41,12 +41,16 @@ The next task must advance the Unreal Nannestad milestone in `docs/09-unreal-gam
 ## UE5-FOUNDATION — Deterministic adapter and game scaffold
 **Priority:** IMPLEMENTED / VALIDATION PARTIAL
 **Owner:** LUMEN
-**Status:** Python unit PASS + real pinned-snapshot package PASS; UE Editor unavailable in the current environment; PR #84 integration dependency repair complete, merge and CI pending
+**Status:** Python unit PASS + real pinned-snapshot package PASS; UE Editor unavailable in the current environment; PR #84 integration dependency repair complete, merge and CI pending; follow-up branch `agent/lumen-unreal-packet-integrity` adds fail-closed packet SHA-256 verification, a verified level-script enum fix and self-contained setup (PR dependency on #84)
 
 **Implemented:** UE 5.8 C++ project; immutable Nannestad snapshot verification;
 1009² Landscape derivative; 21 chunked runtime mesh packets; explicit
 EPSG:25832/NN2000 mapping; third-person Quinn character; collision bootstrap;
 Lumen/VSM atmosphere; Open World level and Windows setup automation.
+Fail-closed hardening: every mesh packet is SHA-256-verified against the derived
+package manifest before decoding (engine-bundled OpenSSL 1.1.1), and the level
+script now uses the only group-driven `TextureFilter.TF_DEFAULT` value after
+`TF_ANISOTROPIC` was confirmed absent from the UE enum surface.
 
 **Truth guard:** road widths and most building heights/roofs remain visibly
 classified presentation fallbacks. No photorealism or UE compile claim yet.

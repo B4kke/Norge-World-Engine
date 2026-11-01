@@ -16,5 +16,5 @@ struct NANNESTAD_API FNweDecodedMeshPacket
 class NANNESTAD_API FNweMeshPacketReader
 {
 public:
-    static bool Load(const FString& Filename, FNweDecodedMeshPacket& OutPacket, FString& OutError);
+    static bool Load(const FString& Filename, const FString& ExpectedSha256, FNweDecodedMeshPacket& OutPacket, FString& OutError);
 };

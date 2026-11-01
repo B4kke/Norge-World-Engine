@@ -59,6 +59,54 @@ def test_runtime_code_preserves_offline_provenance_and_coordinate_contracts() ->
     assert not any(source in all_runtime_source for source in forbidden_runtime_sources)
 
 
+def test_runtime_mesh_packets_are_sha256_verified_before_decode() -> None:
+    packet_reader = (PROJECT_ROOT / "Source" / "Nannestad" / "Private" / "NweMeshPacket.cpp").read_text(
+        encoding="utf-8"
+    )
+    packet_header = (PROJECT_ROOT / "Source" / "Nannestad" / "Public" / "NweMeshPacket.h").read_text(
+        encoding="utf-8"
+    )
+    build_rules = (PROJECT_ROOT / "Source" / "Nannestad" / "Nannestad.Build.cs").read_text(
+        encoding="utf-8"
+    )
+    bootstrap = (PROJECT_ROOT / "Source" / "Nannestad" / "Private" / "NweWorldBootstrap.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    # The reader must demand a 64-hexadecimal expected digest and hash the exact
+    # buffer it decodes, so a same-size payload change cannot pass verification.
+    assert "const FString& ExpectedSha256" in packet_header
+    assert "SHA256_DIGEST_LENGTH * 2" in packet_reader
+    assert "mesh packet expected SHA-256 must contain 64 hexadecimal characters" in packet_reader
+    assert "SHA256(Bytes.GetData()" in packet_reader
+    assert "mesh packet SHA-256 mismatch" in packet_reader
+
+    # OpenSSL ships with the engine as the third-party "OpenSSL" module.
+    assert 'AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL")' in build_rules
+    assert "openssl/sha.h" in packet_reader
+
+    # The bootstrap passes the manifest digest down and keeps JSON object access
+    # null safe instead of dereferencing a missing field.
+    assert "FNweMeshPacketReader::Load(Filename, PacketSha256, Packet, PacketError)" in bootstrap
+    assert "(*Source).IsValid()" in bootstrap
+
+
+def test_setup_script_installs_the_canonical_provenance_verifier_workspace() -> None:
+    setup_script = (PROJECT_ROOT / "SetupNannestad.ps1").read_text(encoding="utf-8")
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+
+    # The offline pipeline reconstructs provenance with the Node verifier, whose
+    # RFC 8785 canonicalizer must be installed before data verification runs.
+    assert "npm.cmd" in setup_script
+    assert "install --workspace @nwe/schemas-js --include-workspace-root=false --package-lock=false" in setup_script
+    assert "Could not install NWE provenance verifier dependencies" in setup_script
+    assert setup_script.index("install --workspace @nwe/schemas-js") < setup_script.index(
+        "nwe_unreal_pipeline.py"
+    )
+    assert "@nwe/schemas-js" in readme
+    assert "skips this installation as well as conversion" in readme
+
+
 def test_character_fails_visibly_when_human_assets_are_absent() -> None:
     character = (
         PROJECT_ROOT / "Source" / "Nannestad" / "Private" / "NannestadCharacter.cpp"
@@ -104,6 +152,14 @@ def test_visual_pipeline_uses_verified_local_pbr_assets_and_pc_quality_ceiling()
     assert "r.MaxAnisotropy=16" in scalability
     assert "r.MotionBlurQuality=0" in scalability
     assert "sg.GlobalIlluminationQuality=3" in user_settings
+
+    # Imported textures stay on group-driven filtering so scalability, not import
+    # time, bounds anisotropy. Engine source defines TextureFilter as
+    # Nearest/Bilinear/Trilinear/Default only (Engine/Source/Runtime/Engine/
+    # Classes/Engine/TextureDefines.h), so TF_ANISOTROPIC would raise at level
+    # creation and must not come back.
+    assert "unreal.TextureFilter.TF_DEFAULT" in level_script
+    assert "TF_ANISOTROPIC" not in level_script
 
 
 def test_nannestad_visual_authoring_contracts_are_local_and_truth_bounded() -> None:

@@ -6,6 +6,10 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
+THIRD_PARTY_INCLUDES_START
+#include <openssl/sha.h>
+THIRD_PARTY_INCLUDES_END
+
 namespace
 {
 constexpr int32 PrefixBytes = 12;
@@ -46,11 +50,30 @@ bool ReadPositiveCount(const TSharedPtr<FJsonObject>& Header, const TCHAR* Field
 
 bool FNweMeshPacketReader::Load(
     const FString& Filename,
+    const FString& ExpectedSha256,
     FNweDecodedMeshPacket& OutPacket,
     FString& OutError)
 {
     OutPacket = FNweDecodedMeshPacket();
     OutError.Reset();
+
+    // This is an integrity check against the locally derived package manifest,
+    // not a replacement for the pipeline's canonical provenance verification.
+    if (ExpectedSha256.Len() != SHA256_DIGEST_LENGTH * 2)
+    {
+        OutError = TEXT("mesh packet expected SHA-256 must contain 64 hexadecimal characters");
+        return false;
+    }
+    for (const TCHAR Character : ExpectedSha256)
+    {
+        if (!((Character >= TEXT('0') && Character <= TEXT('9'))
+            || (Character >= TEXT('a') && Character <= TEXT('f'))
+            || (Character >= TEXT('A') && Character <= TEXT('F'))))
+        {
+            OutError = TEXT("mesh packet expected SHA-256 must contain 64 hexadecimal characters");
+            return false;
+        }
+    }
 
     TArray<uint8> Bytes;
     if (!FFileHelper::LoadFileToArray(Bytes, *Filename))
@@ -58,6 +81,16 @@ bool FNweMeshPacketReader::Load(
         OutError = FString::Printf(TEXT("cannot read mesh packet: %s"), *Filename);
         return false;
     }
+    // Hash the exact buffer that will be decoded; never reopen the file between
+    // verification and use. A same-size payload change must also be rejected.
+    uint8 Digest[SHA256_DIGEST_LENGTH];
+    if (SHA256(Bytes.GetData(), static_cast<size_t>(Bytes.Num()), Digest) == nullptr
+        || !BytesToHex(Digest, SHA256_DIGEST_LENGTH).Equals(ExpectedSha256, ESearchCase::IgnoreCase))
+    {
+        OutError = TEXT("mesh packet SHA-256 mismatch");
+        return false;
+    }
+
     if (Bytes.Num() < PrefixBytes || FMemory::Memcmp(Bytes.GetData(), MeshMagic, 8) != 0)
     {
         OutError = TEXT("mesh packet magic must be NWEMSH01");

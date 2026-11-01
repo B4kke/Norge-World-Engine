@@ -51,6 +51,13 @@ if ($NeedsGroundTooling) {
 
 Push-Location $RepositoryRoot
 try {
+    if (-not $SkipDataDownload) {
+        # The canonical Node provenance verifier imports canonicalize.
+        $Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+        & $Npm install --workspace @nwe/schemas-js --include-workspace-root=false --package-lock=false
+        if ($LASTEXITCODE -ne 0) { throw "Could not install NWE provenance verifier dependencies" }
+    }
+
     if (-not $SkipVisualAssetDownload) {
         & $ToolPython "apps\unreal-runtime\Tools\acquire_visual_assets.py"
         if ($LASTEXITCODE -ne 0) { throw "Nannestad CC0 vegetation asset acquisition failed" }

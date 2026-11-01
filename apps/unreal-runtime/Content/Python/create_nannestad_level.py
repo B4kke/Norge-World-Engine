@@ -132,7 +132,8 @@ def import_texture(
         raise RuntimeError(f"Could not import texture {source_path} as {asset_path}")
 
     texture.set_editor_property("srgb", srgb)
-    texture.set_editor_property("filter", unreal.TextureFilter.TF_ANISOTROPIC)
+    # Filtering follows the texture group; scalability bounds anisotropy.
+    texture.set_editor_property("filter", unreal.TextureFilter.TF_DEFAULT)
     if normal_map:
         texture.set_editor_property(
             "compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP
