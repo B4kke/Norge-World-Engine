@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   append:
-    if: "github.event.head_commit.message == 'CI: append LiDAR worklog v3'"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
