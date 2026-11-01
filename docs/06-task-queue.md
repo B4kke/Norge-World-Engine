@@ -2,9 +2,11 @@
 
 This file is the **current execution queue**. Historical queue states remain in Git history and archived logs; do not reintroduce stale priorities.
 
-## Priority rule — 2026-10-08
+## Priority rule — 2026-11-01
 
 The explicit product priority is **Nannestad 1×1 km in the normal WebUI, freely navigable and as realistic as admitted data/performance allows**. Unreal Engine remains a parallel adapter track and does not block this Web milestone.
+
+The next engineering priority is no longer another generic proxy/post-processing pass. It is a bounded **LiDAR gold-tile source-fidelity experiment** over the existing accepted 1×1 km tile. Existing visual/runtime acceptance remains valid and must not be weakened, but source-derived roof/canopy/near-field terrain fidelity is now the highest-value unknown.
 
 Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, networking, AI/NPC work or unrelated renderer comparisons.
 
@@ -24,13 +26,52 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 - NVDB type 838/583 width + type 241 surface realism: PASS candidate;
 - NVDB explicit street-detail source compiler: HOSTED PASS candidate;
 - manifest-driven exact browser proof with required derived realism: PASS;
-- published `preview-runtime` snapshot generated from current code head `e57f574d195c474c493acd2f59ddd8dab5488493`: PASS;
+- published `preview-runtime` snapshot generated from code head `e57f574d195c474c493acd2f59ddd8dab5488493`: PASS evidence for that immutable head;
 - exact-head asphalt presentation calibration with unchanged NVDB geometry/source semantics: PASS;
-- exact-head milestone-grade WebGPU device-evidence assessment and deployable Vercel preview: PASS tooling; physical-device capture still open.
+- milestone-grade WebGPU device-evidence assessment and deployable Vercel preview: PASS tooling; physical-device capture still open;
+- shared Unreal/PBR foundation and mesh-packet SHA-256 hardening are merged to `main`; PR #85 remains the Three.js/WebGPU development surface.
 
 ---
 
 # P0 — NANNESTAD 1×1 WEB REALISM
+
+## P0-HYPERREAL-LIDAR-01 — Nannestad LiDAR gold-tile source gate
+**Priority:** 1 — ACTIVE / SOURCE-PROBE IMPLEMENTED  
+**Owner:** FORGE + LUMEN + SENTINEL  
+
+**Goal:** determine from exact source bytes whether open Nannestad LiDAR materially improves roof geometry, canopy/tree candidates and near-field terrain enough to justify a production reconstruction layer.
+
+**Implemented:**
+- exact accepted tile query for `epsg25832_611000_6677000_1000m` / EPSG:25832 / NN2000 against Kartverket Høydedata `projectMetadata.ashx`;
+- deterministic parser/regressions for list and GeoJSON responses;
+- explicit access handling where `TILGANG=2` is closed and open candidates rank ahead of unknown/closed candidates;
+- provider/network failure is reported as `PROVIDER_UNAVAILABLE`, never as proof of missing LiDAR coverage;
+- historical `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is retained only as a cross-check, not as live acquisition authority;
+- PR CI validates parser/request contracts without making provider availability a normal merge gate;
+- manual `workflow_dispatch` performs the live official metadata query and requires at least one explicitly open candidate.
+
+**Current evidence:** local deterministic probe tests PASS (4 cases). Live official exact-tile metadata and LAZ byte acquisition are **not yet claimed PASS**.
+
+**Acceptance sequence:**
+1. run the manual live Høydedata metadata gate for the exact tile;
+2. acquire the selected open LAZ source through the official provider path;
+3. SHA-bind the exact source bytes and record project/source metadata;
+4. inspect LAS/LAZ header, coordinate/vertical frame, point count, classes, tile coverage and measured density from bytes;
+5. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.
+
+**Truth guard:** metadata saying “5 pkt/m²”, a project name, or a historical report does not prove the exact tile's actual point density, LAS classes, roof reconstructability or individual-tree observations.
+
+## P0-HYPERREAL-LIDAR-02 — Gold-tile reconstruction A/B
+**Priority:** 2 — BLOCKED ON `P0-HYPERREAL-LIDAR-01`  
+**Owner:** FORGE + LUMEN  
+
+When exact LAZ bytes pass source admission, compile a separately versioned derived experiment containing:
+- candidate LoD2 roof geometry for representative buildings, retaining per-building quality/fallback state;
+- canopy-height/tree-candidate extraction with source epoch/confidence and SR16 used only for class/density calibration;
+- higher-detail near-field terrain representation from admitted elevation evidence;
+- engine-neutral render payloads suitable for the existing Three.js/WebGPU adapter and later Unreal import.
+
+**Acceptance:** fixed-camera A/B against the current scene plus geometry error/source-quality statistics and measured browser CPU/GPU/memory/network cost. Do not promote a LiDAR-first production policy merely because the result looks better.
 
 ## WEB-REALISM-01 — Verified realism runtime composition
 **Priority:** COMPLETED / IN PR #85  
@@ -51,9 +92,9 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 
 **Implemented:** deterministic SR16V representatives, DTM grounding, road/building/spawn/slope exclusion, instanced spruce/pine/deciduous categories and naturalized multi-tier/multi-lobe proxy silhouettes.
 
-**Exact evidence:** current exact hosted screenshot renders the admitted vegetation layer; exact browser proof reports 828 source representatives and 817 visible representatives after explicit exclusions.
+**Exact evidence:** the accepted hosted screenshot renders the admitted vegetation layer; exact browser proof reports 828 source representatives and 817 visible representatives after explicit exclusions.
 
-**Known limit:** the current trees remain renderer-authored proxy silhouettes, not observed individual trees and not photoreal near-field assets. Better licensed near-field tree/LOD assets belong to `P1-VEGETATION-ASSETS`; do not reopen source-placement work without new evidence.
+**Known limit:** the current trees remain renderer-authored proxy silhouettes, not observed individual trees and not photoreal near-field assets. Freeze further proxy-shape refinement unless needed as fallback/far LOD; source-derived placement and better licensed assets are evaluated through the LiDAR gold-tile path.
 
 ## WEB-REALISM-03 — NVDB physical road semantics
 **Priority:** IMPLEMENTED CANDIDATE / INTEGRATED  
@@ -84,13 +125,13 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 
 **Implemented presentation:** deterministic, instanced façade detail is explicitly renderer-only. Exact browser proof renders 3,000 window instances and 127 door instances in 2 draw calls over the accepted source footprints/best-available heights. Window/door placement, count and dimensions are not source-backed and must never be presented as observed Nannestad façade truth.
 
-**Next source-fidelity gate:** legally/source-backed roof shape/façade/use semantics when an admitted source materially improves the world. Do not invent exact windows/doors and label them source truth.
+**Current direction:** do not spend the main realism budget inventing more aperture detail. Prefer source-derived roof/building geometry and geometrically honest façades; generic windows/doors remain optional presentation fallback.
 
 ## WEB-REALISM-06 — Exact integrated browser acceptance
-**Priority:** 1 — ACTIVE; EXACT DEPLOY + AUTOMATED GATES PASS / PHYSICAL ANDROID CHROME WEBGPU CAPTURE OPEN  
+**Priority:** 3 — AUTOMATED/DEPLOY EVIDENCE PASS ON IMMUTABLE HEAD; PHYSICAL ANDROID CHROME WEBGPU CAPTURE OPEN  
 **Owner:** SENTINEL + LUMEN  
 
-**Passed on exact current code head `e57f574d195c474c493acd2f59ddd8dab5488493`:**
+**Passed on exact code head `e57f574d195c474c493acd2f59ddd8dab5488493`:**
 - production Vite / `world-viewer-vite` run `38482495892`: PASS;
 - baseline run `38482496004`: PASS;
 - viewer benchmark run `38482495838`: PASS;
@@ -112,65 +153,28 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 - no road geometry, width, material source semantics, artifact SHA or provenance was changed.
 
 **Milestone-grade device-evidence gate implemented:**
-- ordinary runtime/provenance capture `PASS` is now explicitly separate from WebGPU milestone readiness;
+- ordinary runtime/provenance capture `PASS` is explicitly separate from WebGPU milestone readiness;
 - milestone assessment is `nwe.webgpu-milestone-evidence-assessment/0.1` and reports `READY_FOR_REVIEW` only when viewer/runtime build identity is bound, capture session exists, Android Chrome is detected, the operator explicitly attests a physical device, requested+active backend are both WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/streaming-lifecycle gates pass, and the 90-frame measurement window contains first-visible, frame-gap, draw-CPU and GPU resource observations;
 - timestamp-query support is recorded as a capability and is not required to be available;
-- no arbitrary FPS/frame-time target is invented. `READY_FOR_REVIEW` means the evidence is complete enough to judge, not that performance is automatically acceptable;
-- device page now exposes a deterministic WebGL2↔WebGPU counterpart link using the same capture session/workload.
+- no arbitrary FPS/frame-time target is invented.
 
-**Known visual limits that are not hidden by acceptance:**
-- vegetation remains proxy-quality in the near field;
-- distant/unsupported building semantics still produce generic presentation;
-- these are P1 quality work unless a concrete P0 usability/performance failure is found.
-
-**Remaining P0 closure gate:** run the exact deployed `e57f574...` device-evidence page on a genuine physical Android Chrome device with WebGPU requested and no fallback. Retain the generated JSON and review the recorded first-visible, 90-frame p50/p95, draw/resource and timestamp-query observations. Browser APIs cannot prove physical-device identity; `physical=1` is an explicit operator/device-lab attestation rather than a browser fact. Do not close P0 from SwiftShader/headless evidence.
-
-**Next concrete task:** run `device-evidence.html?renderer=webgpu&target=android-chrome&physical=1&frames=90` on the exact `e57f574...` Vercel deployment, retain the JSON capture, and judge the observed real-device metrics before closing `WEB-REALISM-06`.
-
----
+**Remaining closure gate:** physical Android Chrome WebGPU capture remains valuable milestone evidence, but it is no longer allowed to block source-fidelity engineering. Re-run exact browser/deployment acceptance after the LiDAR A/B materially changes the render payload.
 
 ## WEB-REALISM-07 — Advanced photoreal graphics pipeline
-**Priority:** IMPLEMENTED / CI-SAFE ON `high`, FULL STACK ON `ultra`
+**Priority:** IMPLEMENTED / CI-SAFE ON `high`, FULL STACK ON `ultra`  
 **Owner:** LUMEN
 
 **Implemented (web-native, no world-truth change):**
-- sky image-based lighting: one-time PMREM capture from the same physical sky that
-  is visible, feeding `scene.environment` / `environmentIntensity`; the hemisphere
-  fill is scaled by the environment intensity so ambient is never double-counted;
-- ordered, fail-closed TSL post graph (schema `nwe.ground-post-processing/0.2`
-  over visual style `nwe.ground-visual-style/0.3`): screen-space reflections →
-  GTAO → god rays (bilateral-blurred, depth-aware composite) → bokeh DOF → bloom →
-  chromatic aberration → film grain;
-- profile gating: `low`/`balanced` keep sky IBL + cheap paths; `high` keeps
-  GTAO + bloom + subtle lens passes; `ultra` carries SSR, god rays and bokeh;
-- software-rasterizer detection: the PMREM capture is skipped with an explicit
-  `skip_reason` in the renderer stats instead of stalling headless capture.
+- sky image-based lighting / one-time PMREM environment capture;
+- ordered, fail-closed TSL post graph with profile-gated SSR, GTAO, god rays, DOF, bloom, chromatic aberration and film grain;
+- `low`/`balanced` retain cheaper paths, `high` uses bounded effects and `ultra` carries the expensive stack;
+- software-rasterizer detection prevents the expensive environment path from stalling headless capture.
 
-**Measured evidence (2026-10-31):**
-- exact-head headless SwiftShader capture at `high`: `REAL WORLD READY`, 759,097 B
-  PNG, ~53 s wall clock against the CI 90 s screenshot budget, scene healthy with
-  subtle lens treatment;
-- local viewer chain: all 37 `apps/world-viewer` structural tests PASS;
-- the ultra SSR + god-ray + bokeh stack cannot finish inside a software capture
-  window, which is exactly why those passes stay ultra-gated (FACT, measured).
+**Measured evidence (2026-10-31):** high-profile headless SwiftShader capture completed inside the CI screenshot budget; the `ultra` stack does not, which is why the heavy effects remain ultra-gated.
 
-**Truth guard:** IBL and every post pass are presentation-only; no albedo, road
-width, building height/roof, tree position or world-truth value changes. The
-accepted asphalt calibration (NVDB geometry/source semantics) is untouched.
+**Truth guard:** IBL and every post pass are presentation-only. Freeze post-processing expansion until source geometry/asset fidelity has materially improved or measured hardware evidence identifies a specific renderer problem.
 
-**Next gate:** exact-hosted browser proof on the real GPU path (WebGPU/WebGL2
-with hardware) to judge the `ultra` SSR/god-ray/IBL image and frame cost before
-enabling anything heavier on `high`.
-
-**Known CI blocker (infrastructure, not this change):** `preview1-visual-proof`
-and `preview1-realdata-publish` currently fail on this branch — and identically
-on parent `38d1515` — because the runner's freshly compiled OSM building artifact
-no longer matches the pinned `BUILDING_ARTIFACT_SHA256` during snapshot staging,
-before any rendering. Hosted green on this head: `baseline`,
-`world-viewer-vite`, `viewer-benchmark`, `nvdb-road-semantics-proof`,
-`visual-source-probe` and both asset inventories. Recalibrate/promote the pinned
-building artifact or restore the upstream snapshot, then re-run the browser
-proofs.
+**Known infrastructure issue:** the branch has previously seen snapshot staging fail because a freshly compiled OSM building artifact no longer matched a pinned `BUILDING_ARTIFACT_SHA256`. Treat this as artifact-promotion/reproducibility work, not evidence against the renderer changes.
 
 ---
 
@@ -180,10 +184,10 @@ proofs.
 Resolve exact sign face/type/orientation from admitted NVDB relations before rendering actual symbols.
 
 ## P1-VEGETATION-ASSETS
-Map SR16V species/height classes to better permissively licensed near-field tree assets/LOD while retaining representative semantics and budgets.
+Map source-derived/SR16-calibrated species/height classes to better permissively licensed near-field tree assets/LOD while retaining source epoch, confidence and budgets. Blender may be used offline for retopology/LOD/baking, never as world truth or runtime dependency.
 
 ## P1-BUILDING-FIDELITY
-Admit better roof shape, multipolygon/relations, building use and façade semantics where legal sources permit.
+Admit better roof shape, multipolygon/relations, building use and façade semantics where legal sources permit. LiDAR reconstruction is an experiment until exact-byte and A/B gates pass.
 
 ## P1-LAND-COVER
 Improve field/forest/grass/residential material classification beyond generic PBR + 10 m macro color under a verified license/redistribution model.
@@ -196,16 +200,16 @@ Improve field/forest/grass/residential material classification beyond generic PB
 Resolve neighboring DTM source/seam authority before production 3×3 terrain promotion.
 
 ## P2-STREAMING
-Movement-driven 3×3 residency, budgets and failure handling using the existing scheduler/cache foundation.
+Movement-driven 3×3 residency, budgets and failure handling using the existing scheduler/cache foundation. Stream compiled semantic/render payloads; never raw provider data.
 
 ## P2-LOD
-Select terrain/object LOD from measured traversal error and resource pressure.
+Select terrain/object LOD from measured traversal error and resource pressure. Near-field terrain must preserve materially more source detail than distant tiles without rendering the full 1 m grid everywhere.
 
 ---
 
 # PARALLEL UNREAL TRACK
 
-UE 5.8 foundation/adapter work remains valid. `UE5-RUN-01`, native Landscape/World Partition and packaged-build evidence remain open parallel gates, but they do not block the current WebUI 1×1 realism milestone.
+The UE 5.8 foundation and packet-integrity hardening are merged to `main`. `UE5-RUN-01`, native Landscape/World Partition and packaged-build evidence remain open parallel gates, but they do not block the current WebUI/LiDAR gold-tile milestone. Three.js/WebGPU and Unreal must consume the same engine-neutral source/reconstruction identities rather than separate Norwegian data pipelines.
 
 # Task completion rule
 
