@@ -7,6 +7,8 @@ on:
       - 'tools/geo/test_probe_nannestad_lidar.py'
       - 'tools/geo/inspect_nannestad_laz.py'
       - 'tools/geo/test_inspect_nannestad_laz.py'
+      - 'tools/geo/prepare_nannestad_laz_export.py'
+      - 'tools/geo/test_prepare_nannestad_laz_export.py'
       - 'tools/geo/requirements-lidar.txt'
       - '.github/workflows/nannestad-lidar-source-probe.yml'
   workflow_dispatch:
@@ -26,10 +28,14 @@ jobs:
 
       - name: Syntax and deterministic source-gate regressions
         run: |
-          python -m py_compile tools/geo/probe_nannestad_lidar.py tools/geo/inspect_nannestad_laz.py
+          python -m py_compile \
+            tools/geo/probe_nannestad_lidar.py \
+            tools/geo/inspect_nannestad_laz.py \
+            tools/geo/prepare_nannestad_laz_export.py
           python -m unittest -v \
             tools/geo/test_probe_nannestad_lidar.py \
-            tools/geo/test_inspect_nannestad_laz.py
+            tools/geo/test_inspect_nannestad_laz.py \
+            tools/geo/test_prepare_nannestad_laz_export.py
 
   live-provider:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
@@ -44,7 +50,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Inspect public Geonorge Høydedata project WFS GML for exact tile
+      - name: Query public Geonorge Høydedata project source fields for exact tile
         run: |
           python - <<'PY'
           import json
@@ -54,6 +60,11 @@ jobs:
           from pathlib import Path
 
           base = 'https://wfs.geonorge.no/skwms1/wfs.hoyde-hoydedata-metadata-prosjekt'
+          property_names = [
+              'LAS_PROJECT_ID', 'LAS_PROJECT_NAME', 'TYPE', 'TILGANG', 'PROSJEKTNR',
+              'KOORDINATSYSTEM', 'HOYDESYSTEM', 'PUNKTTETTHET', 'AARSTALL',
+              'SISTEFLYDATO', 'PUBLISERT', 'OPPLOSNING', 'PUBLISHED_DATE',
+          ]
           params = {
               'service': 'WFS',
               'version': '2.0.0',
@@ -62,6 +73,7 @@ jobs:
               'count': '200',
               'srsName': 'EPSG:25832',
               'bbox': '611000,6677000,612000,6678000,EPSG:25832',
+              'propertyName': ','.join(property_names),
           }
           url = base + '?' + urllib.parse.urlencode(params)
           request = urllib.request.Request(
@@ -70,23 +82,13 @@ jobs:
           )
           with urllib.request.urlopen(request, timeout=90) as response:
               raw = response.read()
-              content_type = response.headers.get('Content-Type')
-          Path('/tmp/nwe-hoydedata-wfs-projects.gml').write_bytes(raw)
-          print('NWE_WFS_CONTENT_TYPE=' + repr(content_type))
-          print('NWE_WFS_BYTES=' + str(len(raw)))
-          print('NWE_WFS_PREFIX_BEGIN')
-          print(raw[:4000].decode('utf-8', errors='replace'))
-          print('NWE_WFS_PREFIX_END')
-
           root = ET.fromstring(raw)
           local = lambda tag: tag.rsplit('}', 1)[-1]
           exception_nodes = [node for node in root.iter() if local(node.tag) in {'ExceptionText', 'ServiceException'}]
           if exception_nodes:
               messages = [''.join(node.itertext()).strip() for node in exception_nodes]
               raise SystemExit('WFS exception: ' + ' | '.join(messages))
-
           members = [node for node in root.iter() if local(node.tag) in {'member', 'featureMember'}]
-          print('NWE_WFS_MEMBER_COUNT=' + str(len(members)))
           summaries = []
           for member in members:
               feature = next(iter(member), None)
@@ -94,25 +96,30 @@ jobs:
                   continue
               props = {}
               for child in feature:
-                  key = local(child.tag)
                   text = ' '.join(''.join(child.itertext()).split())
-                  if text and key.lower() not in {'geom', 'geometry', 'område', 'omrade'}:
-                      props[key] = text[:2000]
-              summaries.append({'feature_tag': local(feature.tag), 'properties': props})
-          Path('/tmp/nwe-hoydedata-wfs-project-summary.json').write_text(
-              json.dumps(summaries, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+                  if text:
+                      props[local(child.tag)] = text
+              summaries.append(props)
+          evidence = {
+              'schema': 'nwe.nannestad-hoydedata-wfs-discovery/0.1',
+              'tile_id': 'epsg25832_611000_6677000_1000m',
+              'query_url': url,
+              'number_matched': root.attrib.get('numberMatched'),
+              'number_returned': root.attrib.get('numberReturned'),
+              'projects': summaries,
+          }
+          Path('/tmp/nwe-hoydedata-wfs-projects.json').write_text(
+              json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
               encoding='utf-8',
           )
-          print('NWE_WFS_SUMMARY_BEGIN')
-          print(json.dumps(summaries, ensure_ascii=False, indent=2, sort_keys=True))
-          print('NWE_WFS_SUMMARY_END')
+          print('NWE_WFS_PROJECTS_BEGIN')
+          print(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
+          print('NWE_WFS_PROJECTS_END')
           PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nannestad-hoydedata-wfs-gml-${{ github.sha }}
-          path: |
-            /tmp/nwe-hoydedata-wfs-projects.gml
-            /tmp/nwe-hoydedata-wfs-project-summary.json
+          name: nannestad-hoydedata-wfs-source-fields-${{ github.sha }}
+          path: /tmp/nwe-hoydedata-wfs-projects.json
           if-no-files-found: error
           retention-days: 14
