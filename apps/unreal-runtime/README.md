@@ -57,7 +57,12 @@ apps\unreal-runtime\SetupNannestad.ps1 `
   -UnrealEngineRoot "C:\Program Files\Epic Games\UE_5.8"
 ```
 
-The script downloads only the immutable compiled NWE snapshot, reconstructs all
+Before data verification the script installs the narrow `@nwe/schemas-js` Node
+workspace (including `canonicalize`) using `npm.cmd`; Node/npm must be on PATH.
+`-SkipDataDownload` skips this installation as well as conversion, so it requires
+an already prepared local package.
+
+For world geometry the script downloads the immutable compiled NWE snapshot, reconstructs all
 three provenance chains, derives the local Unreal package, builds the Editor
 target, verifies every committed PBR source map, imports the DirectX normal-map
 variants, and creates `/Game/Maps/Nannestad` from Epic's

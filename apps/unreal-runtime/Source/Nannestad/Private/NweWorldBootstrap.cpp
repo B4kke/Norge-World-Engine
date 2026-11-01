@@ -163,7 +163,7 @@ bool ANweWorldBootstrap::LoadWorldPackage(FString& OutError)
     double RawSourceRuntimeCalls = -1.0;
     if (!Package->TryGetObjectField(TEXT("source"), Source)
         || !Source
-        || !(*Source)->IsValid()
+        || !(*Source).IsValid()
         || !(*Source)->TryGetStringField(TEXT("runtime_provenance"), RuntimeProvenance)
         || RuntimeProvenance != TEXT("READY_FOR_RUNTIME")
         || !(*Source)->TryGetNumberField(TEXT("raw_source_runtime_calls"), RawSourceRuntimeCalls)
@@ -237,7 +237,7 @@ bool ANweWorldBootstrap::LoadWorldPackage(FString& OutError)
 
         FNweDecodedMeshPacket Packet;
         FString PacketError;
-        if (!FNweMeshPacketReader::Load(Filename, Packet, PacketError))
+        if (!FNweMeshPacketReader::Load(Filename, PacketSha256, Packet, PacketError))
         {
             OutError = FString::Printf(TEXT("%s: %s"), *RelativePath, *PacketError);
             return false;
