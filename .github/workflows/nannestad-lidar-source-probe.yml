@@ -1,0 +1,63 @@
+name: nannestad-lidar-source-probe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/geo/probe_nannestad_lidar.py'
+      - 'tools/geo/test_probe_nannestad_lidar.py'
+      - '.github/workflows/nannestad-lidar-source-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Syntax and deterministic parser regressions
+        run: |
+          python -m py_compile tools/geo/probe_nannestad_lidar.py
+          python -m unittest -v tools/geo/test_probe_nannestad_lidar.py
+
+  live-provider:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Probe exact 1x1 km tile against official Kartverket Høydedata metadata
+        run: |
+          python tools/geo/probe_nannestad_lidar.py \
+            --output /tmp/nwe-nannestad-lidar-source-probe.json \
+            --require-open
+          python -m json.tool /tmp/nwe-nannestad-lidar-source-probe.json
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-nannestad-lidar-source-probe.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.nannestad-lidar-source-probe/0.1'
+          assert value['status'] == 'PASS'
+          assert value['tile']['id'] == 'epsg25832_611000_6677000_1000m'
+          assert value['tile']['horizontal_crs'] == 'EPSG:25832'
+          assert value['tile']['vertical_datum'] == 'NN2000'
+          assert value['open_candidate_count'] >= 1
+          assert value['recommended_project'] is not None
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-lidar-source-probe-${{ github.sha }}
+          path: /tmp/nwe-nannestad-lidar-source-probe.json
+          if-no-files-found: error
+          retention-days: 14
