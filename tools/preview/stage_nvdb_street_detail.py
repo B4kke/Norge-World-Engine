@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 SCHEMA = "nwe.nvdb-street-detail-artifact/0.1-candidate"
-ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.1"
+ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.3"
 TILE_ID = "epsg25832_611000_6677000_1000m"
 
 
@@ -62,6 +62,10 @@ def stage_street_detail(*, repo_root: Path, snapshot_root: Path) -> dict:
         raise RuntimeError("street detail artifact byte identity mismatch")
     if int(artifact.get("stats", {}).get("feature_part_count") or 0) < 1:
         raise RuntimeError("street detail artifact contains no explicit source geometry")
+    if int(artifact.get("stats", {}).get("features_with_source_location") or 0) < 1:
+        raise RuntimeError("street detail v0.3 lacks preserved source-location evidence")
+    if int(artifact.get("stats", {}).get("feature_parts_by_type_id", {}).get("96") or 0) < 1:
+        raise RuntimeError("street detail v0.3 lacks source-backed sign plates")
 
     preview_path = snapshot_root / "manifest.json"
     preview = json.loads(preview_path.read_text(encoding="utf-8"))
@@ -74,12 +78,12 @@ def stage_street_detail(*, repo_root: Path, snapshot_root: Path) -> dict:
         "artifact_byte_size": actual_size,
         "schema": SCHEMA,
         "compiler_algorithm": ALGORITHM,
-        "truth_status": "source-backed-NVDB-explicit-point-and-line-geometry-with-renderer-authored-appearance",
+        "truth_status": "source-backed-NVDB-explicit-geometry-relations-and-location-with-renderer-authored-appearance",
     }
     semantics = preview.setdefault("preview_semantics", {})
     semantics["street_detail"] = (
-        "NVDB explicit geometry for markings/sign points/lighting/ditches/kerbs/sidewalks where present; "
-        "renderer appearance and missing dimensions remain presentation-only"
+        "NVDB explicit geometry plus preserved relation/location evidence for markings/sign points/sign plates/lighting/ditches/kerbs/sidewalks where present; "
+        "renderer appearance and unresolved physical dimensions remain presentation-only"
     )
     attribution = preview.setdefault("attribution", [])
     notice = artifact.get("attribution")
@@ -92,12 +96,14 @@ def stage_street_detail(*, repo_root: Path, snapshot_root: Path) -> dict:
     if total_bytes > 35 * 1024 * 1024:
         raise RuntimeError(f"Preview snapshot with street detail unexpectedly large: {total_bytes} bytes")
     return {
-        "schema": "nwe.preview-street-detail-stage/0.1",
+        "schema": "nwe.preview-street-detail-stage/0.2",
         "status": "PASS",
         "artifact_sha256": actual_sha,
         "artifact_byte_size": actual_size,
         "feature_part_count": artifact["stats"]["feature_part_count"],
         "feature_parts_by_type_id": artifact["stats"]["feature_parts_by_type_id"],
+        "features_with_relations": artifact["stats"].get("features_with_relations", 0),
+        "features_with_source_location": artifact["stats"].get("features_with_source_location", 0),
         "snapshot_byte_size": total_bytes,
     }
 
