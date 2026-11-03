@@ -1,0 +1,58 @@
+name: svv-sign-artwork-probe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/visual-data/probe_svv_sign_artwork.py'
+      - 'tools/visual-data/test_probe_svv_sign_artwork.py'
+      - '.github/workflows/svv-sign-artwork-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Validate probe contract
+        run: |
+          python -m pip install --disable-pip-version-check pytest==9.1.1
+          python -m py_compile tools/visual-data/probe_svv_sign_artwork.py tools/visual-data/test_probe_svv_sign_artwork.py
+          PYTHONPATH=tools/visual-data python -m pytest -q tools/visual-data/test_probe_svv_sign_artwork.py
+
+      - name: Probe official SVV vikeplikt artwork archive
+        run: |
+          python tools/visual-data/probe_svv_sign_artwork.py \
+            --family vikeplikt \
+            --output /tmp/nwe-svv-sign-artwork.json \
+            --cache /tmp/nwe-svv-vikeplikt.zip
+          python - <<'PY'
+          import json
+          value = json.load(open('/tmp/nwe-svv-sign-artwork.json', encoding='utf-8'))
+          assert value['schema'] == 'nwe.svv-sign-artwork-probe/0.1'
+          assert value['status'] == 'PASS'
+          assert value['license_profile'] == 'NLOD-1.0'
+          assert value['raw_byte_size'] > 0
+          assert value['image_file_count'] > 0
+          assert value['inferred_sign_code_count'] > 0
+          print(json.dumps({
+              'raw_sha256': value['raw_sha256'],
+              'raw_byte_size': value['raw_byte_size'],
+              'image_file_count': value['image_file_count'],
+              'inferred_sign_code_count': value['inferred_sign_code_count'],
+              'inferred_sign_codes': value['inferred_sign_codes'],
+              'sample_entries': value['sample_entries'],
+          }, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: svv-sign-artwork-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/nwe-svv-sign-artwork.json
+          if-no-files-found: error
+          retention-days: 14
