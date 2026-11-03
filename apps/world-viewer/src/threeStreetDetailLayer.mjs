@@ -1,11 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
+import { createThreeTrafficSignLayer } from './threeTrafficSignLayer.mjs';
 
 const TYPE = Object.freeze({
   MARKING_LONGITUDINAL: 99,
   MARKING_TRANSVERSE: 519,
   CROSSWALK: 174,
   SIGN_POINT: 95,
+  SIGN_PLATE: 96,
   LIGHT_POINT: 87,
   LIGHT_MAST: 181,
   EDGE_POST: 20,
@@ -279,6 +281,7 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
   const markingMaterialParts = { paint: 0, plastic: 0 };
 
   const signFeatures = [];
+  const signPlateFeatures = [];
   const mastFeatures = [];
   const lightFeatures = [];
   const edgePostFeatures = [];
@@ -287,6 +290,7 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     const typeId = Number(feature.source_type_id);
     if (feature.geometry_type === 'point') {
       if (typeId === TYPE.SIGN_POINT) signFeatures.push(feature);
+      else if (typeId === TYPE.SIGN_PLATE) signPlateFeatures.push(feature);
       else if (typeId === TYPE.LIGHT_MAST) mastFeatures.push(feature);
       else if (typeId === TYPE.LIGHT_POINT) lightFeatures.push(feature);
       else if (typeId === TYPE.EDGE_POST) edgePostFeatures.push(feature);
@@ -334,6 +338,10 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     .map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables, `NWE_Street_${name}`))
     .filter(Boolean);
 
+  const trafficSignLayer = signPlateFeatures.length > 0 ? createThreeTrafficSignLayer({ artifact, terrainPayload, profile }) : null;
+  if (trafficSignLayer?.stats.draw_calls > 0) root.add(trafficSignLayer.root);
+  const fallbackSignFeatures = trafficSignLayer ? trafficSignLayer.signPointsWithoutPlate : signFeatures;
+
   const mastPositionKeys = new Set(mastFeatures.map((feature) => roundedPointKey(feature.point)));
   const uniqueLightFeatures = lightFeatures.filter((feature) => !mastPositionKeys.has(roundedPointKey(feature.point)));
 
@@ -341,7 +349,6 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
   const latticeMaterial = new THREE.MeshStandardMaterial({ color: 0x777e80, roughness: 0.48, metalness: 0.58 });
   const darkMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x3c4143, roughness: 0.42, metalness: 0.58 });
   const woodPoleMaterial = new THREE.MeshStandardMaterial({ color: 0x5b4534, roughness: 0.88, metalness: 0 });
-  const signFaceMaterial = new THREE.MeshPhysicalMaterial({ color: 0xd9dcda, roughness: 0.38, metalness: 0.3, clearcoat: 0.35, clearcoatRoughness: 0.32 });
   const reflectorMaterial = new THREE.MeshPhysicalMaterial({ color: 0xece9dc, roughness: 0.45, metalness: 0.03, clearcoat: 0.45, clearcoatRoughness: 0.25 });
 
   const signSupportGroups = groupBy(signFeatures, (feature) => signSupportProfile(feature).id);
@@ -364,20 +371,24 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       const mount = signMountHeight(feature);
       if (mount.source) sourceMountHeightCount += 1;
       const plateCenter = mount.bottomM + 0.31;
-      const supportHeight = Math.max(1.9, plateCenter + 0.18);
+      const sourceTop = trafficSignLayer?.requiredSupportTopMByParent.get(Number(feature.source_object_id));
+      const supportHeight = Math.max(1.9, plateCenter + 0.18, Number.isFinite(sourceTop) ? sourceTop + 0.18 : 0);
       mesh?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + supportHeight / 2, ground.z), [1, supportHeight, 1]));
     });
     signMeshes.push(mesh);
   }
 
-  const plateGeometry = roundedRectangleGeometry();
-  const signPlates = addInstanced(root, plateGeometry, signFaceMaterial, signFeatures.length, 'NWE_Sign_Plates_GenericNeutral', disposables);
-  signFeatures.forEach((feature, index) => {
-    const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
-    const mount = signMountHeight(feature);
-    signPlates?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + mount.bottomM + 0.31, ground.z), [1, 1, 1]));
-  });
-  signMeshes.push(signPlates);
+  if (fallbackSignFeatures.length > 0) {
+    const signFaceMaterial = new THREE.MeshPhysicalMaterial({ color: 0xd9dcda, roughness: 0.38, metalness: 0.3, clearcoat: 0.35, clearcoatRoughness: 0.32 });
+    const plateGeometry = roundedRectangleGeometry();
+    const signPlates = addInstanced(root, plateGeometry, signFaceMaterial, fallbackSignFeatures.length, 'NWE_Sign_Plates_GenericNeutral', disposables);
+    fallbackSignFeatures.forEach((feature, index) => {
+      const ground = localPoint(feature.point, terrainPayload, sampleHeight, 0);
+      const mount = signMountHeight(feature);
+      signPlates?.setMatrixAt(index, objectMatrix(new THREE.Vector3(ground.x, ground.y + mount.bottomM + 0.31, ground.z), [1, 1, 1]));
+    });
+    signMeshes.push(signPlates);
+  }
 
   const allMasts = [...mastFeatures, ...uniqueLightFeatures];
   const steelMasts = allMasts.filter((feature) => !String(feature?.properties?.Type ?? '').toLowerCase().includes('tre'));
@@ -418,10 +429,13 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
   }
 
   const instancedMeshes = [...signMeshes, ...mastMeshes, edgePosts].filter(Boolean);
-  const drawCalls = lineMeshes.length + instancedMeshes.length;
+  const trafficSignDrawCalls = trafficSignLayer?.stats.draw_calls ?? 0;
+  const trafficSignMeshCount = trafficSignLayer?.stats.rendered_mesh_count ?? 0;
+  const drawCalls = lineMeshes.length + instancedMeshes.length + trafficSignDrawCalls;
 
   function dispose() {
     root.removeFromParent();
+    trafficSignLayer?.dispose();
     for (const geometry of disposables.geometries) geometry.dispose();
     for (const material of disposables.materials) material.dispose();
   }
@@ -430,21 +444,26 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     root,
     dispose,
     stats: Object.freeze({
-      schema: 'nwe.three-street-detail-layer/0.2',
+      schema: 'nwe.three-street-detail-layer/0.3',
       source_feature_part_count: artifact.stats?.feature_part_count ?? artifact.features?.length ?? 0,
       source_feature_parts_by_type_id: Object.freeze({ ...(artifact.stats?.feature_parts_by_type_id ?? {}) }),
       rendered_line_mesh_count: lineMeshes.length,
-      rendered_instanced_mesh_count: instancedMeshes.length,
+      rendered_instanced_mesh_count: instancedMeshes.length + trafficSignMeshCount,
       draw_calls: drawCalls,
       source_width_marking_parts: sourceWidthMarkings,
       renderer_fallback_width_marking_parts: fallbackWidthMarkings,
       source_thickness_marking_parts: sourceThicknessMarkings,
       marking_material_parts: Object.freeze({ ...markingMaterialParts }),
       sign_point_count: signFeatures.length,
+      source_sign_plate_count: signPlateFeatures.length,
       source_sign_support_count: sourceSupportCount,
       source_sign_mount_height_count: sourceMountHeightCount,
       sign_support_counts: Object.freeze({ ...signSupportCounts }),
-      sign_face_semantics: 'generic-neutral-backplate-no-traffic-symbol-without-admitted-sign-face-relation',
+      generic_fallback_sign_plate_count: fallbackSignFeatures.length,
+      sign_face_semantics: trafficSignLayer
+        ? 'NVDB-type96-source-identity-text-parent-and-placement-with-renderer-facsimile-artwork'
+        : 'generic-neutral-backplate-no-traffic-symbol-without-admitted-sign-face-relation',
+      traffic_signs: trafficSignLayer?.stats ?? Object.freeze({ status: 'NO_TYPE96_SIGN_PLATES' }),
       source_light_mast_count: mastFeatures.length,
       source_light_point_count: lightFeatures.length,
       deduplicated_additional_light_point_count: uniqueLightFeatures.length,
@@ -453,7 +472,9 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       edge_post_count: edgePostFeatures.length,
       skipped_unsupported_count: skippedUnsupported,
       profile: profile?.id ?? 'unknown',
-      truth_guard: 'NVDB positions/types/properties drive marking width/material/thickness where present plus sign support family/mount-height and light-mast material class; sign face identity/orientation and unresolved dimensions remain renderer presentation only',
+      truth_guard: trafficSignLayer
+        ? 'NVDB positions/types/properties plus type96 sign identity/text/relations/placement drive presentation; exact sign dimensions, official face artwork, exact equal-slot arrangement and front/back metering direction remain explicitly unresolved'
+        : 'NVDB positions/types/properties drive marking width/material/thickness where present plus sign support family/mount-height and light-mast material class; sign face identity/orientation and unresolved dimensions remain renderer presentation only',
     }),
   });
 }

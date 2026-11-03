@@ -62,16 +62,19 @@ const artifact = {
 };
 
 const layer = createThreeStreetDetailLayer({ artifact, terrainPayload, profile: { id: 'high' } });
-assert.equal(layer.stats.schema, 'nwe.three-street-detail-layer/0.2');
+assert.equal(layer.stats.schema, 'nwe.three-street-detail-layer/0.3');
 assert.equal(layer.stats.source_feature_part_count, 4);
 assert.equal(layer.stats.source_width_marking_parts, 1);
 assert.equal(layer.stats.renderer_fallback_width_marking_parts, 0);
 assert.equal(layer.stats.source_thickness_marking_parts, 1);
 assert.equal(layer.stats.marking_material_parts.plastic, 1);
 assert.equal(layer.stats.sign_point_count, 1);
+assert.equal(layer.stats.source_sign_plate_count, 0);
 assert.equal(layer.stats.source_sign_support_count, 1);
 assert.equal(layer.stats.source_sign_mount_height_count, 1);
 assert.equal(layer.stats.sign_support_counts['pole-88.9'], 1);
+assert.equal(layer.stats.generic_fallback_sign_plate_count, 1);
+assert.equal(layer.stats.traffic_signs.status, 'NO_TYPE96_SIGN_PLATES');
 assert.match(layer.stats.sign_face_semantics, /no-traffic-symbol/);
 assert.equal(layer.stats.source_light_mast_count, 2);
 assert.equal(layer.stats.steel_light_mast_count, 1);
