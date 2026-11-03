@@ -6,6 +6,7 @@ on:
       - 'tools/geo/probe_nvdb_road_semantics.py'
       - 'tools/geo/compile_nvdb_road_realism.py'
       - 'tools/geo/compile_nvdb_street_detail.py'
+      - 'tools/geo/test_nvdb_street_detail_pagination.py'
       - 'tools/preview/stage_nvdb_road_realism.py'
       - 'engine/compiler/src/nwe_compiler/acquisition.py'
       - '.github/workflows/nvdb-road-semantics-proof.yml'
@@ -89,6 +90,11 @@ jobs:
           }, indent=2, sort_keys=True, ensure_ascii=False))
           PY
 
+      - name: Fail-closed NVDB pagination regression
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: python tools/geo/test_nvdb_street_detail_pagination.py
+
       - name: Compile source-backed street-detail inventory for exact tile
         env:
           PYTHONPATH: engine/compiler/src
@@ -104,7 +110,7 @@ jobs:
           assert artifact['schema'] == 'nwe.nvdb-street-detail-artifact/0.1-candidate'
           assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
           assert artifact['horizontal_crs'] == 'EPSG:25832'
-          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.3'
+          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.4'
           assert verification['status'] == 'PASS'
           assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
           assert verification['feature_part_count'] > 0
