@@ -1,0 +1,39 @@
+{
+  "schema": "nwe.polyhaven-tree-candidate-catalog/0.1",
+  "license": {
+    "spdx_like": "CC0-1.0",
+    "source": "https://polyhaven.com/license",
+    "redistribution_allowed": true,
+    "runtime_remote_dependency_allowed": false
+  },
+  "assets": [
+    {
+      "asset_id": "fir_tree_01",
+      "source_page": "https://polyhaven.com/a/fir_tree_01",
+      "api_files": "https://api.polyhaven.com/files/fir_tree_01",
+      "presentation_groups": ["spruce", "conifer-mixed"],
+      "truth_guard": "visual conifer candidate only; Fir Tree 01 is not source evidence that an SR16V spruce representative is a fir"
+    },
+    {
+      "asset_id": "pine_tree_01",
+      "source_page": "https://polyhaven.com/a/pine_tree_01",
+      "api_files": "https://api.polyhaven.com/files/pine_tree_01",
+      "presentation_groups": ["pine"],
+      "truth_guard": "visual pine candidate only; exact individual-tree appearance is not observed"
+    },
+    {
+      "asset_id": "tree_small_02",
+      "source_page": "https://polyhaven.com/a/tree_small_02",
+      "api_files": "https://api.polyhaven.com/files/tree_small_02",
+      "presentation_groups": ["deciduous", "mixed"],
+      "truth_guard": "generic broadleaf presentation candidate only; source asset species is not promoted to Norwegian land-cover truth"
+    }
+  ],
+  "preprocessing_policy": {
+    "preferred_source_resolution": "1k",
+    "preferred_exchange_family": "gltf",
+    "raw_model_bytes_committable": false,
+    "raw_model_bytes_runtime_streamed_from_provider": false,
+    "required_next_stage": "pin selected provider file closure by size+checksum, then preprocess locally to bounded runtime LOD before renderer admission"
+  }
+}

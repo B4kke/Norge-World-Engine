@@ -1,0 +1,116 @@
+name: nannestad-lidar-source-probe
+
+on:
+  pull_request:
+    paths:
+      - 'tools/geo/probe_nannestad_lidar.py'
+      - 'tools/geo/test_probe_nannestad_lidar.py'
+      - 'tools/geo/inspect_nannestad_laz.py'
+      - 'tools/geo/test_inspect_nannestad_laz.py'
+      - 'tools/geo/prepare_nannestad_laz_export.py'
+      - 'tools/geo/test_prepare_nannestad_laz_export.py'
+      - 'tools/geo/requirements-lidar.txt'
+      - '.github/workflows/nannestad-lidar-source-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Syntax and deterministic source-gate regressions
+        run: |
+          python -m py_compile \
+            tools/geo/probe_nannestad_lidar.py \
+            tools/geo/inspect_nannestad_laz.py \
+            tools/geo/prepare_nannestad_laz_export.py
+          python -m unittest -v \
+            tools/geo/test_probe_nannestad_lidar.py \
+            tools/geo/test_inspect_nannestad_laz.py \
+            tools/geo/test_prepare_nannestad_laz_export.py
+
+  live-provider:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Probe public Geonorge Høydedata projects intersecting exact tile
+        run: |
+          python tools/geo/probe_nannestad_lidar.py \
+            --output /tmp/nwe-nannestad-lidar-source-probe.json \
+            --require-open
+          python -m json.tool /tmp/nwe-nannestad-lidar-source-probe.json
+
+      - name: Read-only diagnose Høydedata export value endpoint
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          bases = [
+              'https://hoydedata.no/LaserServices/REST/GetExportValues.ashx',
+              'https://test.hoydedata.no/LaserServices/REST/GetExportValues.ashx',
+          ]
+          variants = [
+              ('bare', None),
+              ('empty_request', {}),
+              ('project', {'Projects': 'NDH Akershus 5pkt 2015'}),
+              ('project_format_laz', {'Projects': 'NDH Akershus 5pkt 2015', 'Format': 1}),
+          ]
+          results = []
+          for base in bases:
+              for label, payload in variants:
+                  url = base
+                  if payload is not None:
+                      url += '?' + urllib.parse.urlencode({
+                          'request': json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+                      })
+                  request = urllib.request.Request(
+                      url,
+                      headers={
+                          'User-Agent': 'NorgeWorldEngine/0.1 export-values-diagnostic',
+                          'Accept': 'application/json,text/plain,*/*;q=0.5',
+                      },
+                  )
+                  item = {'base': base, 'variant': label, 'url': url}
+                  try:
+                      with urllib.request.urlopen(request, timeout=60) as response:
+                          raw = response.read()
+                          item['http_status'] = getattr(response, 'status', 200)
+                          item['content_type'] = response.headers.get('Content-Type')
+                          item['body'] = raw.decode('utf-8-sig', errors='replace')[:20000]
+                  except Exception as exc:
+                      item['error'] = repr(exc)
+                  results.append(item)
+                  print('NWE_EXPORT_VALUES=' + json.dumps(item, ensure_ascii=False))
+          Path('/tmp/nwe-hoydedata-export-values.json').write_text(
+              json.dumps(results, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-lidar-provider-diagnostic-${{ github.sha }}
+          path: |
+            /tmp/nwe-nannestad-lidar-source-probe.json
+            /tmp/nwe-hoydedata-export-values.json
+          if-no-files-found: error
+          retention-days: 14

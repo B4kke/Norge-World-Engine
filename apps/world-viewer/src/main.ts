@@ -268,7 +268,19 @@ async function runDefaultPreview() {
       );
       setMetric('metric-texture-quality', `${materials.anisotropy_active}× ANISO · NORMAL ${materials.normal_maps ? 'ON' : 'OFF'}`, materials.normal_maps ? 'pass' : 'neutral');
       setMetric('metric-lighting', `${visualStyle.shadow.filter.replace('ShadowMap', '').toUpperCase()} · ${visualStyle.shadow.map_size}²`, 'pass');
-      setMetric('metric-post', post.enabled ? `${post.ambient_occlusion ? 'GTAO' : ''}${post.ambient_occlusion && post.bloom ? ' + ' : ''}${post.bloom ? 'BLOOM' : ''}` : 'DIRECT', post.enabled ? 'pass' : 'neutral');
+      const postEffectLabels: Record<string, string> = {
+        screen_space_reflections: 'SSR',
+        ambient_occlusion: 'GTAO',
+        god_rays: 'GOD RAYS',
+        depth_of_field: 'BOKEH',
+        bloom: 'BLOOM',
+        chromatic_aberration: 'LENS',
+        film_grain: 'GRAIN',
+      };
+      const postEffectLabel = post.enabled && Array.isArray(post.effects)
+        ? post.effects.map((effect) => postEffectLabels[effect]).filter(Boolean).join(' + ')
+        : '';
+      setMetric('metric-post', postEffectLabel || 'DIRECT', post.enabled ? 'pass' : 'neutral');
       setMetric('metric-mesh', `${result.renderer.terrain_vertices.toLocaleString()} vertices · ${result.renderer.terrain_triangles.toLocaleString()} tris`);
       setMetric('metric-height-backed', String(result.renderer.source_backed_building_heights), 'pass');
       setMetric('metric-height-fallback', `${result.renderer.unresolved_building_heights} · DEBUG 5 m`, 'warn');

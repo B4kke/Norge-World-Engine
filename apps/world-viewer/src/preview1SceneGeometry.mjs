@@ -90,7 +90,8 @@ function worldPointToLocal(point, origin, sampleHeight, lift = 0) {
   const easting = Number(point?.[0]);
   const northing = Number(point?.[1]);
   if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('invalid world point');
-  const sourceZ = Number(point?.[2]);
+  const rawSourceZ = point?.[2];
+  const sourceZ = rawSourceZ == null ? Number.NaN : Number(rawSourceZ);
   const elevation = Number.isFinite(sourceZ) && sourceZ > -10000 ? sourceZ : sampleHeight(easting, northing);
   return [easting - origin.e, elevation - origin.h + lift, origin.n - northing];
 }
@@ -154,6 +155,7 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     fallbackHeightMeters: BUILDING_FALLBACK_HEIGHT_M,
     groundLiftMeters: BUILDING_GROUND_LIFT_M,
   });
+  const roadRealism = roadsArtifact?.web_realism ?? null;
   return {
     header: terrainPayload.artifact.header,
     origin,
@@ -164,12 +166,16 @@ export function createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buil
     stats: {
       terrain_vertices: terrainPayload.mesh.metadata.vertexCount,
       terrain_triangles: terrainPayload.mesh.metadata.triangleCount,
-      road_paths: roadsArtifact?.paths?.length ?? 0,
+      road_paths: roadRealism?.base_path_count ?? roadsArtifact?.paths?.length ?? 0,
       road_surface_paths: roads.metadata.path_count,
       road_surface_segments: roads.metadata.segment_count,
       road_surface_triangles: roads.metadata.triangle_count,
       road_width_semantics: roads.metadata.width_semantics,
+      road_source_width_parts: roadRealism?.source_width_overlay_count ?? roads.metadata.source_width_path_count,
+      road_source_width_range_m: roadRealism?.source_width_range_m ?? null,
+      road_surface_material_counts: roadRealism?.surface_material_counts ?? {},
       road_surface_lift_m: ROAD_SURFACE_LIFT_M,
+      road_source_width_overlay_lift_m: roadRealism?.overlay_lift_m ?? null,
       building_footprints: buildingsArtifact?.features?.length ?? 0,
       source_backed_building_heights: buildingsResolved.count,
       unresolved_building_heights: buildingsFallback.count,

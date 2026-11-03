@@ -4,9 +4,14 @@ on:
   pull_request:
     branches:
       - main
+      - agent/lumen-unreal-nannestad-foundation
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
+      - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
       - 'engine/schemas/**'
@@ -19,7 +24,11 @@ on:
       - main
     paths:
       - 'apps/world-viewer/**'
+      - 'apps/unreal-runtime/Tools/fetch_sentinel_ground_imagery.py'
+      - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'tools/preview/**'
+      - 'tools/geo/compile_nvdb_road_realism.py'
+      - 'tools/geo/compile_nvdb_street_detail.py'
       - 'engine/compiler/**'
       - 'engine/streaming/**'
       - 'engine/schemas/**'
@@ -67,7 +76,7 @@ jobs:
     needs: change-gate
     if: needs.change-gate.outputs.heavy == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       NWE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -92,7 +101,32 @@ jobs:
             --commit-sha "$NWE_SOURCE_SHA" \
             | tee /tmp/nwe-preview-stage.json
           python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
-          du -ah /tmp/nwe-preview | sort -h | tail -20
+
+      - name: Stage source-backed NVDB road width and surface realism
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/preview/stage_nvdb_road_realism.py \
+            --snapshot-root /tmp/nwe-preview \
+            | tee /tmp/nwe-preview-road-realism.json
+          python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
+
+      - name: Stage source-backed NVDB street detail
+        env:
+          PYTHONPATH: engine/compiler/src
+        run: |
+          python tools/preview/stage_nvdb_street_detail.py \
+            --snapshot-root /tmp/nwe-preview \
+            | tee /tmp/nwe-preview-street-detail.json
+          python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
+
+      - name: Stage pinned-summer Sentinel-2 macro ground color
+        run: |
+          python tools/preview/stage_sentinel_ground.py \
+            --snapshot-root /tmp/nwe-preview \
+            | tee /tmp/nwe-preview-sentinel-ground.json
+          python -m json.tool /tmp/nwe-preview/manifest.json > /dev/null
+          du -ah /tmp/nwe-preview | sort -h | tail -30
 
       - uses: actions/setup-node@v4
         with:
@@ -101,16 +135,18 @@ jobs:
       - name: Install runtime and World Viewer dependencies
         run: npm install --workspace @nwe/schemas-js --workspace @nwe/world-viewer --include-workspace-root=false --no-audit --no-fund
 
-      - name: Verify all published compiled bytes before distribution
+      - name: Verify all published compiled, realism and ground-color bytes before distribution
         run: |
           node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
           import fs from 'node:fs';
           import path from 'node:path';
           import { verifyRuntimeBundle } from './engine/streaming/runtime_verifier.mjs';
 
           const root = '/tmp/nwe-preview';
           const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-          if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || manifest.status !== 'REAL_COMPILED') {
+          const allowedStatuses = new Set(['REAL_COMPILED', 'REAL_COMPILED_WITH_DERIVED_REALISM']);
+          if (manifest.schema !== 'nwe.world-preview-manifest/0.1' || !allowedStatuses.has(manifest.status)) {
             throw new Error(`unexpected preview manifest ${manifest.schema}/${manifest.status}`);
           }
           for (const name of ['terrain', 'roads', 'buildings']) {
@@ -123,11 +159,66 @@ jobs:
             if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') {
               throw new Error(`${name}: ${verification.code}: ${verification.detail}`);
             }
-            if (bundle.artifact_ref.sha256 !== layer.artifact_sha256) {
-              throw new Error(`${name}: manifest/artifact SHA mismatch`);
-            }
+            if (bundle.artifact_ref.sha256 !== layer.artifact_sha256) throw new Error(`${name}: manifest/artifact SHA mismatch`);
             console.log(JSON.stringify({ layer: name, sha256: layer.artifact_sha256, bytes: bytes.byteLength, verification: verification.code }));
           }
+
+          if (manifest.status === 'REAL_COMPILED_WITH_DERIVED_REALISM') {
+            for (const name of ['building_surface', 'roof_orientation', 'vegetation']) {
+              const layer = manifest.realism_layers?.[name];
+              if (!layer?.path || !layer?.artifact_sha256) throw new Error(`${name}: realism descriptor missing`);
+              const artifactPath = path.join(root, layer.path.replace(/^\.\//, ''));
+              const bytes = fs.readFileSync(artifactPath);
+              const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+              if (sha256 !== layer.artifact_sha256) throw new Error(`${name}: staged SHA mismatch`);
+              const value = JSON.parse(bytes.toString('utf8'));
+              if (value.schema !== layer.schema || value.tile_id !== manifest.tile.id || value.compiler_config_id !== layer.compiler_config_id) {
+                throw new Error(`${name}: staged realism identity mismatch`);
+              }
+              console.log(JSON.stringify({ realism_layer: name, sha256, bytes: bytes.byteLength, schema: value.schema }));
+            }
+            const road = manifest.realism_layers?.road_realism;
+            if (!road?.path || !road?.artifact_sha256) throw new Error('road_realism descriptor missing');
+            const roadBytes = fs.readFileSync(path.join(root, road.path.replace(/^\.\//, '')));
+            const roadSha = crypto.createHash('sha256').update(roadBytes).digest('hex');
+            const roadValue = JSON.parse(roadBytes.toString('utf8'));
+            if (roadSha !== road.artifact_sha256 || roadValue.schema !== 'nwe.road-realism-artifact/0.1-candidate') {
+              throw new Error('road_realism byte/schema mismatch');
+            }
+            if (roadValue.compiler_algorithm !== road.compiler_algorithm || roadValue.tile_id !== manifest.tile.id) {
+              throw new Error('road_realism algorithm/tile mismatch');
+            }
+            if (!(roadValue.stats?.width_feature_part_count > 0)) throw new Error('road_realism lacks source width features');
+            console.log(JSON.stringify({ realism_layer: 'road_realism', sha256: roadSha, widths: roadValue.stats.width_feature_part_count, range: roadValue.stats.width_range_m }));
+
+            const street = manifest.realism_layers?.street_detail;
+            if (!street?.path || !street?.artifact_sha256) throw new Error('street_detail descriptor missing');
+            const streetBytes = fs.readFileSync(path.join(root, street.path.replace(/^\.\//, '')));
+            const streetSha = crypto.createHash('sha256').update(streetBytes).digest('hex');
+            const streetValue = JSON.parse(streetBytes.toString('utf8'));
+            if (streetSha !== street.artifact_sha256 || streetValue.schema !== 'nwe.nvdb-street-detail-artifact/0.1-candidate') {
+              throw new Error('street_detail byte/schema mismatch');
+            }
+            if (streetValue.compiler_algorithm !== street.compiler_algorithm || streetValue.tile_id !== manifest.tile.id) {
+              throw new Error('street_detail algorithm/tile mismatch');
+            }
+            if (!(streetValue.stats?.feature_part_count > 0)) throw new Error('street_detail lacks source geometry');
+            console.log(JSON.stringify({ realism_layer: 'street_detail', sha256: streetSha, features: streetValue.stats.feature_part_count, by_type: streetValue.stats.feature_parts_by_type_id }));
+          }
+
+          const groundDescriptor = manifest.ground_imagery;
+          if (!groundDescriptor?.manifest || groundDescriptor.truth_status !== 'presentation-only-10m-satellite-ground-color-not-orthophoto') {
+            throw new Error('ground imagery descriptor missing or truth status invalid');
+          }
+          const groundManifest = JSON.parse(fs.readFileSync(path.join(root, groundDescriptor.manifest.replace(/^\.\//, '')), 'utf8'));
+          if (groundManifest.schema !== 'nwe.private-ground-imagery/0.1' || groundManifest.tile_id !== manifest.tile.id) throw new Error('ground imagery manifest identity mismatch');
+          if (groundManifest.source?.redistribution !== 'allowed-by-license') throw new Error('ground imagery public redistribution not admitted');
+          if (groundManifest.transform?.geometry_displacement !== false) throw new Error('ground imagery must not displace DTM geometry');
+          const groundTexturePath = path.join(root, groundDescriptor.texture.replace(/^\.\//, ''));
+          const groundTexture = fs.readFileSync(groundTexturePath);
+          const groundSha = crypto.createHash('sha256').update(groundTexture).digest('hex');
+          if (groundSha !== groundDescriptor.texture_sha256 || groundSha !== groundManifest.texture?.sha256) throw new Error('ground imagery texture SHA mismatch');
+          console.log(JSON.stringify({ ground_color: groundSha, bytes: groundTexture.byteLength, source: groundManifest.source?.stac_item_id }));
           NODE
 
       - name: Build deployable World Viewer
@@ -168,8 +259,8 @@ jobs:
           # Norge World Engine runtime preview artifacts
 
           This orphan branch is a replaceable transport snapshot for the public Preview 1 viewer.
-          It contains only compiled, provenance-bound runtime artifacts and attribution metadata.
-          Raw Kartverket/NVDB/OSM source data is never published here.
+          It contains compiled provenance-bound runtime artifacts, explicitly verified derived realism layers, source-backed NVDB road-width/surface and street-detail candidates, a redistribution-admitted Sentinel-2 macro ground-color tile and attribution metadata.
+          Raw Kartverket/NVDB/OSM/NIBIO/Copernicus source data is never published here.
 
           This is not the selected long-term runtime object-store/CDN architecture.
           TXT

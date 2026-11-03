@@ -116,7 +116,7 @@ Every completed work session appends exactly one entry using this structure:
 - FACT: isolated local Node syntax/regression execution of the new contract logic passes.
 - FACT: the exit-gate regression replays the same character commands with and without a render-origin shift and requires exactly equal authoritative transform values while allowing derived local coordinates to change.
 - FACT: the contract rejects foreign world frames and non-finite movement/heading/height inputs.
-- FACT: code-bearing head `f6b8ed3f480844e07e20cfd5a94d5cc64fba5e8d` passed GitHub `baseline` run `32292789347` and `atlas-rapier-physics` run `32292789343`.
+- FACT: code-bearing GitHub head `f6b8ed3f480844e07e20cfd5a94d5cc64fba5e8d` passed GitHub `baseline` run `32292789347` and `atlas-rapier-physics` run `32292789343`.
 
 **Changed**
 - Branch `agent/atlas-ground-06a`, draft PR #72.
@@ -524,36 +524,139 @@ Every completed work session appends exactly one entry using this structure:
 **Next**
 - `UE5-RUN-01`: execute the integrated foundation on a UE 5.8 Windows runner and retain compile, map creation, movement/collision and frame/performance evidence.
 
-
-## 2026-10-31 11:36 CET — LUMEN — UE5-FOUNDATION-PACKET-INTEGRITY
+## 2026-10-09 00:10 CEST — LUMEN — WEB-REALISM-04/06
 
 **What**
-- Completed and validated the in-progress UE runtime hardening: `FNweMeshPacketReader::Load` now requires a 64-hexadecimal expected SHA-256, validates the expected digest's shape, and hashes the exact buffer it decodes with engine-bundled OpenSSL 1.1.1 before any geometry interpretation, so a same-size payload change fails closed.
-- Wired the digest check through `NweWorldBootstrap` (which already read `sha256` from the derived package manifest), added `AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL")` and made the missing JSON object field null-safe (`(*Source).IsValid()`).
-- Made `SetupNannestad.ps1` self-contained: it installs the narrow `@nwe/schemas-js` Node workspace (RFC 8785 `canonicalize`) before data verification and documents this in the operator README.
-- Fixed a latent level-creation crash: the level script used `unreal.TextureFilter.TF_ANISOTROPIC`, which does not exist in the UE `TextureFilter` enum (verified: engine source `TextureDefines.h` defines only Nearest/Bilinear/Trilinear/Default). It now uses `TF_DEFAULT`, which keeps texture-group filtering and scalability-bounded anisotropy.
-- Added narrow structural regressions pinning all four contracts, including a negative test that the non-existent `TF_ANISOTROPIC` value does not return.
+- Repaired the exact Preview 1 browser composition gate for the current `REAL_COMPILED_WITH_DERIVED_REALISM` snapshot instead of weakening the runtime.
+- Replaced stale hard-coded material/request-count assumptions with a manifest-driven resource contract, required `?requireRealism=1`, SHA-checked all five staged realism layers in Chrome and required the source-backed street-detail layer to reach the renderer.
+- Inspected the exact hosted screenshot and the accepted road geometry before classifying the remaining dark near-field asphalt as a presentation problem rather than a proven runaway road-triangulation error.
+- Advanced the active queue: source-backed street detail is closed; procedural façade presentation is recorded as implemented but explicitly non-source-backed; integrated WebUI acceptance remains open on visual/performance quality.
 
 **Why**
-- `UE5-RUN-01` is the active P0 gate but cannot run in this Linux environment (no Windows UE 5.8 runner). The highest-value adjacent work that advances that same gate is removing unverified runtime failure modes that would otherwise be discovered during the single Windows run.
-- The setup script's Node verifier import previously depended on a pre-existing `node_modules`; a clean checkout would have failed in `SetupNannestad.ps1`.
+- `WEB-REALISM-04` was the highest-priority open WebUI gate. The implementation already contained the real street-detail and façade work, but stale browser assertions were preventing exact acceptance and hiding which remaining problems were technical versus visual.
 
 **Result / evidence**
-- FACT: hosted exact-head CI on PR #86 (`baseline` run `41193934133`, job `124516182278`) is fully green: `pytest -q apps/unreal-runtime/tests` → 32 passed, Preview 1 change-gate PASS, `engine/compiler/tests` → 179 passed, SMIA baseline PASS, world-coordinate/character/network/simulation contracts PASS, cross-language RFC 8785 PASS (`c07d22a6…`), and the real Nannestad package integration is deterministic for `all` and `build` (snapshot `e827b37f`, 25 mesh packets, 105 DOM heights, 15 fallbacks, 819 vegetation instances).
-- FACT: `pytest -q apps/unreal-runtime/tests` → 32 passed (30 pre-existing + 2 new contract tests), Python 3.13 container with `requirements-dev.txt` + `engine/compiler`.
-- FACT: `pytest -q engine/compiler/tests` → 179 passed; `scripts/validate_agent_skills.py` → PASS (22 skills).
-- FACT: without `node_modules/canonicalize` the Node verifier fails with `ERR_MODULE_NOT_FOUND`; `npm install --workspace @nwe/schemas-js --include-workspace-root=false --package-lock=false` exits 0, restores resolution, and `engine/schemas/js/test/canonical.test.mjs` PASS (`expectedSha c07d22a6…`) and `engine/streaming/test_runtime_verifier.mjs` PASS (11 cases, browser parity 11, webcrypto 1).
-- FACT (API verification against primary engine sources): UE 5.x bundles OpenSSL 1.1.1t as third-party module `OpenSSL`; `AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenSSL")` is the standard consumer pattern; `FString BytesToHex` is a global uppercase-hex helper, compared case-insensitively.
-- FACT: the Python pipeline already wrote `sha256` into every mesh packet descriptor (`nwe_unreal_pipeline.py` `_sha256_bytes`), so the C++ check verifies an identity the pipeline guarantees.
-- LIMITATION: no UE 5.8 Windows compile/PIE evidence is produced or claimed here; `UE5-RUN-01` remains open.
+- FACT: implementation head `feec1cc6b5d263a29444dc8c3a3e13acda84cfd0` passes `preview1-realdata-publish` run `37850767271`, exact visual-proof run `37850767344`, `world-viewer-vite` run `37850767346`, `viewer-benchmark` run `37850767341`, `baseline` run `37850767420` and `nvdb-road-semantics-proof` run `37850767279`.
+- FACT: exact Chrome proof reports `REAL WORLD READY`, `web_realism=READY`, 15 runtime requests / 14 unique manifest-backed runtime paths / 14 expected paths and zero raw-source runtime calls.
+- FACT: all five realism payloads SHA-match the snapshot manifest. Street detail contributes 252 source feature parts and reaches the renderer as 5 line meshes + 4 instanced meshes / 9 draw calls. The façade layer renders 3,000 procedural window instances + 127 door instances in 2 draw calls with an explicit renderer-only truth guard.
+- FACT: the published `preview-runtime` manifest is generated from the same exact implementation head and contains terrain, roads, buildings, Sentinel-2 ground color and all five realism descriptors. Publish commit is `23e23ce`.
+- FACT: exact visual-proof artifact `11581119975` has artifact digest `sha256:ba13a9f19d75ae4b9c564ef48e03515b0e50e1b43ddb59ff7f26ebd990a40cfb`; extracted screenshot SHA-256 is `ca0c478de5633fb3e5011a9fa9f08ee7707c363e0e893c6e08e0194ac87e8e4b`.
+- FACT: exact browser proof artifact is `11582505180`.
+- VISUAL LIMITATION: the exact screenshot is materially beyond debug geometry, but near-field asphalt is still much too dark, vegetation remains proxy-like and distant building presentation remains generic. These are not hidden by the green technical gates.
+- PERFORMANCE LIMITATION: hosted SwiftShader/WebGL2 first-frame timing is not evidence of real WebGPU/mobile gameplay performance; no such claim is made.
 
 **Changed**
-- `apps/unreal-runtime/Source/Nannestad/{Nannestad.Build.cs,Private/NweMeshPacket.cpp,Public/NweMeshPacket.h,Private/NweWorldBootstrap.cpp}`.
-- `apps/unreal-runtime/SetupNannestad.ps1`, `apps/unreal-runtime/README.md`.
-- `apps/unreal-runtime/Content/Python/create_nannestad_level.py`.
-- `apps/unreal-runtime/tests/test_unreal_source_contracts.py`.
-- `docs/06-task-queue.md`, `docs/09-unreal-game-plan.md`, `docs/05-worklog.md`.
-- Branch `agent/lumen-unreal-packet-integrity` (draft PR, dependency on #84).
+- PR #85 / branch `agent/lumen-web-nannestad-1to1`.
+- `apps/world-viewer/run_preview1_browser_smoke.mjs` through commits `0942deb`, `42dde15` and `feec1cc`.
+- `preview-runtime` replaceable snapshot generated from `feec1cc`.
+- `docs/06-task-queue.md` and `docs/05-worklog.md`.
 
 **Next**
-- `UE5-RUN-01` (still the only open P0 gate): run the exact branch on a Windows UE 5.8 machine, capture compile/map/PIE/collision/packet-load/frame evidence, then fold the hardening into the UE5-FOUNDATION merge.
+- `WEB-REALISM-06`: perform a measured renderer-only asphalt presentation calibration against the exact screenshot, retain source geometry/provenance unchanged, and keep or revert the change based on exact visual improvement plus bounded browser/resource evidence.
+
+## 2026-10-14 01:16 CEST — LUMEN — WEB-REALISM-06-DEVICE-EVIDENCE
+
+**What**
+- Confirmed that the previously quota-blocked exact `91b82196...` Vercel Preview is now `READY`, then advanced the device-evidence path rather than reopening already-passed visual/source work.
+- Added a separate milestone assessment `nwe.webgpu-milestone-evidence-assessment/0.1` so a valid runtime/provenance capture cannot be mistaken for a completed WebGPU/mobile milestone.
+- Wired the existing deterministic counterpart URL into the device page so the same capture session/workload can be rerun WebGL2 ↔ WebGPU.
+- Added explicit operator physical-device attestation (`physical=1`) and optional expected viewer/runtime SHA bindings. No FPS threshold or synthetic performance target was invented.
+
+**Why**
+- `WEB-REALISM-06` had one remaining P0 question: genuine WebGPU/mobile evidence. The existing page could display `DEVICE EVIDENCE PASS` on WebGL2 because that status only described provenance/runtime validity. Tightening the acceptance semantics prevents fallback/headless evidence from being misreported as the physical-device milestone.
+
+**Result / evidence**
+- FACT: code-bearing head `e57f574d195c474c493acd2f59ddd8dab5488493` passed `world-viewer-vite` run `38482495892`, `baseline` run `38482496004`, `viewer-benchmark` run `38482495838`, `nvdb-road-semantics-proof` run `38482495981`, exact `preview1-visual-proof` run `38482495969` and exact `preview1-realdata-publish` run `38482495877`.
+- FACT: Vercel deployment `dpl_DtzoLD1AbzEjEqbBADTe6BQ7L1xs` is `READY` and serves the updated `device-evidence.html` from the exact code SHA.
+- FACT: published `preview-runtime` now reports `generated_from_commit=e57f574d195c474c493acd2f59ddd8dab5488493`; accepted terrain/roads/buildings and staged realism artifact identities remain unchanged.
+- FACT: `READY_FOR_REVIEW` requires bound build/session identity, Android Chrome browser signals, explicit operator physical-device attestation, requested+active WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/strict streaming lifecycle PASS, complete >=90-frame measurements, first-visible, frame-gap + draw-CPU summaries, draw/resource metrics and recorded timestamp-query capability.
+- FACT: timestamp-query support may be `false`; capability absence is recorded rather than turned into a false failure.
+- BOUNDARY: `READY_FOR_REVIEW` means the evidence package is complete enough for performance review. It does not claim an acceptable FPS/frame-time target, and browser APIs still cannot independently prove the physical handset identity.
+
+**Changed**
+- Draft PR #85 / branch `agent/lumen-web-nannestad-1to1`.
+- `apps/world-viewer/src/deviceMilestoneEvidence.mjs`.
+- `apps/world-viewer/test_device_milestone_evidence.mjs`.
+- `apps/world-viewer/src/deviceEvidenceEntry.mjs`.
+- `apps/world-viewer/device-evidence.html`.
+- `apps/world-viewer/package.json`.
+- `docs/05-worklog.md` and `docs/06-task-queue.md`.
+
+**Next**
+- `WEB-REALISM-06`: run the exact `e57f574...` device-evidence page on one genuine physical Android Chrome device with `renderer=webgpu&target=android-chrome&physical=1&frames=90`, retain the generated JSON and judge the recorded real-device metrics before closing P0.
+
+## 2026-10-31 19:42 CET — LUMEN — WEB-REALISM-07
+
+**What**
+- Added sky image-based lighting to the ground renderer: a one-time PMREM capture of the same physical sky that is visible now feeds `scene.environment` / `environmentIntensity`, and the hemisphere fill light is scaled by the environment intensity so ambient light is never double-counted.
+- Rebuilt the post-processing stack as an ordered, fail-closed TSL graph (`nwe.ground-post-processing/0.2` over `nwe.ground-visual-style/0.3`): screen-space reflections → GTAO → god rays (bilateral-blurred, depth-aware composite) → bokeh depth of field → bloom → chromatic aberration → film grain. Each effect is profile-gated and reports itself in the renderer stats; the UI label is now data-driven from that effect list.
+- Added a software-rasterizer guard: the PMREM capture is skipped with an explicit `skip_reason` instead of stalling a headless/software first frame.
+- Split the profiles from measurement: `high` keeps GTAO + bloom + subtle lens passes; `ultra` carries SSR, god rays and bokeh; `low`/`balanced` get IBL plus the cheap paths.
+- Added regressions: environment rasterizer detection + fail-closed skip, profile gating, texture-node input contracts for the depth-aware/DOF nodes, and negative assertions that non-existent enum/flag combinations never half-wire.
+
+**Why**
+- The user asked for a photorealistic Three.js web representation using the advanced graphics the engine offers; the queue already treats the WebUI as the active Nannestad delivery surface.
+- IBL from the visible sky is the correct physical foundation for a PBR scene, and the ordered post graph replaces the bare GTAO+bloom pair with the full three r185 TSL capability set (SSR, god rays, bokeh, lens, grain) without touching world truth.
+
+**Result / evidence**
+- FACT: all 37 `apps/world-viewer` structural tests PASS locally, including the new environment/post contracts.
+- FACT: exact-head headless SwiftShader capture at `high` on this branch reaches `REAL WORLD READY`, produces a healthy 759,097-byte frame in ~53 s (CI screenshot budget 90 s), with the scene, GTAO+bloom+lens passes and no black frame.
+- FACT (negative, measured): the ultra SSR + god-ray + bokeh stack cannot finish inside a software capture window (>10 min), so those passes are ultra-gated; the software PMREM capture alone also stalls, hence the rasterizer guard.
+- FACT (debugging evidence): three addons in r185.0 required texture-node inputs (`convertToTexture`), an explicit `metalnessNode`/`roughnessNode` for SSR, an explicit chromatic-aberration center and `getTextureNode()` for the bilateral-blur result; these are now pinned by structural tests.
+- LIMITATION: no real-GPU frame evidence yet; the ultra stack image/frame cost still needs the exact-hosted browser proof on hardware.
+
+**Changed**
+- `apps/world-viewer/src/graphicsProfiles.mjs` (advanced effect knobs + gating).
+- `apps/world-viewer/src/threeGroundVisualStyle.mjs` (IBL environment, rasterizer guard, stats, schema 0.3).
+- `apps/world-viewer/src/threeGroundPostProcessing.mjs` (ordered TSL stack, schema 0.2).
+- `apps/world-viewer/src/threeGroundRenderer.mjs` (renderer/light wiring for IBL + god rays).
+- `apps/world-viewer/src/main.ts` (data-driven post-effects label).
+- `apps/world-viewer/test_three_ground_visual_style.mjs`, `test_three_ground_post_processing.mjs`.
+- `docs/06-task-queue.md`, `docs/05-worklog.md`.
+
+**Infrastructure classification (SENTINEL rule)**
+- `preview1-visual-proof` and `preview1-realdata-publish` fail on this branch at the **snapshot-staging step, before any rendering**: the freshly compiled OSM building artifact no longer matches the pinned `BUILDING_ARTIFACT_SHA256` on the GitHub runner. A workflow re-run on the parent commit `38d1515` fails identically, so this is **infrastructure/live-source drift, not an implementation failure** of this change. A fresh local staging on this exact head still compiles the pinned `678c5960…` building artifact and passes.
+- Hosted green on this head: `baseline`, `world-viewer-vite`, `viewer-benchmark`, `nvdb-road-semantics-proof`, `visual-source-probe`, both asset inventories.
+
+**Next**
+- `WEB-REALISM-07` real-GPU gate: once the CI staging blocker is resolved (recalibrate the pinned building SHA or restore the upstream snapshot), capture the exact deployed branch on hardware (WebGPU first) with `device-evidence.html`/visual proof, judge the IBL + ultra SSR/god-ray image and frame cost, and only then consider moving heavier passes down to `high`.
+
+## 2026-11-01 14:10 CET — LUMEN + FORGE + SENTINEL — P0-HYPERREAL-LIDAR-01
+
+**What**
+- Replaced the token-dependent Høydedata `projectMetadata.ashx` source-discovery path with Kartverket/Geonorge's public Høydedata Metadata prosjekt WFS for the exact accepted Nannestad tile.
+- Fixed the first probe so provider/auth error payloads can never be misreported as `NO_CANDIDATE`, and exposed provider-declared WFS features that lack requested admission metadata instead of silently accepting or discarding them.
+- Selected `NDH Akershus 5pkt 2015` / `LACH0002` as the first bounded gold-tile acquisition hypothesis: published, `TILGANG=1`, 5 pkt/m², EPSG:25832 + EPSG:5941/NN2000. Rejected the newer `LACHVI04` 2020 candidate as the open default because current WFS says `TILGANG=2`.
+- Added a fail-closed exact-tile LAZ export request builder and a chunked/NumPy-vectorized exact-byte LAS/LAZ inspector; raw source bytes remain outside Git/runtime.
+- Restored the provider call to manual-only CI after collecting the live source evidence.
+
+**Why**
+- Source-derived roof/canopy/near-field terrain fidelity is now the highest-value realism unknown. More renderer proxy/post-processing work cannot answer whether available source geometry materially improves the 1×1 km world.
+
+**Result / evidence**
+- FACT: legacy live metadata call returned `499: Token Required`; this is now classified as provider/auth failure, not missing coverage.
+- FACT: public exact-tile WFS reported `numberMatched=9` / `numberReturned=9`; six metadata-bearing laser records were returned and three provider-declared features without requested admission metadata are surfaced as unresolved.
+- FACT: diagnostic run `41308978719` passed both contract and live-provider jobs; source-field artifact `13084781636` was retained.
+- FACT: code head `ba40c08604232fbb71ce5c4885a548d9288e54fd` passed `nannestad-lidar-source-probe` run `41309741805`, baseline `41309741814`, `world-viewer-vite` `41309741822` and viewer-benchmark `41309741806`.
+- EXPERIMENT: `NDH Akershus 5pkt 2015` is selected only as the first acquisition hypothesis. Full 1 km² coverage, actual density/classes, roof reconstructability and individual-tree evidence remain unproven until delivered LAZ bytes pass the exact-byte gate.
+- LIMITATION: no export was submitted because Kartverket's documented `ProjectProduct` requirement is ambiguous for `Format=1` point-cloud LAZ and anonymous export also requires an explicit operator delivery identity. Neither value is guessed.
+
+**Changed**
+- PR #85 / branch `agent/lumen-web-nannestad-1to1`.
+- `tools/geo/probe_nannestad_lidar.py` + regressions.
+- `tools/geo/prepare_nannestad_laz_export.py` + regressions.
+- `tools/geo/inspect_nannestad_laz.py`, `requirements-lidar.txt` + regressions.
+- `.github/workflows/nannestad-lidar-source-probe.yml`.
+- `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
+- `docs/04-decisions.md` D-011 and `docs/06-task-queue.md`.
+
+**Next**
+- Resolve the official `ProjectProduct` semantics for a project-backed LAZ export, then perform one explicit `NDH Akershus 5pkt 2015` exact-tile delivery with an operator-supplied destination and run `inspect_nannestad_laz.py` before beginning `P0-HYPERREAL-LIDAR-02` reconstruction A/B.
+
+## 2026-11-03 — FORGE/SENTINEL — NVDB sign-source completeness gate
+
+**Gjort:** Hardened `compile_nvdb_street_detail.py` so a paginated NVDB V4 response cannot silently produce a seemingly complete sign/roadside inventory. Explicit `metadata.neste` or a full 1000-object page now fails closed. Added an adversarial regression and CI step; compiler algorithm version is now v0.4.
+
+**Bevist:** Static review confirms the former single-page request could return a partial inventory without an error. The new regression covers a small complete page, a declared next page, and an ambiguous full page. Live provider validation is pending CI; no exact-sign identity or appearance is claimed.
+
+**Neste:** Replace the fail-closed guard with deterministic multi-page acquisition, page-wise SHA provenance, cycle/duplicate detection and exact-tile type-95/type-96 relation validation; only then map real sign faces to assets.

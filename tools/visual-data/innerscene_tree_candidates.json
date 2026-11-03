@@ -1,0 +1,68 @@
+{
+  "schema": "nwe.innerscene-tree-candidate-catalog/0.1",
+  "license": {
+    "spdx_like": "CC0-1.0",
+    "provider_library": "https://www.innerscene.com/tools/library",
+    "redistribution_allowed": true,
+    "runtime_remote_dependency_allowed": false
+  },
+  "assets": [
+    {
+      "asset_id": "mature_norway_spruce",
+      "source_page": "https://www.innerscene.com/tools/library/3d-parts/mature-norway-spruce-tree-48c2566f",
+      "download_url": "https://www.innerscene.com/api/library/mature-norway-spruce-tree-48c2566f/download",
+      "presentation_groups": ["spruce"],
+      "nominal_height_m": 16.0,
+      "max_download_bytes": 3145728,
+      "truth_guard": "species-aligned visual representative for source-backed spruce groups; not an observed individual tree"
+    },
+    {
+      "asset_id": "mature_scots_pine",
+      "source_page": "https://www.innerscene.com/tools/library/3d-parts/mature-scots-pine-tree-280307e1",
+      "download_url": "https://www.innerscene.com/api/library/mature-scots-pine-tree-280307e1/download",
+      "presentation_groups": ["pine", "conifer-mixed"],
+      "nominal_height_m": 18.0,
+      "max_download_bytes": 3145728,
+      "truth_guard": "species-aligned visual representative for pine groups; conifer-mixed mapping remains renderer presentation"
+    },
+    {
+      "asset_id": "mature_silver_birch",
+      "source_page": "https://www.innerscene.com/tools/library/3d-parts/mature-silver-birch-tree-8e297753",
+      "download_url": "https://www.innerscene.com/api/library/mature-silver-birch-tree-8e297753/download",
+      "presentation_groups": ["deciduous", "mixed"],
+      "nominal_height_m": 14.0,
+      "max_download_bytes": 6291456,
+      "truth_guard": "birch visual representative only; SR16V deciduous/mixed does not prove every represented tree is silver birch"
+    },
+    {
+      "asset_id": "conifer_light",
+      "source_page": "https://www.innerscene.com/tools/library/3d-parts/conifer-light-sprays-1014156d",
+      "download_url": "https://www.innerscene.com/api/library/conifer-light-sprays-1014156d/download",
+      "presentation_groups": ["spruce", "pine", "conifer-mixed"],
+      "nominal_height_m": 8.0,
+      "max_download_bytes": 1048576,
+      "truth_guard": "generic low-poly conifer fallback; never species truth"
+    },
+    {
+      "asset_id": "linden_light",
+      "source_page": "https://www.innerscene.com/tools/library/3d-parts/linden-street-tree-light-canopy-1bdbd90f",
+      "download_url": "https://www.innerscene.com/api/library/linden-street-tree-light-canopy-1bdbd90f/download",
+      "presentation_groups": ["deciduous", "mixed"],
+      "nominal_height_m": 8.5,
+      "max_download_bytes": 1048576,
+      "truth_guard": "generic low-poly broadleaf fallback; linden identity is not promoted to SR16V tree-species truth"
+    }
+  ],
+  "admission_policy": {
+    "raw_provider_bytes_committable": false,
+    "raw_provider_bytes_runtime_streamed": false,
+    "required_checks": [
+      "download remains CC0 on source page",
+      "GLB v2 structural parse passes",
+      "SHA-256 pinned from downloaded bytes",
+      "byte size within per-asset cap",
+      "mesh/triangle/material counts measured before renderer admission"
+    ],
+    "next_stage": "select the smallest species-aligned near-field candidates that materially improve exact visual proof, then create pinned local runtime derivatives and retain proxy fallback for farther LODs"
+  }
+}
