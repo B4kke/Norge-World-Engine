@@ -8,6 +8,8 @@ on:
       - 'apps/unreal-runtime/Tools/prepare_ground_imagery.py'
       - 'apps/unreal-runtime/requirements-authoring.txt'
       - 'tools/preview/**'
+      - 'tools/visual-data/probe_svv_sign_artwork.py'
+      - 'tools/visual-data/materialize_svv_sign_artwork.py'
       - 'tools/geo/compile_nvdb_road_realism.py'
       - 'tools/geo/compile_nvdb_street_detail.py'
       - 'engine/compiler/**'
@@ -69,6 +71,9 @@ jobs:
           python tools/preview/stage_nvdb_street_detail.py \
             --snapshot-root /tmp/nwe-visual-runtime \
             | tee /tmp/nwe-visual-street-detail.json
+          python tools/preview/stage_svv_sign_artwork.py \
+            --snapshot-root /tmp/nwe-visual-runtime \
+            | tee /tmp/nwe-visual-sign-artwork.json
           python tools/preview/stage_sentinel_ground.py \
             --snapshot-root /tmp/nwe-visual-runtime \
             | tee /tmp/nwe-visual-ground.json
@@ -93,7 +98,7 @@ jobs:
             const verification = verifyRuntimeBundle(bundle, bytes);
             if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') throw new Error(`${name}: ${verification.code}`);
           }
-          for (const name of ['building_surface', 'roof_orientation', 'vegetation', 'road_realism', 'street_detail']) {
+          for (const name of ['building_surface', 'roof_orientation', 'vegetation', 'road_realism', 'street_detail', 'sign_artwork']) {
             const layer = manifest.realism_layers?.[name];
             if (!layer?.path || !layer?.artifact_sha256) throw new Error(`${name}: realism descriptor missing`);
             const bytes = fs.readFileSync(path.join(root, layer.path.replace(/^\.\//, '')));
@@ -102,10 +107,23 @@ jobs:
           }
           const street = JSON.parse(fs.readFileSync(path.join(root, manifest.realism_layers.street_detail.path.replace(/^\.\//, '')), 'utf8'));
           if (!(street.stats?.feature_part_count > 0)) throw new Error('street detail empty');
+          if (street.compiler_algorithm !== 'nvdb-v4-explicit-geometry-street-detail-v0.3') throw new Error('street detail algorithm mismatch');
+          if (!(street.stats?.features_with_source_location > 0)) throw new Error('street detail source location missing');
+          const signManifestPath = path.join(root, manifest.realism_layers.sign_artwork.path.replace(/^\.\//, ''));
+          const signManifest = JSON.parse(fs.readFileSync(signManifestPath, 'utf8'));
+          if (signManifest.schema !== 'nwe.svv-sign-artwork-runtime-manifest/0.1') throw new Error('sign artwork schema mismatch');
+          if (signManifest.source_archive_sha256 !== '4333750af2929d0e7e359457b837351fe8b51dc1638fe963804902dd514c1b28') throw new Error('sign artwork source archive mismatch');
+          for (const asset of signManifest.assets ?? []) {
+            const bytes = fs.readFileSync(path.join(path.dirname(signManifestPath), asset.runtime_filename));
+            const sha = crypto.createHash('sha256').update(bytes).digest('hex');
+            if (sha !== asset.sha256 || bytes.length !== asset.byte_size) throw new Error(`sign artwork asset mismatch: ${asset.sign_code}`);
+          }
           console.log(JSON.stringify({
             realism_layers: Object.keys(manifest.realism_layers).sort(),
             street_detail_parts: street.stats.feature_part_count,
             street_detail_by_type: street.stats.feature_parts_by_type_id,
+            street_detail_source_location_parts: street.stats.features_with_source_location,
+            sign_artwork_codes: signManifest.requested_sign_codes,
           }, null, 2));
           NODE
 
