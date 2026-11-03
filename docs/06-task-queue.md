@@ -221,3 +221,9 @@ The UE 5.8 foundation and packet-integrity hardening are merged to `main`. `UE5-
 # Task completion rule
 
 A task closes when its stated acceptance passes. One cheap adversarial check may be added when a claim is dangerous. New testing/research cycles require a new failure, changed claim or materially different implementation. Visual quality is not proven by green unit tests alone; exact rendered evidence matters.
+
+
+## P1-SIGN-PAGINATION — NVDB sign inventory completeness
+**Priority:** HIGH — fail-closed guard implemented in PR #85; multi-page source ingestion OPEN.
+
+The type-95/96 street-detail compiler now rejects a declared next page or ambiguous full 1000-object response rather than publishing incomplete sign truth. Adversarial test and CI gate added; hosted CI still needs to confirm current provider behavior. Next: deterministic pagination with page-level raw hashes, stable IDs, cycle detection and bounded page count, followed by verified sign-plate/support relations. No generated sign symbols are source truth.
