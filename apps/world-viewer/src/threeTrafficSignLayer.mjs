@@ -158,6 +158,20 @@ function distanceToSegmentSquared(point, a, b) {
   return { distance2: dx * dx + dy * dy, tangent: [vx / length, vy / length] };
 }
 
+function sequenceIdsFromSourceLocation(value) {
+  const ids = new Set();
+  const visit = (node) => {
+    if (Array.isArray(node)) { for (const item of node) visit(item); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const [key, child] of Object.entries(node)) {
+      if (key.toLowerCase() === 'veglenkesekvensid' && Number.isFinite(Number(child))) ids.add(Number(child));
+      else visit(child);
+    }
+  };
+  visit(value);
+  return ids;
+}
+
 function buildOrientationSegments(artifact) {
   const segments = [];
   for (const feature of artifact?.features ?? []) {
@@ -168,15 +182,19 @@ function buildOrientationSegments(artifact) {
       const a = points[index];
       const b = points[index + 1];
       if (!Array.isArray(a) || !Array.isArray(b)) continue;
-      segments.push({ a, b, typeId, penaltyM: typeId === 99 ? 0 : typeId === 519 ? 4 : 2 });
+      segments.push({ a, b, typeId, sequenceIds: sequenceIdsFromSourceLocation(feature.source_location), penaltyM: typeId === 99 ? 0 : typeId === 519 ? 4 : 2 });
     }
   }
   return segments;
 }
 
-function inferredRoadAxis(point, segments) {
+function inferredRoadAxis(point, segments, preferredSequenceIds = new Set()) {
+  const sequenceMatchedSegments = preferredSequenceIds.size > 0
+    ? segments.filter((segment) => [...segment.sequenceIds].some((id) => preferredSequenceIds.has(id)))
+    : [];
+  const candidates = sequenceMatchedSegments.length > 0 ? sequenceMatchedSegments : segments;
   let best = null;
-  for (const segment of segments) {
+  for (const segment of candidates) {
     const candidate = distanceToSegmentSquared(point, segment.a, segment.b);
     const score = Math.sqrt(candidate.distance2) + segment.penaltyM;
     if (!best || score < best.score) best = { ...candidate, score, typeId: segment.typeId };
@@ -190,6 +208,7 @@ function inferredRoadAxis(point, segments) {
     yawAlongRoad: Math.atan2(-localZ, localX),
     distanceM: Math.sqrt(best.distance2),
     sourceTypeId: best.typeId,
+    sourceSequenceMatched: sequenceMatchedSegments.length > 0,
   });
 }
 
@@ -504,6 +523,7 @@ export function createThreeTrafficSignLayer({ artifact, terrainPayload, profile 
   let fallbackPlacementCount = 0;
   let presentationSlotSpreadCount = 0;
   let supplementaryPlateCount = 0;
+  let sourceLocationSequenceMatchedPlateCount = 0;
   const familyCounts = {};
   const signNumberCounts = {};
   const requiredSupportTopMByParent = new Map();
@@ -516,8 +536,11 @@ export function createThreeTrafficSignLayer({ artifact, terrainPayload, profile 
     presentationSlotSpreadCount += layout.presentationSpreadCount;
     const topM = layout.placed.reduce((max, item) => Math.max(max, item.centerY + item.profile.height / 2), mount.bottomM);
     requiredSupportTopMByParent.set(Number(parent.source_object_id), topM);
-    const axis = inferredRoadAxis(parent.point, orientationSegments);
+    const preferredSequenceIds = sequenceIdsFromSourceLocation(parent.source_location);
+    for (const entry of entries) for (const id of sequenceIdsFromSourceLocation(entry.plate.source_location)) preferredSequenceIds.add(id);
+    const axis = inferredRoadAxis(parent.point, orientationSegments, preferredSequenceIds);
     if (axis) inferredRoadAxisCount += entries.length;
+    if (axis?.sourceSequenceMatched) sourceLocationSequenceMatchedPlateCount += entries.length;
     for (const item of layout.placed) {
       if (item.placement == null) fallbackPlacementCount += 1; else sourcePlacementCodeCount += 1;
       if (item.isSupplement) supplementaryPlateCount += 1;
@@ -613,6 +636,7 @@ export function createThreeTrafficSignLayer({ artifact, terrainPayload, profile 
       supplementary_plate_count: supplementaryPlateCount,
       source_orientation_semantic_plate_count: sourceOrientationSemanticCount,
       inferred_nearby_linear_axis_plate_count: inferredRoadAxisCount,
+      source_location_sequence_matched_plate_count: sourceLocationSequenceMatchedPlateCount,
       orientation_linear_source_feature_count: orientationSegments.length,
       presentation_slot_spread_plate_count: presentationSlotSpreadCount,
       sign_family_counts: Object.freeze({ ...familyCounts }),
@@ -623,7 +647,7 @@ export function createThreeTrafficSignLayer({ artifact, terrainPayload, profile 
       draw_calls: drawCalls,
       profile: profile?.id ?? 'unknown',
       face_artwork: 'NVDB sign identity/text/color/category mapped to renderer-authored facsimile; official Statens vegvesen artwork is the next replacement source',
-      orientation_semantics: 'plate plane uses source Ansiktsside plus nearest admitted street-detail linear axis when available; front/back 180-degree direction is deliberately unresolved and faces are double-sided',
+      orientation_semantics: 'plate plane uses source Ansiktsside plus matching NVDB veglenkesekvensid linear evidence when available, otherwise nearest admitted street-detail linear axis; front/back 180-degree direction is deliberately unresolved and faces are double-sided',
       placement_semantics: 'NVDB Plasseringskode orders known vertical slots; equal codes share a slot and are presentation-spread horizontally; uncoded plates share an unknown slot; supplementary 8xx plates render below the non-supplement mount baseline',
       truth_guard: 'traffic sign number/text/parent relation/placement code/facing semantic are source-backed; exact physical dimensions, exact same-slot arrangement, official artwork and front-face metering direction are not claimed until separately admitted',
     }),
