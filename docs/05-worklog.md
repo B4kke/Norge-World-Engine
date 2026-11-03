@@ -652,3 +652,11 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Resolve the official `ProjectProduct` semantics for a project-backed LAZ export, then perform one explicit `NDH Akershus 5pkt 2015` exact-tile delivery with an operator-supplied destination and run `inspect_nannestad_laz.py` before beginning `P0-HYPERREAL-LIDAR-02` reconstruction A/B.
+
+## 2026-11-03 — FORGE/SENTINEL — NVDB sign-source completeness gate
+
+**Gjort:** Hardened `compile_nvdb_street_detail.py` so a paginated NVDB V4 response cannot silently produce a seemingly complete sign/roadside inventory. Explicit `metadata.neste` or a full 1000-object page now fails closed. Added an adversarial regression and CI step; compiler algorithm version is now v0.4.
+
+**Bevist:** Static review confirms the former single-page request could return a partial inventory without an error. The new regression covers a small complete page, a declared next page, and an ambiguous full page. Live provider validation is pending CI; no exact-sign identity or appearance is claimed.
+
+**Neste:** Replace the fail-closed guard with deterministic multi-page acquisition, page-wise SHA provenance, cycle/duplicate detection and exact-tile type-95/type-96 relation validation; only then map real sign faces to assets.
