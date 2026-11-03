@@ -58,9 +58,13 @@ def materialize(
                 candidates.setdefault(code, []).append(info)
 
         unresolved = [code for code in normalized_requested if code not in candidates]
-        ambiguous = {code: [item.filename for item in candidates[code]] for code in normalized_requested if len(candidates.get(code, [])) != 1}
         if unresolved:
             raise RuntimeError(f"SVV_SIGN_CODES_UNRESOLVED:{','.join(unresolved)}")
+        ambiguous = {
+            code: [item.filename for item in candidates.get(code, [])]
+            for code in normalized_requested
+            if len(candidates.get(code, [])) != 1
+        }
         if ambiguous:
             raise RuntimeError(f"SVV_SIGN_CODES_AMBIGUOUS:{json.dumps(ambiguous, sort_keys=True)}")
 
