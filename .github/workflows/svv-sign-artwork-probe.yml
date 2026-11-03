@@ -5,6 +5,8 @@ on:
     paths:
       - 'tools/visual-data/probe_svv_sign_artwork.py'
       - 'tools/visual-data/test_probe_svv_sign_artwork.py'
+      - 'tools/visual-data/materialize_svv_sign_artwork.py'
+      - 'tools/visual-data/test_materialize_svv_sign_artwork.py'
       - '.github/workflows/svv-sign-artwork-probe.yml'
   workflow_dispatch:
 
@@ -19,11 +21,17 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Validate probe contract
+      - name: Validate probe and materializer contracts
         run: |
           python -m pip install --disable-pip-version-check pytest==9.1.1
-          python -m py_compile tools/visual-data/probe_svv_sign_artwork.py tools/visual-data/test_probe_svv_sign_artwork.py
-          PYTHONPATH=tools/visual-data python -m pytest -q tools/visual-data/test_probe_svv_sign_artwork.py
+          python -m py_compile \
+            tools/visual-data/probe_svv_sign_artwork.py \
+            tools/visual-data/test_probe_svv_sign_artwork.py \
+            tools/visual-data/materialize_svv_sign_artwork.py \
+            tools/visual-data/test_materialize_svv_sign_artwork.py
+          PYTHONPATH=tools/visual-data python -m pytest -q \
+            tools/visual-data/test_probe_svv_sign_artwork.py \
+            tools/visual-data/test_materialize_svv_sign_artwork.py
 
       - name: Probe official SVV vikeplikt artwork archive
         run: |
@@ -50,9 +58,38 @@ jobs:
           }, indent=2, sort_keys=True, ensure_ascii=False))
           PY
 
+      - name: Materialize exact Nannestad vikeplikt/priority artwork candidates
+        run: |
+          python tools/visual-data/materialize_svv_sign_artwork.py \
+            --archive /tmp/nwe-svv-vikeplikt.zip \
+            --output-dir /tmp/nwe-svv-sign-runtime \
+            --codes 202,206 \
+            --family vikeplikt \
+            --source-url 'https://www.vegvesen.no/globalassets/fag/veg-og-gate/trafikkskilt-og-vegoppmerking/vikeplikt-jpg.zip?v=49939c'
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('/tmp/nwe-svv-sign-runtime')
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['schema'] == 'nwe.svv-sign-artwork-runtime-manifest/0.1'
+          assert manifest['status'] == 'PASS'
+          assert manifest['source_archive_sha256'] == '4333750af2929d0e7e359457b837351fe8b51dc1638fe963804902dd514c1b28'
+          assert manifest['requested_sign_codes'] == ['202', '206']
+          assert [asset['sign_code'] for asset in manifest['assets']] == ['202', '206']
+          for asset in manifest['assets']:
+              raw = (root / asset['runtime_filename']).read_bytes()
+              assert hashlib.sha256(raw).hexdigest() == asset['sha256']
+              assert len(raw) == asset['byte_size']
+          print(json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False))
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: svv-sign-artwork-${{ github.event.pull_request.head.sha || github.sha }}
-          path: /tmp/nwe-svv-sign-artwork.json
+          path: |
+            /tmp/nwe-svv-sign-artwork.json
+            /tmp/nwe-svv-sign-runtime/manifest.json
+            /tmp/nwe-svv-sign-runtime/202.jpg
+            /tmp/nwe-svv-sign-runtime/206.jpg
           if-no-files-found: error
           retention-days: 14
