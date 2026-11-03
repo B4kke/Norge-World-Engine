@@ -21,7 +21,7 @@ TARGET_CRS = "EPSG:25832"
 SOURCE_SRID = 5973
 TILE_ID = "epsg25832_611000_6677000_1000m"
 SCHEMA = "nwe.nvdb-street-detail-artifact/0.1-candidate"
-ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.3"
+ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.4"
 X_CLIENT = "NorgeWorldEngine-Compiler"
 USER_AGENT = "NorgeWorldEngine/0.1 street-detail-compiler"
 
@@ -75,6 +75,14 @@ def parse_payload(raw: bytes) -> dict[str, Any]:
     value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict) or not isinstance(value.get("objekter"), list):
         raise RuntimeError("NVDB response lacks objekter")
+    # The NVDB collection endpoint is paginated. A silently truncated inventory
+    # is unsafe: it can omit real signs/markings while still reporting PASS.
+    # Until a multi-page provenance contract is implemented, fail closed.
+    next_page = value.get("metadata", {}).get("neste") if isinstance(value.get("metadata"), dict) else None
+    if next_page:
+        raise RuntimeError("NVDB collection has a next page; refusing incomplete street-detail source snapshot")
+    if len(value["objekter"]) >= 1000:
+        raise RuntimeError("NVDB collection reached page limit (1000); completeness cannot be established")
     return value
 
 
