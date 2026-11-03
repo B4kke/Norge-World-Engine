@@ -66,6 +66,18 @@ export function enrichRoadsForWeb(baseArtifact, roadRealism) {
   };
 }
 
+function attachTrafficSignPresentation(streetDetail, signArtwork) {
+  if (!streetDetail) return null;
+  if (!signArtwork) return streetDetail;
+  return {
+    ...streetDetail,
+    runtime_presentation: Object.freeze({
+      traffic_sign_artwork: signArtwork,
+      semantics: 'transient SHA-verified SVV artwork bytes; excluded from persisted NVDB source artifact identity',
+    }),
+  };
+}
+
 export async function createPreview1Renderer({
   backend = 'auto',
   graphicsProfile = 'balanced',
@@ -112,7 +124,7 @@ export async function createPreview1Renderer({
         maxInstances: Number(profile?.vegetationBudget) || Number.POSITIVE_INFINITY,
       });
       roadRealism = runtime.road_realism;
-      streetDetail = runtime.street_detail;
+      streetDetail = attachTrafficSignPresentation(runtime.street_detail, runtime.sign_artwork);
       roadsArtifact = enrichRoadsForWeb(options.roadsArtifact, roadRealism);
       realismEvidence = Object.freeze({
         status: 'READY',
@@ -130,7 +142,14 @@ export async function createPreview1Renderer({
         street_detail: streetDetail ? Object.freeze({
           feature_part_count: streetDetail.stats?.feature_part_count ?? 0,
           feature_parts_by_type_id: streetDetail.stats?.feature_parts_by_type_id ?? {},
+          features_with_source_location: streetDetail.stats?.features_with_source_location ?? 0,
           policy: streetDetail.policy,
+        }) : Object.freeze({ status: 'NOT_STAGED' }),
+        sign_artwork: runtime.sign_artwork ? Object.freeze({
+          schema: runtime.sign_artwork.schema,
+          source_archive_sha256: runtime.sign_artwork.source_archive_sha256,
+          admitted_sign_codes: Object.keys(runtime.sign_artwork.assets_by_code ?? {}).sort(),
+          license_profile: runtime.sign_artwork.license_profile,
         }) : Object.freeze({ status: 'NOT_STAGED' }),
       });
     } catch (error) {
