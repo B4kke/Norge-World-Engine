@@ -104,25 +104,38 @@ jobs:
           assert artifact['schema'] == 'nwe.nvdb-street-detail-artifact/0.1-candidate'
           assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
           assert artifact['horizontal_crs'] == 'EPSG:25832'
-          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.2'
+          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.3'
           assert verification['status'] == 'PASS'
           assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
           assert verification['feature_part_count'] > 0
           expected = {'99','519','174','95','96','87','181','20','5','80','9','48','953'}
           assert set(artifact['stats']['feature_parts_by_type_id']) == expected
           assert artifact['stats']['feature_parts_by_type_id']['96'] > 0
+          assert artifact['stats']['features_with_source_location'] > 0
           plate_features = [feature for feature in artifact['features'] if feature['source_type_id'] == 96]
-          assert plate_features
+          point_features = [feature for feature in artifact['features'] if feature['source_type_id'] == 95]
+          linear_features = [feature for feature in artifact['features'] if feature['geometry_type'] == 'line']
+          assert plate_features and point_features and linear_features
           plate_property_names = sorted({key for feature in plate_features for key in feature.get('properties', {})})
           plate_relation_parts = sum(1 for feature in plate_features if 'relations' in feature)
+          plate_location_parts = sum(1 for feature in plate_features if 'source_location' in feature)
+          point_location_parts = sum(1 for feature in point_features if 'source_location' in feature)
+          linear_location_parts = sum(1 for feature in linear_features if 'source_location' in feature)
+          assert plate_location_parts > 0
+          assert point_location_parts > 0
+          assert linear_location_parts > 0
           print(json.dumps({
               'artifact_sha256': verification['artifact_sha256'],
               'feature_part_count': verification['feature_part_count'],
               'feature_parts_by_type_id': artifact['stats']['feature_parts_by_type_id'],
               'geometry_type_counts': artifact['stats']['geometry_type_counts'],
               'features_with_relations': artifact['stats']['features_with_relations'],
+              'features_with_source_location': artifact['stats']['features_with_source_location'],
               'sign_plate_property_names': plate_property_names,
               'sign_plate_parts_with_relations': plate_relation_parts,
+              'sign_plate_parts_with_source_location': plate_location_parts,
+              'sign_point_parts_with_source_location': point_location_parts,
+              'linear_parts_with_source_location': linear_location_parts,
           }, indent=2, sort_keys=True, ensure_ascii=False))
           PY
 
