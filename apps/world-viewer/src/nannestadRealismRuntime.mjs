@@ -5,6 +5,7 @@ const BUILDING_ARTIFACT_SHA256 = '678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0d
 const BUILDING_RUNTIME_COMMIT = '7a0e49b1743d209bbc2d85af901915e4009e7d7f';
 const VEGETATION_RUNTIME_COMMIT = 'c8de691494edb550aa4c43812efdeec3facf24a1';
 const RUNTIME_ROOT = 'nannestad-preview-1';
+const SVV_VIKEPLIKT_ARCHIVE_SHA256 = '4333750af2929d0e7e359457b837351fe8b51dc1638fe963804902dd514c1b28';
 
 export const NANNESTAD_REALISM_CONTRACT = Object.freeze({
   tile_id: TILE_ID,
@@ -35,7 +36,13 @@ export const NANNESTAD_REALISM_CONTRACT = Object.freeze({
   }),
   street_detail: Object.freeze({
     schema: 'nwe.nvdb-street-detail-artifact/0.1-candidate',
-    compiler_algorithm: 'nvdb-v4-explicit-geometry-street-detail-v0.1',
+    compiler_algorithm: 'nvdb-v4-explicit-geometry-street-detail-v0.3',
+  }),
+  sign_artwork: Object.freeze({
+    schema: 'nwe.svv-sign-artwork-runtime-manifest/0.1',
+    license_profile: 'NLOD-1.0',
+    source_archive_sha256: SVV_VIKEPLIKT_ARCHIVE_SHA256,
+    admitted_sign_codes: Object.freeze(['202', '206']),
   }),
 });
 
@@ -54,21 +61,29 @@ function assertResponse(response, url) {
   if (!response?.ok) throw new Error(`NANNESTAD_REALISM_FETCH_FAILED: ${response?.status ?? 'unknown'} ${url}`);
 }
 
-async function fetchVerifiedJson({ fetchImpl, url, expectedSha256, label }) {
+async function fetchVerifiedBytes({ fetchImpl, url, expectedSha256, expectedByteSize = null, label }) {
   const response = await fetchImpl(url, { cache: 'force-cache' });
   assertResponse(response, url);
   const bytes = new Uint8Array(await response.arrayBuffer());
+  if (Number.isInteger(expectedByteSize) && bytes.byteLength !== expectedByteSize) {
+    throw new Error(`NANNESTAD_REALISM_BYTE_SIZE_MISMATCH: ${label} ${bytes.byteLength} != ${expectedByteSize}`);
+  }
   const actualSha256 = await sha256Hex(bytes);
   if (actualSha256 !== expectedSha256) {
     throw new Error(`NANNESTAD_REALISM_SHA256_MISMATCH: ${label} ${actualSha256} != ${expectedSha256}`);
   }
+  return { bytes, byte_size: bytes.byteLength, sha256: actualSha256, url };
+}
+
+async function fetchVerifiedJson({ fetchImpl, url, expectedSha256, label }) {
+  const loaded = await fetchVerifiedBytes({ fetchImpl, url, expectedSha256, label });
   let value;
   try {
-    value = JSON.parse(new TextDecoder().decode(bytes));
+    value = JSON.parse(new TextDecoder().decode(loaded.bytes));
   } catch (error) {
     throw new Error(`NANNESTAD_REALISM_JSON_INVALID: ${label}: ${error?.message ?? error}`);
   }
-  return { value, byte_size: bytes.byteLength, sha256: actualSha256, url };
+  return { value, byte_size: loaded.byte_size, sha256: loaded.sha256, url: loaded.url };
 }
 
 function resolvePreviewManifestUrl(explicitUrl = null) {
@@ -152,6 +167,8 @@ function assertStreetDetail(value) {
   if (value.compiler_algorithm !== contract.compiler_algorithm) throw new Error('NANNESTAD_REALISM_STREET_ALGORITHM_MISMATCH');
   if (!Array.isArray(value.features) || value.features.length < 1) throw new Error('NANNESTAD_REALISM_STREET_FEATURES_INVALID');
   if (!(Number(value?.stats?.feature_part_count) === value.features.length)) throw new Error('NANNESTAD_REALISM_STREET_COUNT_MISMATCH');
+  if (!(Number(value?.stats?.features_with_source_location) > 0)) throw new Error('NANNESTAD_REALISM_STREET_SOURCE_LOCATION_MISSING');
+  if (!(Number(value?.stats?.feature_parts_by_type_id?.['96']) > 0)) throw new Error('NANNESTAD_REALISM_STREET_SIGN_PLATES_MISSING');
   for (const feature of value.features) {
     if (!Number.isInteger(feature?.source_type_id)) throw new Error('NANNESTAD_REALISM_STREET_TYPE_INVALID');
     if (feature?.geometry_type === 'point') {
@@ -160,6 +177,32 @@ function assertStreetDetail(value) {
       if (!Array.isArray(feature.points) || feature.points.length < 2) throw new Error('NANNESTAD_REALISM_STREET_LINE_INVALID');
     } else throw new Error('NANNESTAD_REALISM_STREET_GEOMETRY_TYPE_INVALID');
   }
+}
+
+function assertSignArtworkManifest(value) {
+  const contract = NANNESTAD_REALISM_CONTRACT.sign_artwork;
+  if (!value || typeof value !== 'object') throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_NOT_OBJECT');
+  if (value.schema !== contract.schema || value.status !== 'PASS') throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_SCHEMA_INVALID');
+  if (value.license_profile !== contract.license_profile) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_LICENSE_MISMATCH');
+  if (value.source_archive_sha256 !== contract.source_archive_sha256) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_ARCHIVE_MISMATCH');
+  if (JSON.stringify(value.requested_sign_codes) !== JSON.stringify(contract.admitted_sign_codes)) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_CODE_SET_MISMATCH');
+  if (!Array.isArray(value.assets) || value.assets.length !== contract.admitted_sign_codes.length) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_ASSET_COUNT_INVALID');
+  for (const asset of value.assets) {
+    if (!contract.admitted_sign_codes.includes(asset?.sign_code)) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_CODE_INVALID');
+    if (typeof asset?.runtime_filename !== 'string' || !asset.runtime_filename) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_FILENAME_INVALID');
+    if (typeof asset?.sha256 !== 'string' || asset.sha256.length !== 64) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_SHA_INVALID');
+    if (!(Number.isInteger(asset?.byte_size) && asset.byte_size > 0)) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_SIZE_INVALID');
+  }
+}
+
+function bytesToDataUrl(bytes, mediaType) {
+  if (typeof globalThis.btoa !== 'function') return null;
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
+  }
+  return `data:${mediaType || 'application/octet-stream'};base64,${globalThis.btoa(binary)}`;
 }
 
 async function loadOptionalDerivedLayer({ fetchImpl, manifestUrl, descriptor, label, assertValue }) {
@@ -177,6 +220,53 @@ async function loadOptionalDerivedLayer({ fetchImpl, manifestUrl, descriptor, la
   return loaded;
 }
 
+async function loadSignArtwork({ fetchImpl, manifestUrl, descriptor }) {
+  if (!descriptor) return null;
+  if (typeof descriptor.path !== 'string' || typeof descriptor.artifact_sha256 !== 'string') {
+    throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_DESCRIPTOR_INVALID');
+  }
+  if (descriptor.source_archive_sha256 !== SVV_VIKEPLIKT_ARCHIVE_SHA256) throw new Error('NANNESTAD_REALISM_SIGN_ARTWORK_DESCRIPTOR_ARCHIVE_MISMATCH');
+  const manifestAsset = await fetchVerifiedJson({
+    fetchImpl,
+    url: new URL(descriptor.path, manifestUrl).href,
+    expectedSha256: descriptor.artifact_sha256,
+    label: 'sign-artwork-manifest',
+  });
+  assertSignArtworkManifest(manifestAsset.value);
+  const manifestAssetUrl = manifestAsset.url;
+  const assets = {};
+  for (const asset of manifestAsset.value.assets) {
+    const loaded = await fetchVerifiedBytes({
+      fetchImpl,
+      url: new URL(asset.runtime_filename, manifestAssetUrl).href,
+      expectedSha256: asset.sha256,
+      expectedByteSize: asset.byte_size,
+      label: `sign-artwork-${asset.sign_code}`,
+    });
+    assets[asset.sign_code] = Object.freeze({
+      sign_code: asset.sign_code,
+      sha256: loaded.sha256,
+      byte_size: loaded.byte_size,
+      media_type: asset.media_type,
+      source_archive_entry: asset.source_archive_entry,
+      url: loaded.url,
+      data_url: bytesToDataUrl(loaded.bytes, asset.media_type),
+    });
+  }
+  return Object.freeze({
+    schema: 'nwe.web-sign-artwork-runtime/0.1',
+    source_archive_sha256: manifestAsset.value.source_archive_sha256,
+    license_profile: manifestAsset.value.license_profile,
+    attribution: manifestAsset.value.attribution,
+    assets_by_code: Object.freeze(assets),
+    transport: Object.freeze({
+      manifest_url: manifestAsset.url,
+      manifest_sha256: manifestAsset.sha256,
+      manifest_byte_size: manifestAsset.byte_size,
+    }),
+  });
+}
+
 export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch, manifestUrl = null } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('NANNESTAD_REALISM_FETCH_REQUIRED');
   const resolvedManifestUrl = resolvePreviewManifestUrl(manifestUrl);
@@ -187,8 +277,9 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   const vegetationDescriptor = layers.vegetation;
   const roadDescriptor = layers.road_realism;
   const streetDescriptor = layers.street_detail;
+  const signArtworkDescriptor = layers.sign_artwork;
 
-  const [surface, roof, vegetation, roads, street] = await Promise.all([
+  const [surface, roof, vegetation, roads, street, signArtwork] = await Promise.all([
     fetchVerifiedJson({
       fetchImpl,
       url: descriptorUrl(resolvedManifestUrl, surfaceDescriptor, NANNESTAD_REALISM_CONTRACT.building_surface.fallback_url),
@@ -209,6 +300,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
     }),
     loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: roadDescriptor, label: 'road-realism', assertValue: assertRoadRealism }),
     loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: streetDescriptor, label: 'street-detail', assertValue: assertStreetDetail }),
+    loadSignArtwork({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: signArtworkDescriptor }),
   ]);
 
   assertBuildingSurface(surface.value);
@@ -216,13 +308,14 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   assertVegetation(vegetation.value);
 
   return Object.freeze({
-    schema: 'nwe.web-nannestad-realism-runtime/0.3',
+    schema: 'nwe.web-nannestad-realism-runtime/0.4',
     tile_id: TILE_ID,
     building_surface: surface.value,
     roof_orientation: roof.value,
     vegetation: vegetation.value,
     road_realism: roads?.value ?? null,
     street_detail: street?.value ?? null,
+    sign_artwork: signArtwork,
     transport: Object.freeze({
       manifest_url: resolvedManifestUrl,
       manifest_staged_layers: Boolean(surfaceDescriptor && roofDescriptor && vegetationDescriptor),
@@ -231,6 +324,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
       vegetation: Object.freeze({ sha256: vegetation.sha256, byte_size: vegetation.byte_size, url: vegetation.url }),
       road_realism: roads ? Object.freeze({ sha256: roads.sha256, byte_size: roads.byte_size, url: roads.url }) : null,
       street_detail: street ? Object.freeze({ sha256: street.sha256, byte_size: street.byte_size, url: street.url }) : null,
+      sign_artwork: signArtwork?.transport ?? null,
     }),
   });
 }
