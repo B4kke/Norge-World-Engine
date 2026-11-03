@@ -33,6 +33,7 @@ const artifact = {
       geometry_type: 'line',
       points: [[0, 1], [2, 1]],
       properties: { Type: 'Kjørefeltlinje' },
+      source_location: { veglenkesekvenser: [{ veglenkesekvensid: 123 }] },
     },
     {
       source_type_id: 95,
@@ -40,6 +41,7 @@ const artifact = {
       geometry_type: 'point',
       point: [1, 1.2],
       properties: { 'Høyde over vegkant': 2.0, Oppsettingsutstyr: 'Stolpe 60,3 mm' },
+      source_location: { veglenkesekvenser: [{ veglenkesekvensid: 123 }] },
     },
     {
       source_type_id: 96,
@@ -51,6 +53,7 @@ const artifact = {
         Plasseringskode: 1,
         'Ansiktsside, rettet mot': 'Trafikk mot metreringsretning',
       },
+      source_location: { veglenkesekvenser: [{ veglenkesekvensid: 123 }] },
       relations: parentRelation,
     },
     {
@@ -64,6 +67,7 @@ const artifact = {
         'Ansiktsside, rettet mot': 'Trafikk mot metreringsretning',
         Størrelse: 'Middels størrelse',
       },
+      source_location: { veglenkesekvenser: [{ veglenkesekvensid: 123 }] },
       relations: parentRelation,
     },
     {
@@ -76,6 +80,7 @@ const artifact = {
         Tekst: '100m',
         'Ansiktsside, rettet mot': 'Trafikk mot metreringsretning',
       },
+      source_location: { veglenkesekvenser: [{ veglenkesekvensid: 123 }] },
       relations: parentRelation,
     },
   ],
@@ -95,6 +100,7 @@ assert.equal(layer.stats.renderer_fallback_placement_plate_count, 1);
 assert.equal(layer.stats.supplementary_plate_count, 1);
 assert.equal(layer.stats.source_orientation_semantic_plate_count, 3);
 assert.equal(layer.stats.inferred_nearby_linear_axis_plate_count, 3);
+assert.equal(layer.stats.source_location_sequence_matched_plate_count, 3);
 assert.equal(layer.stats.sign_family_counts.yield, 1);
 assert.equal(layer.stats.sign_family_counts.prohibition, 1);
 assert.equal(layer.stats.sign_family_counts.supplementary, 1);
