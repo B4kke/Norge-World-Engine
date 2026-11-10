@@ -71,5 +71,8 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
       }
     }
   }
-  return { ...road, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', vertex_lift_semantics:vertexLifts ? 'interpolated-source-detail-lift' : 'uniform-surface-lift', winding:'upward-y', degenerate_triangles_dropped:degenerateTrianglesDropped, vertex_count:positions.length/3, triangle_count:indices.length/3} };
+  // The input per-vertex lifts no longer index the subdivision vertices.
+  // The relief is baked into Y above; do not expose a stale array on output.
+  const { vertex_lifts_m: _consumedVertexLifts, ...roadWithoutSourceLifts } = road;
+  return { ...roadWithoutSourceLifts, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', vertex_lift_semantics:vertexLifts ? 'interpolated-source-detail-lift' : 'uniform-surface-lift', winding:'upward-y', degenerate_triangles_dropped:degenerateTrianglesDropped, vertex_count:positions.length/3, triangle_count:indices.length/3} };
 }
