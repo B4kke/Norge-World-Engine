@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { sampleRenderedTerrainY } from './renderedTerrainHeight.mjs';
 
 function hashUnit(text, salt = '') {
   const value = `${text}:${salt}`;
@@ -142,12 +143,24 @@ function configureBroadleaf(meshes, item, treeIndex) {
   }
 }
 
-export function createThreeVegetationLayer({ placement, profile } = {}) {
+export function createThreeVegetationLayer({ placement, profile, terrainMesh = null } = {}) {
   if (placement?.schema !== 'nwe.web-vegetation-placement/0.1') throw new TypeError('THREE_VEGETATION_PLACEMENT_REQUIRED');
   const source = placement.instances ?? [];
   const requestedBudget = Number(profile?.vegetationInstanceBudget);
   const budget = Number.isFinite(requestedBudget) && requestedBudget > 0 ? Math.floor(requestedBudget) : source.length;
-  const visible = source.slice(0, Math.min(source.length, budget));
+  // Keep original SR16 placement untouched. Shift only the disposable GPU
+  // instance to the actually visible, possibly coarser terrain triangle mesh.
+  let groundedToVisibleMesh = 0;
+  let maximumVerticalCorrectionM = 0;
+  const visible = source.slice(0, Math.min(source.length, budget)).map((item) => {
+    const p = item.local_position;
+    const renderedY = sampleRenderedTerrainY(terrainMesh, p?.[0], p?.[2]);
+    if (renderedY === null || !Number.isFinite(p?.[1])) return item;
+    const correction = Math.abs(renderedY - p[1]);
+    if (correction > 0.0001) groundedToVisibleMesh += 1;
+    maximumVerticalCorrectionM = Math.max(maximumVerticalCorrectionM, correction);
+    return { ...item, local_position: [p[0], renderedY, p[2]] };
+  });
   const byCategory = new Map([['spruce', []], ['pine', []], ['deciduous', []]]);
   for (const item of visible) byCategory.get(category(item.species_group)).push(item);
 
@@ -195,6 +208,9 @@ export function createThreeVegetationLayer({ placement, profile } = {}) {
       schema: 'nwe.three-vegetation-layer/0.2',
       source_representative_count: source.length,
       rendered_representative_count: visible.length,
+      terrain_alignment: terrainMesh ? 'exact-rendered-terrain-triangle-presentation-only' : 'source-dtm-height-no-render-mesh',
+      height_adjusted_instance_count: groundedToVisibleMesh,
+      maximum_renderer_vertical_adjustment_m: maximumVerticalCorrectionM,
       crown_proxy_instance_count: crownProxyInstances,
       mesh_count: meshCount,
       draw_calls: drawCalls,
