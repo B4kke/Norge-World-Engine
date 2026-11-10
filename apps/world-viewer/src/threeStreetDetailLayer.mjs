@@ -346,11 +346,12 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     ditch: new THREE.MeshStandardMaterial({ color: 0x385337, roughness: 1, metalness: 0 }),
     guardrail: new THREE.MeshStandardMaterial({ color: 0xaab0b2, roughness: 0.42, metalness: 0.58 }),
   };
-  // Asphalt is already projected at 6 cm above the visible terrain mesh.
-  // This small offset belongs to the renderer, not to NVDB source geometry.
+  // Asphalt uses a 0.06 m anti-z-fighting offset. The source-width NVDB
+  // overlay adds 0.005 m (preview1Renderer), so paint must sit above both
+  // surface layers. The extra 5 mm is presentation only, not NVDB geometry.
   const lineMeshes = Object.entries(buckets)
     .map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables,
-      `NWE_Street_${name}`, terrainPayload.mesh, name.endsWith('Paint') || name.endsWith('Plastic') ? 0.06 : 0))
+      `NWE_Street_${name}`, terrainPayload.mesh, name.endsWith('Paint') || name.endsWith('Plastic') ? 0.065 : 0))
     .filter(Boolean);
   for (const [name, material] of Object.entries(lineMaterials)) {
     if (!buckets[name].indices.length) { material.dispose(); disposables.materials.delete(material); }
