@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createThreeTrafficSignLayer } from './threeTrafficSignLayer.mjs';
+import { drapeRoadOnTerrain } from './roadTerrainDrape.mjs';
 
 const TYPE = Object.freeze({
   MARKING_LONGITUDINAL: 99,
@@ -49,7 +50,7 @@ function localPoint(world, payload, sampleHeight, lift = 0) {
   );
 }
 
-function pushStripSegment(target, a, b, width) {
+function pushStripSegment(target, a, b, width, localLift = 0) {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
   const length = Math.hypot(dx, dz);
@@ -67,17 +68,18 @@ function pushStripSegment(target, a, b, width) {
   for (const vertex of vertices) {
     target.positions.push(...vertex);
     target.normals.push(0, 1, 0);
+    target.lifts.push(localLift);
   }
   target.uvs.push(0, 0, 0, 1, length, 0, length, 1);
   target.indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
   target.segments += 1;
 }
 
-function appendContinuous(target, points, width) {
-  for (let index = 0; index < points.length - 1; index += 1) pushStripSegment(target, points[index], points[index + 1], width);
+function appendContinuous(target, points, width, localLift = 0) {
+  for (let index = 0; index < points.length - 1; index += 1) pushStripSegment(target, points[index], points[index + 1], width, localLift);
 }
 
-function appendDashed(target, points, width, dashM = 3, gapM = 3) {
+function appendDashed(target, points, width, localLift = 0, dashM = 3, gapM = 3) {
   const period = dashM + gapM;
   let pathOffset = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
@@ -100,7 +102,7 @@ function appendDashed(target, points, width, dashM = 3, gapM = 3) {
         pushStripSegment(target,
           new THREE.Vector3(a.x + dx * t0, a.y + dy * t0, a.z + dz * t0),
           new THREE.Vector3(a.x + dx * t1, a.y + dy * t1, a.z + dz * t1),
-          width,
+          width, localLift,
         );
       }
       cursor += Math.max(step, 0.001);
@@ -109,19 +111,29 @@ function appendDashed(target, points, width, dashM = 3, gapM = 3) {
   }
 }
 
-function geometryFrom(target) {
+function geometryFrom(target, terrainMesh, surfaceLiftM) {
   if (!target.indices.length) return null;
+  // Drape the paint/curb strips onto the *same triangles* as visible asphalt.
+  // Sampling the higher-resolution DTM alone makes narrow markings float or
+  // vanish when balanced/high terrain mesh LOD differs from 1 m source.
+  const draped = drapeRoadOnTerrain({
+    positions: new Float32Array(target.positions),
+    uvs: new Float32Array(target.uvs),
+    indices: new Uint32Array(target.indices),
+    vertex_lifts_m: new Float32Array(target.lifts),
+    metadata: {},
+  }, terrainMesh, surfaceLiftM);
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(target.positions, 3));
-  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(target.normals, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(target.uvs, 2));
-  geometry.setIndex(target.indices);
+  geometry.setAttribute('position', new THREE.BufferAttribute(draped.positions, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(draped.uvs, 2));
+  geometry.setIndex(new THREE.BufferAttribute(draped.indices, 1));
+  geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
 }
 
 function createBucket() {
-  return { positions: [], normals: [], uvs: [], indices: [], segments: 0 };
+  return { positions: [], normals: [], uvs: [], indices: [], lifts: [], segments: 0 };
 }
 
 function markingColor(feature) {
@@ -163,8 +175,8 @@ function isDashed(feature) {
   return value.includes('stiplet') || value.includes('varsellinje');
 }
 
-function addBucketMesh(root, bucket, material, disposables, name) {
-  const geometry = geometryFrom(bucket);
+function addBucketMesh(root, bucket, material, disposables, name, terrainMesh, surfaceLiftM) {
+  const geometry = geometryFrom(bucket, terrainMesh, surfaceLiftM);
   if (!geometry) return null;
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = name;
@@ -308,18 +320,18 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       markingMaterialParts[materialKind] += 1;
       const color = markingColor(feature);
       const bucketName = `${color}${materialKind === 'plastic' ? 'Plastic' : 'Paint'}`;
-      const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight, lift.lift));
-      if (isDashed(feature)) appendDashed(buckets[bucketName], points, width.width);
-      else appendContinuous(buckets[bucketName], points, width.width);
+      const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight));
+      if (isDashed(feature)) appendDashed(buckets[bucketName], points, width.width, lift.lift);
+      else appendContinuous(buckets[bucketName], points, width.width, lift.lift);
       continue;
     }
 
     const lift = typeId === TYPE.KERB ? 0.07 : typeId === TYPE.SIDEWALK ? 0.04 : 0.025;
-    const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight, lift));
-    if (typeId === TYPE.KERB) appendContinuous(buckets.kerb, points, 0.18);
-    else if (typeId === TYPE.SIDEWALK || typeId === TYPE.BIKE_LANE) appendContinuous(buckets.sidewalk, points, typeId === TYPE.SIDEWALK ? 1.5 : 1.2);
-    else if (typeId === TYPE.DITCH) appendContinuous(buckets.ditch, points, 0.45);
-    else if (typeId === TYPE.GUARDRAIL) appendContinuous(buckets.guardrail, points, 0.12);
+    const points = feature.points.map((point) => localPoint(point, terrainPayload, sampleHeight));
+    if (typeId === TYPE.KERB) appendContinuous(buckets.kerb, points, 0.18, lift);
+    else if (typeId === TYPE.SIDEWALK || typeId === TYPE.BIKE_LANE) appendContinuous(buckets.sidewalk, points, typeId === TYPE.SIDEWALK ? 1.5 : 1.2, lift);
+    else if (typeId === TYPE.DITCH) appendContinuous(buckets.ditch, points, 0.45, lift);
+    else if (typeId === TYPE.GUARDRAIL) appendContinuous(buckets.guardrail, points, 0.12, lift);
     else skippedUnsupported += 1;
   }
 
@@ -334,9 +346,15 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
     ditch: new THREE.MeshStandardMaterial({ color: 0x385337, roughness: 1, metalness: 0 }),
     guardrail: new THREE.MeshStandardMaterial({ color: 0xaab0b2, roughness: 0.42, metalness: 0.58 }),
   };
+  // Asphalt is already projected at 6 cm above the visible terrain mesh.
+  // This small offset belongs to the renderer, not to NVDB source geometry.
   const lineMeshes = Object.entries(buckets)
-    .map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables, `NWE_Street_${name}`))
+    .map(([name, bucket]) => addBucketMesh(root, bucket, lineMaterials[name], disposables,
+      `NWE_Street_${name}`, terrainPayload.mesh, name.endsWith('Paint') || name.endsWith('Plastic') ? 0.06 : 0))
     .filter(Boolean);
+  for (const [name, material] of Object.entries(lineMaterials)) {
+    if (!buckets[name].indices.length) { material.dispose(); disposables.materials.delete(material); }
+  }
 
   const trafficSignLayer = signPlateFeatures.length > 0 ? createThreeTrafficSignLayer({ artifact, terrainPayload, profile }) : null;
   if (trafficSignLayer?.stats.draw_calls > 0) root.add(trafficSignLayer.root);
@@ -448,6 +466,7 @@ export function createThreeStreetDetailLayer({ artifact, terrainPayload, profile
       source_feature_part_count: artifact.stats?.feature_part_count ?? artifact.features?.length ?? 0,
       source_feature_parts_by_type_id: Object.freeze({ ...(artifact.stats?.feature_parts_by_type_id ?? {}) }),
       rendered_line_mesh_count: lineMeshes.length,
+      street_surface_alignment: 'same-rendered-terrain-triangles-as-asphalt-with-per-feature-source-relief',
       rendered_instanced_mesh_count: instancedMeshes.length + trafficSignMeshCount,
       draw_calls: drawCalls,
       source_width_marking_parts: sourceWidthMarkings,
