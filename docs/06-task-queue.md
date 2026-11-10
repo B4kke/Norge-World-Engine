@@ -224,6 +224,17 @@ A task closes when its stated acceptance passes. One cheap adversarial check may
 
 
 ## P1-SIGN-PAGINATION — NVDB sign inventory completeness
-**Priority:** HIGH — fail-closed guard implemented in PR #85; multi-page source ingestion OPEN.
+**Priority:** IMPLEMENTED CANDIDATE in PR #85 — REAL MULTI-PAGE PROVIDER ACCEPTANCE OPEN.
 
-The type-95/96 street-detail compiler now rejects a declared next page or ambiguous full 1000-object response rather than publishing incomplete sign truth. Adversarial test and CI gate added; hosted CI still needs to confirm current provider behavior. Next: deterministic pagination with page-level raw hashes, stable IDs, cycle detection and bounded page count, followed by verified sign-plate/support relations. No generated sign symbols are source truth.
+Compiler algorithm v0.5 follows provider-issued NVDB V4 `metadata.neste.start` cursors while reconstructing requests from the exact trusted source URL/BBOX/CRS, never visiting the provider's next-page href. Every raw page has a separate SHA-256/byte count in the source snapshot, while aggregate input hash is length-prefixed. Duplicated source IDs, cursor cycles, missing/malformed cursors, invalid page counts and page overflow reject the artifact. Offline adversarial tests are wired to the NVDB CI gate. Live provider CI initially revealed that the real source is paginated and that href routing does not necessarily match the original request; source-link dependence has been removed when start is available. Await a green live NVDB run before promoting the new inventory. Next gate: explicit type95/type96 relation coverage, source sign facing and official art licensing.
+
+## P1-RENDER-SURFACE-ALIGNMENT — Roads, signs, trees and facades
+**Priority:** IMPLEMENTED CANDIDATE / VIEWER BUILD PASS; EXACT NEW VISUAL INSPECTION OPEN.
+
+- Road centerline source-width overlays preserve their small renderer-only lift through terrain triangle subdivision.
+- NVDB markings, curbs, sidewalks, ditches and rails use the same rendered terrain triangles as road asphalt; source marking thickness remains a separate per-feature presentation lift. White/yellow paint is raised above accepted 5 mm width-overlay surfaces to avoid hiding.
+- Signs, lamps and tree proxies are grounded against the displayed triangulation rather than the independently sampled 1 m source grid; source coordinates/placements are unchanged. Out-of-tile positions do not extrapolate source terrain.
+- Façade openings interpolate the same two DTM-grounded footprint endpoints as each wall edge and have exterior-side visual offset. Geometry/placement of openings remain deterministic renderer-only, not observed source truth.
+- Narrow regressions added for triangle interpolation, road relief and sloped facades; complete world-viewer-vite test/build passed on code head `4c7e7b3920090af379751fc1bf58f3a98198528c` and newest candidate viewer CI is green on `ba3ab7af9b2157d69643c60f2c36cd59f9896537`.
+
+**Quality limits:** this eliminates obvious floating/sinking on mismatched LOD but does not prove photorealism. Vegetation is still procedural proxy crown geometry; walls still have inferred openings; road junction/cross-sectional topology and near-field 1 m source resolution need source/geometric A/B. Exact new screenshot/hardware performance validation remains open, without mixing generated detail into world truth.
