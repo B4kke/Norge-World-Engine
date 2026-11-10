@@ -71,7 +71,7 @@ assert.deepEqual(lighting.sunTarget.position.toArray(), [0, 1, 0]);
 const movedLighting = lighting.updateAnchor([25, 6, -40]);
 assert.deepEqual(movedLighting.sun.anchor, [25, 6, -40]);
 assert.equal(movedLighting.shadow.update_count, 2);
-assert.equal(lighting.sun.shadow.needsUpdate, true);
+assert.equal(lighting.sun.shadow.needsUpdate, lighting.sun.intensity > 0.001, 'night must not demand an expensive shadow-map refresh; daylight camera moves should');
 assert.deepEqual(lighting.sunTarget.position.toArray(), [25, 7, -40]);
 const sunOffset = movedLighting.sun.offset;
 assert.ok(Math.abs(Math.hypot(...sunOffset) - GROUND_VISUAL_STYLE.sunDistanceM) < 2, 'directional sun anchor offset must stay bounded around the configured solar distance');
