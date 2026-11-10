@@ -48,10 +48,16 @@ function typePolicy(feature) {
   return { windows: true, sparse: false, doorWidth: 1.0, floorHeight: 2.75 };
 }
 
-function worldToLocal(payload, easting, northing, heightOffset) {
+function worldToLocal(payload, easting, northing, heightOffset, wallGroundM = null, outward = [0, 0]) {
   const origin = payload.mesh.metadata.origin;
-  const ground = sampleTerrain(payload, easting, northing);
-  return new THREE.Vector3(easting - origin[0], ground - origin[2] + GROUND_LIFT_M + heightOffset, origin[1] - northing);
+  const ground = Number.isFinite(wallGroundM) ? wallGroundM : sampleTerrain(payload, easting, northing);
+  // These are renderer-only decorative panels. Offset outward so their
+  // back faces touch, rather than become half-buried inside, the solid wall.
+  return new THREE.Vector3(
+    easting + outward[0] * 0.04 - origin[0],
+    ground - origin[2] + GROUND_LIFT_M + heightOffset,
+    origin[1] - northing - outward[1] * 0.04,
+  );
 }
 
 function matrix(position, yaw, scale) {
@@ -90,6 +96,11 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
   const height = wallHeight(feature);
   const floors = Math.max(1, Math.min(6, Math.floor(height / policy.floorHeight)));
   const doorEdgeIndex = deterministicIndex(feature, polygon.length);
+  const signedArea = polygon.reduce((sum, point, i) => {
+    const next = polygon[(i + 1) % polygon.length];
+    return sum + point[0] * next[1] - next[0] * point[1];
+  }, 0);
+  const outwardSign = signedArea >= 0 ? 1 : -1;
 
   for (let edgeIndex = 0; edgeIndex < polygon.length; edgeIndex += 1) {
     const a = polygon[edgeIndex];
@@ -101,11 +112,17 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
     const yaw = Math.atan2(dn, de);
     const ux = de / length;
     const un = dn / length;
+    const outward = [outwardSign * un, -outwardSign * ux];
+    // Building wall vertices are DTM-grounded separately. Each wall triangle
+    // interpolates between its endpoint heights; facade panels must use that
+    // same interpolation instead of re-sampling a different 1 m DTM pixel.
+    const groundA = sampleTerrain(payload, a[0], a[1]);
+    const groundB = sampleTerrain(payload, b[0], b[1]);
 
     if (edgeIndex === doorEdgeIndex && doorTransforms.length < budgets.doors && length >= policy.doorWidth + 0.5) {
       const e = (a[0] + b[0]) * 0.5;
       const n = (a[1] + b[1]) * 0.5;
-      doorTransforms.push(matrix(worldToLocal(payload, e, n, 1.05), yaw, [policy.doorWidth, 2.1, 1]));
+      doorTransforms.push(matrix(worldToLocal(payload, e, n, 1.05, (groundA + groundB) / 2, outward), yaw, [policy.doorWidth, 2.1, 1]));
     }
 
     if (!policy.windows || windowTransforms.length >= budgets.windows || length < 2.2) continue;
@@ -122,7 +139,7 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
         const n = a[1] + un * along;
         const width = policy.sparse ? 0.85 : 1.05;
         const paneHeight = policy.sparse ? 0.85 : 1.15;
-        windowTransforms.push(matrix(worldToLocal(payload, e, n, centerHeight), yaw, [width, paneHeight, 1]));
+        windowTransforms.push(matrix(worldToLocal(payload, e, n, centerHeight, groundA + (groundB - groundA) * along / length, outward), yaw, [width, paneHeight, 1]));
       }
     }
   }
@@ -212,6 +229,7 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
     stats: Object.freeze({
       schema: 'nwe.three-building-facade-layer/0.2',
       source_building_count: buildingsArtifact.features.length,
+      facade_alignment: 'source-footprint-edge-linear-wall-height-and-exterior-panel-offset',
       rendered_window_count: windowTransforms.length,
       rendered_window_frame_count: windowTransforms.length,
       rendered_door_count: doorTransforms.length,
