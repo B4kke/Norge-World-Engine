@@ -148,7 +148,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
-  const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile }) : null;
+  const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile, terrainMesh: terrainPayload.mesh }) : null;
   if (vegetationLayer) scene.add(vegetationLayer.root);
 
   const streetDetailLayer = streetDetail ? createThreeStreetDetailLayer({ artifact: streetDetail, terrainPayload, profile }) : null;
