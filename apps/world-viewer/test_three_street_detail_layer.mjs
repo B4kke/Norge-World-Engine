@@ -13,7 +13,11 @@ const terrainPayload = {
     },
   },
   elevations: new Float32Array([100, 100, 100, 100]),
-  mesh: { metadata: { origin: [1, 1, 100] } },
+  // Deliberately coarse render triangles disagree with the flat 1 m DTM.
+  mesh: {
+    metadata: { origin: [1, 1, 100] },
+    positions: new Float32Array([-1, 0, 1, 1, 0, 1, -1, 0, -1, 1, 0.8, -1]),
+  },
 };
 
 const artifact = {
@@ -80,6 +84,21 @@ assert.equal(layer.stats.source_light_mast_count, 2);
 assert.equal(layer.stats.steel_light_mast_count, 1);
 assert.equal(layer.stats.wood_light_mast_count, 1);
 assert.ok(layer.stats.rendered_line_mesh_count >= 1);
+assert.match(layer.stats.street_surface_alignment, /same-rendered-terrain-triangles/);
+const marking = layer.root.children.find((child) => child.name === 'NWE_Street_whitePlastic');
+assert.ok(marking, 'extruded-plastic road marking must be rendered');
+const position = marking.geometry.getAttribute('position');
+assert.ok(position.count > 4, 'marking strip must be clipped to terrain triangles');
+for (let vertex = 0; vertex < position.count; vertex += 1) {
+  const x = position.getX(vertex);
+  const y = position.getY(vertex);
+  const z = position.getZ(vertex);
+  const u = (x + 1) / 2;
+  const w = (1 - z) / 2;
+  const renderedHeight = Math.max(0, u + w - 1) * 0.8;
+  const expected = renderedHeight + 0.06 + 0.00405;
+  assert.ok(Math.abs(y - expected) < 0.00001, `road paint off visible road at (${x},${z}): ${y} != ${expected}`);
+}
 assert.ok(layer.stats.rendered_instanced_mesh_count >= 5);
 assert.ok(layer.stats.draw_calls >= 6);
 assert.match(layer.stats.truth_guard, /sign face identity\/orientation/);
