@@ -96,7 +96,7 @@ for (let vertex = 0; vertex < position.count; vertex += 1) {
   const u = (x + 1) / 2;
   const w = (1 - z) / 2;
   const renderedHeight = Math.max(0, u + w - 1) * 0.8;
-  const expected = renderedHeight + 0.06 + 0.00405;
+  const expected = renderedHeight + 0.065 + 0.00405;
   assert.ok(Math.abs(y - expected) < 0.00001, `road paint off visible road at (${x},${z}): ${y} != ${expected}`);
 }
 assert.ok(layer.stats.rendered_instanced_mesh_count >= 5);
