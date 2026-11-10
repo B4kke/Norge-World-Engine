@@ -115,6 +115,7 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
   const normals = [];
   const uvs = [];
   const indices = [];
+  const vertexLifts = [];
   let pathCount = 0;
   let segmentCount = 0;
   let centerlineLengthM = 0;
@@ -148,6 +149,9 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
         center[0] - offsetX, center[1], center[2] - offsetZ,
       );
       normals.push(0, 1, 0, 0, 1, 0);
+      // The road-drape pass uses the rendered terrain as its height reference,
+      // so source-width overlay offsets must travel as an explicit attribute.
+      vertexLifts.push(additionalLiftM, additionalLiftM);
       const v = distanceAlong / uvPeriodMeters;
       uvs.push(0, v, 1, v);
     }
@@ -173,6 +177,7 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
     indices: new IndexArray(indices),
+    vertex_lifts_m: new Float32Array(vertexLifts),
     metadata: {
       schema: 'nwe.road-surface-render-geometry/0.3',
       source: 'compiled-road-paths-plus-explicit-source-width-overlays',
@@ -181,6 +186,7 @@ export function buildRoadSurfaceGeometry(roadsArtifact, {
       source_width_path_count: sourceWidthPathCount,
       fallback_width_path_count: fallbackWidthPathCount,
       lifted_overlay_path_count: liftedOverlayPathCount,
+      overlay_lift_policy: 'per-vertex-renderer-relief-preserved-during-terrain-drape',
       width_range_m: pathCount ? [minWidthM, maxWidthM] : [widthMeters, widthMeters],
       miter_limit: miterLimit,
       uv_period_m: uvPeriodMeters,
