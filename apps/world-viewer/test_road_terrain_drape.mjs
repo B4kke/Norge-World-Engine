@@ -20,4 +20,16 @@ for (let i = 0; i < result.indices.length; i += 3) {
   const crossY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
   assert.ok(crossY > 1e-10, `draped triangle must face upward; crossY=${crossY}`);
 }
+
+const relief = { ...road, vertex_lifts_m: new Float32Array([0, 0.012, 0.024, 0.036]) };
+const drapedRelief = drapeRoadOnTerrain(relief, terrain);
+assert.equal(drapedRelief.metadata.vertex_lift_semantics, 'interpolated-source-detail-lift');
+for (let i = 0; i < drapedRelief.positions.length; i += 3) {
+  const [x, y, z] = drapedRelief.positions.slice(i, i + 3);
+  const expected = Math.max(0, x + z - 1) * 4 + 0.06 + 0.024 * x + 0.012 * z;
+  assert.ok(Math.abs(y - expected) < 0.000002, `per-vertex relief lost at ${x},${z}`);
+}
+for (const invalid of [new Float32Array([0]), new Float32Array([0, -0.01, 0, 0])]) {
+  assert.throws(() => drapeRoadOnTerrain({ ...road, vertex_lifts_m: invalid }, terrain), /ROAD_DRAPE_VERTEX_LIFT_INVALID/);
+}
 console.log('ROAD_TERRAIN_DRAPE_PASS');
