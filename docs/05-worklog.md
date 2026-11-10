@@ -660,3 +660,29 @@ Every completed work session appends exactly one entry using this structure:
 **Bevist:** Static review confirms the former single-page request could return a partial inventory without an error. The new regression covers a small complete page, a declared next page, and an ambiguous full page. Live provider validation is pending CI; no exact-sign identity or appearance is claimed.
 
 **Neste:** Replace the fail-closed guard with deterministic multi-page acquisition, page-wise SHA provenance, cycle/duplicate detection and exact-tile type-95/type-96 relation validation; only then map real sign faces to assets.
+
+## 2026-11-11 00:35 CET — LUMEN/FORGE/SENTINEL — P1-RENDER-SURFACE-ALIGNMENT + P1-SIGN-PAGINATION
+
+**What**
+- Fixed an actual renderer/DTM level-of-detail mismatch: visible asphalt draped onto rendered terrain triangles while road markings, curb/ditch strips, signs, lighting and trees were grounded to the independently sampled higher-resolution DTM. All disposable presentation positions now follow the **same visible triangle** where appropriate; authoritative geodata is untouched.
+- Preserved per-vertex NVDB source-width overlay 5 mm presentation offset and source marking thickness through road-triangle subdivision. Made paint visible above the supported width overlay, eliminated stale lift arrays on subdivided geometry, and released unused material buckets.
+- Added a triangle-exact O(1) presentation-ground sampler, aligned tree trunks/sign posts/lamp posts, and adjusted façade windows/doors to interpolated sloped wall edges with outward visual offset. No observed exact windows or individual trees are claimed.
+- Completed deterministic NVDB V4 collection pagination: v0.5 follows provider opaque `start` cursors, preserves request BBOX/CRS/source type, snapshots SHA-256 and bytes of every page, guards duplicates, cursor loops and bounded page count. A live provider check showed `metadata.neste.href` may differ from the original URL; when `start` is present, the compiler ignores that link and reconstructs requests only on the trusted source URL.
+- Fixed an unrelated volatile solar-shadow test that expected daytime shadow-map updates at Oslo midnight, without changing nighttime runtime lighting.
+
+**Why**
+- Floating/buried roadside details and vegetation and façade openings displaced on slopes are visibly implausible even when the accepted source data is correct. Previously incomplete NVDB pagination could silently omit physical signs and roadside geometry.
+
+**Result / evidence**
+- FACT: `world-viewer-vite` PASS on `4c7e7b3920090af379751fc1bf58f3a98198528c` (run `42926218885`), with the new triangle, sloped façade, tree-grounding, road and sign regressions. `baseline` run `42926218847` and `viewer-benchmark` run `42926218870` also PASS.
+- FACT: `world-viewer-vite` PASS again on `ba3ab7af9b2157d69643c60f2c36cd59f9896537` (run `42927199346`); baseline and benchmark also green at that head. A preceding live NVDB gate correctly failed after discovering real `metadata.neste` pagination. A subsequent run surfaced routing-href variance and motivated the cursor-first fix.
+- FACT: adversarial offline pagination tests cover trusted URL/BBOX and type preservation, repeated/empty terminal cursor, SHA page counts, source IDs, cycle/duplicate rejection, page-budget rejection and malicious href.
+- LIMITATION: CI evidence for the **latest** NVDB href fix and exact new screenshot remains open at time of writing; do not call live full source admission or visual fidelity complete. Exact LAZ bytes are still unavailable, so actual LoD2 roofs and observed trees remain unresolved.
+
+**Changed**
+- PR #85 remains draft; source: `tools/geo/compile_nvdb_street_detail.py`, `tools/geo/test_nvdb_street_detail_pagination.py`, `.github/workflows/nvdb-road-semantics-proof.yml`.
+- Renderer: `apps/world-viewer/src/roadTerrainDrape.mjs`, `roadSurfaceGeometry.mjs`, `renderedTerrainHeight.mjs`, `threeStreetDetailLayer.mjs`, `threeTrafficSignLayer.mjs`, `threeVegetationLayer.mjs`, `threeBuildingFacadeLayer.mjs`, `threeGroundRenderer.mjs` plus dedicated regressions and `package.json`.
+- `docs/05-worklog.md`, `docs/06-task-queue.md`.
+
+**Next**
+- Verify the exact-head live type-95/type-96 NVDB multi-page gate; inspect actual skiltplate/parent relation coverage and stage an SHA-pinned browser A/B before promoting sign art or newly gathered roadside objects.
