@@ -99,15 +99,19 @@ def next_page_url(initial_url: str, current_url: str, payload: dict[str, Any]) -
     if initial.scheme != "https":
         raise RuntimeError("NVDB pagination must originate from HTTPS")
     href = next_page.get("href")
-    if href is not None:
+    cursor = next_page.get("start")
+    # NVDB may emit a link using its own routing URL that is not byte-equal
+    # to our original request. The opaque "start" cursor is authoritative;
+    # reconstruct every request from OUR fixed HTTPS type+spatial query.
+    # Provider href is never fetched. Only use it as a fallback source for
+    # a missing cursor after validating its host, resource and protocol.
+    if cursor is None and href is not None:
         if not isinstance(href, str) or not href:
             raise RuntimeError("NVDB pagination href is invalid")
         linked = urlsplit(urljoin(current_url, href))
         if (linked.scheme, linked.netloc, linked.path) != (initial.scheme, initial.netloc, initial.path):
             raise RuntimeError("NVDB pagination link changed trusted host or object type")
-    cursor = next_page.get("start")
-    if cursor is None and href:
-        found = parse_qs(urlsplit(urljoin(current_url, href)).query).get("start", [])
+        found = parse_qs(linked.query).get("start", [])
         cursor = found[-1] if found else None
     if not isinstance(cursor, str) or not cursor:
         raise RuntimeError("NVDB pagination has no opaque start cursor")
