@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from pyproj import Transformer
@@ -21,7 +21,8 @@ TARGET_CRS = "EPSG:25832"
 SOURCE_SRID = 5973
 TILE_ID = "epsg25832_611000_6677000_1000m"
 SCHEMA = "nwe.nvdb-street-detail-artifact/0.1-candidate"
-ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.4"
+ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.5"
+MAX_PAGE_COUNT = 64
 X_CLIENT = "NorgeWorldEngine-Compiler"
 USER_AGENT = "NorgeWorldEngine/0.1 street-detail-compiler"
 
@@ -75,15 +76,102 @@ def parse_payload(raw: bytes) -> dict[str, Any]:
     value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict) or not isinstance(value.get("objekter"), list):
         raise RuntimeError("NVDB response lacks objekter")
-    # The NVDB collection endpoint is paginated. A silently truncated inventory
-    # is unsafe: it can omit real signs/markings while still reporting PASS.
-    # Until a multi-page provenance contract is implemented, fail closed.
-    next_page = value.get("metadata", {}).get("neste") if isinstance(value.get("metadata"), dict) else None
-    if next_page:
-        raise RuntimeError("NVDB collection has a next page; refusing incomplete street-detail source snapshot")
-    if len(value["objekter"]) >= 1000:
-        raise RuntimeError("NVDB collection reached page limit (1000); completeness cannot be established")
+    metadata = value.get("metadata")
+    if not isinstance(metadata, dict):
+        raise RuntimeError("NVDB paginated collection lacks metadata")
+    if "returnert" in metadata and metadata["returnert"] != len(value["objekter"]):
+        raise RuntimeError("NVDB page returnert contradicts object count")
     return value
+
+
+def next_page_url(initial_url: str, current_url: str, payload: dict[str, Any]) -> str | None:
+    """Use the provider-issued opaque start cursor, preserving the exact tile filter.
+
+    NVDB V4 documents both metadata.neste.start and metadata.neste.href.
+    Never guess a cursor or follow links to unrelated API hosts/resources.
+    """
+    next_page = payload["metadata"].get("neste")
+    if next_page is None:
+        return None
+    if not isinstance(next_page, dict):
+        raise RuntimeError("NVDB next-page metadata is malformed")
+    initial = urlsplit(initial_url)
+    if initial.scheme != "https":
+        raise RuntimeError("NVDB pagination must originate from HTTPS")
+    href = next_page.get("href")
+    if href is not None:
+        if not isinstance(href, str) or not href:
+            raise RuntimeError("NVDB pagination href is invalid")
+        linked = urlsplit(urljoin(current_url, href))
+        if (linked.scheme, linked.netloc, linked.path) != (initial.scheme, initial.netloc, initial.path):
+            raise RuntimeError("NVDB pagination link changed trusted host or object type")
+    cursor = next_page.get("start")
+    if cursor is None and href:
+        found = parse_qs(urlsplit(urljoin(current_url, href)).query).get("start", [])
+        cursor = found[-1] if found else None
+    if not isinstance(cursor, str) or not cursor:
+        raise RuntimeError("NVDB pagination has no opaque start cursor")
+    params = [(key, value) for key, value in parse_qsl(initial.query, keep_blank_values=True) if key != "start"]
+    params.append(("start", cursor))
+    return urlunsplit((initial.scheme, initial.netloc, initial.path, urlencode(params, safe=","), ""))
+
+
+def fetch_collection_pages(
+    initial_url: str, fetch=fetch_bytes, max_pages: int = MAX_PAGE_COUNT
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Exhaust NVDB cursor pages, SHA-bind every raw response and reject ambiguous data."""
+    if not isinstance(max_pages, int) or max_pages < 1:
+        raise ValueError("max_pages must be positive")
+    current_url = initial_url
+    seen_urls: set[str] = set()
+    seen_ids: set[int] = set()
+    objects: list[dict[str, Any]] = []
+    page_snapshots: list[dict[str, Any]] = []
+    content_hash = hashlib.sha256()
+    total_bytes = 0
+    for page_index in range(max_pages):
+        if current_url in seen_urls:
+            raise RuntimeError("NVDB pagination cursor cycle detected")
+        seen_urls.add(current_url)
+        raw = fetch(current_url)
+        payload = parse_payload(raw)
+        page_objects = payload["objekter"]
+        # Each object's ID must remain unique within an NVDB object type.
+        for obj in page_objects:
+            if not isinstance(obj, dict) or isinstance(obj.get("id"), bool) or not isinstance(obj.get("id"), int):
+                raise RuntimeError("NVDB page contains an object without a numeric ID")
+            if obj["id"] in seen_ids:
+                raise RuntimeError("NVDB pagination returned duplicate object ID")
+            seen_ids.add(obj["id"])
+            objects.append(obj)
+        content_hash.update(len(raw).to_bytes(8, "big"))
+        content_hash.update(raw)
+        total_bytes += len(raw)
+        page_snapshots.append({
+            "index": page_index,
+            "request_url": current_url,
+            "raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "raw_byte_size": len(raw),
+            "object_count": len(page_objects),
+        })
+        # NVDB documents an empty terminal page and may repeat the last cursor.
+        if not page_objects:
+            return objects, {
+                "raw_sha256": content_hash.hexdigest(),
+                "raw_byte_size": total_bytes,
+                "page_count": len(page_snapshots),
+                "page_snapshots": page_snapshots,
+            }
+        following = next_page_url(initial_url, current_url, payload)
+        if following is None:
+            return objects, {
+                "raw_sha256": content_hash.hexdigest(),
+                "raw_byte_size": total_bytes,
+                "page_count": len(page_snapshots),
+                "page_snapshots": page_snapshots,
+            }
+        current_url = following
+    raise RuntimeError("NVDB pagination exceeded bounded page budget")
 
 
 def property_map(obj: dict[str, Any]) -> dict[str, Any]:
@@ -169,9 +257,7 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
 
     for type_id, type_name in TYPE_NAMES.items():
         url = request_url(type_id)
-        raw = fetch_bytes(url)
-        payload = parse_payload(raw)
-        objects = [item for item in payload["objekter"] if isinstance(item, dict)]
+        objects, source_pages = fetch_collection_pages(url)
         emitted = 0
         relation_objects = 0
         location_objects = 0
@@ -210,8 +296,10 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
             "type_id": type_id,
             "type_name": type_name,
             "request_url": url,
-            "raw_sha256": hashlib.sha256(raw).hexdigest(),
-            "raw_byte_size": len(raw),
+            "raw_sha256": source_pages["raw_sha256"],
+            "raw_byte_size": source_pages["raw_byte_size"],
+            "page_count": source_pages["page_count"],
+            "page_snapshots": source_pages["page_snapshots"],
             "object_count": len(objects),
             "emitted_geometry_part_count": emitted,
             "objects_with_relations": relation_objects,
@@ -240,6 +328,7 @@ def compile_artifact() -> tuple[dict[str, Any], dict[str, Any]]:
             "geometry": "only explicit NVDB object geometry is reprojected EPSG:25833->25832 and clipped to the exact Nannestad tile",
             "vertical": "point/line Z is intentionally not promoted; renderer grounds presentation against accepted NWE DTM",
             "relations": "NVDB V4 relation payload is preserved as source evidence but receives no inferred sign/support semantics in this compiler",
+            "pagination": "Every provider-issued opaque cursor is exhausted with original tile filter preserved; each raw page is SHA-256-bound, duplicates/cycles/unsafe links reject admission",
             "source_location": "NVDB V4 location payload is preserved verbatim as source evidence for sequence/lane correlation; it does not replace explicit object geometry",
             "appearance": "object appearance may be renderer-authored but source position/type/properties remain separately identifiable",
             "truth_guard": "absence of an object is not proof of physical absence; no procedural object is represented as NVDB source truth",
