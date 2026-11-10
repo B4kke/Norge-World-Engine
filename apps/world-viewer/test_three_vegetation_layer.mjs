@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as THREE from 'three/webgpu';
 import { createThreeVegetationLayer } from './src/threeVegetationLayer.mjs';
 
 const placement = {
@@ -35,4 +36,22 @@ for (const mesh of layer.root.children) {
 layer.dispose();
 assert.equal(layer.root.parent, null);
 
+const visibleTerrain = { positions: new Float32Array([
+  -20, 0, 20, 20, 0, 20,
+  -20, 0, -20, 20, 5, -20,
+]) };
+const aligned = createThreeVegetationLayer({
+  placement,
+  profile: { vegetationInstanceBudget: 3, shadows: false },
+  terrainMesh: visibleTerrain,
+});
+assert.equal(aligned.stats.terrain_alignment, 'exact-rendered-terrain-triangle-presentation-only');
+assert.equal(aligned.stats.height_adjusted_instance_count, 1);
+assert.ok(Math.abs(aligned.stats.maximum_renderer_vertical_adjustment_m - 2.5) < 1e-6);
+const pineTrunk = aligned.root.children[2];
+const pineMatrix = new THREE.Matrix4();
+pineTrunk.getMatrixAt(0, pineMatrix);
+assert.ok(Math.abs(pineMatrix.elements[13] - (2.5 + 14 * 0.58 / 2)) < 1e-5);
+assert.deepEqual(placement.instances[1].local_position, [12, 0, -8], 'renderer must not mutate authoritative source placement');
+aligned.dispose();
 console.log('three vegetation layer regression passed');
