@@ -24,6 +24,7 @@ for (let i = 0; i < result.indices.length; i += 3) {
 const relief = { ...road, vertex_lifts_m: new Float32Array([0, 0.012, 0.024, 0.036]) };
 const drapedRelief = drapeRoadOnTerrain(relief, terrain);
 assert.equal(drapedRelief.metadata.vertex_lift_semantics, 'interpolated-source-detail-lift');
+assert.equal(drapedRelief.vertex_lifts_m, undefined, 'subdivided output must not retain stale input lift indices');
 for (let i = 0; i < drapedRelief.positions.length; i += 3) {
   const [x, y, z] = drapedRelief.positions.slice(i, i + 3);
   const expected = Math.max(0, x + z - 1) * 4 + 0.06 + 0.024 * x + 0.012 * z;
