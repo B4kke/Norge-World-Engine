@@ -110,10 +110,12 @@ jobs:
           assert artifact['schema'] == 'nwe.nvdb-street-detail-artifact/0.1-candidate'
           assert artifact['tile_id'] == 'epsg25832_611000_6677000_1000m'
           assert artifact['horizontal_crs'] == 'EPSG:25832'
-          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.4'
+          assert artifact['compiler_algorithm'] == 'nvdb-v4-explicit-geometry-street-detail-v0.5'
           assert verification['status'] == 'PASS'
           assert verification['artifact_sha256'] == hashlib.sha256(raw).hexdigest()
           assert verification['feature_part_count'] > 0
+          assert all(snapshot['page_count'] >= 1 and len(snapshot['page_snapshots']) == snapshot['page_count'] for snapshot in artifact['source_snapshots'])
+          assert all(snapshot['raw_byte_size'] == sum(page['raw_byte_size'] for page in snapshot['page_snapshots']) for snapshot in artifact['source_snapshots'])
           expected = {'99','519','174','95','96','87','181','20','5','80','9','48','953'}
           assert set(artifact['stats']['feature_parts_by_type_id']) == expected
           assert artifact['stats']['feature_parts_by_type_id']['96'] > 0
