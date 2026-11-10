@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import * as THREE from 'three/webgpu';
+import { sampleHeightGrid } from '../../engine/streaming/terrain_mesh_buffers.mjs';
 import { createThreeBuildingFacadeLayer } from './src/threeBuildingFacadeLayer.mjs';
 
 const terrainPayload = {
@@ -46,4 +48,33 @@ assert.ok(layer.root.children.some((child) => child.name === 'NWE_Procedural_Win
 for (const child of layer.root.children) assert.equal(child.isInstancedMesh, true);
 layer.dispose();
 assert.equal(layer.root.parent, null);
+assert.match(layer.stats.facade_alignment, /linear-wall-height/);
+const slopedTerrain = {
+  ...terrainPayload,
+  artifact: { header: { ...terrainPayload.artifact.header, width: 3, height: 3 } },
+  elevations: new Float32Array([100, 110, 100, 100, 110, 100, 100, 110, 100]),
+};
+const sloped = createThreeBuildingFacadeLayer({
+  buildingsArtifact,
+  terrainPayload: slopedTerrain,
+  profile: { id: 'high' },
+});
+const firstPane = sloped.root.children.find((child) => child.name === 'NWE_Procedural_Window_Glass');
+const transform = new THREE.Matrix4();
+firstPane.getMatrixAt(0, transform);
+const [firstX, firstY, firstZ] = [transform.elements[12], transform.elements[13], transform.elements[14]];
+const hA = sampleHeightGrid(slopedTerrain.elevations, {
+  width: 3, height: 3, bounds: [0, 0, 10, 10], pixelSizeMeters: 5,
+  nodata: null, easting: 1, northing: 1,
+});
+const hB = sampleHeightGrid(slopedTerrain.elevations, {
+  width: 3, height: 3, bounds: [0, 0, 10, 10], pixelSizeMeters: 5,
+  nodata: null, easting: 9, northing: 1,
+});
+const along = (firstX + 5 - 1) / 8;
+const wallGround = hA + (hB - hA) * along;
+assert.ok(Math.abs(firstY - (wallGround - 100 + 0.085 + 1.55)) < 0.0001,
+  'window must follow the SAME linearly interpolated wall-edge elevation, not a new center-pixel DTM sample');
+assert.ok(Math.abs(firstZ - 4.04) < 0.00001, 'window panel should face exterior, not sit half inside the wall');
+sloped.dispose();
 console.log('three building facade layer regression passed');
