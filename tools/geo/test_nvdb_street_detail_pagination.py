@@ -66,7 +66,20 @@ def must_reject(pages, pattern):
 
 must_reject({"": response([1], "cycle"), "cycle": response([2], "cycle")}, "cycle")
 must_reject({"": response([1], "dup"), "dup": response([1])}, "duplicate")
-must_reject({"": response([1], "unsafe", "https://evil.example.net/other")}, "trusted")
+# A foreign href is harmless when the provider separately supplies a valid
+# opaque cursor: the compiler NEVER follows the href.
+objects, _ = module.fetch_collection_pages(INITIAL, fetch=fetch_from({
+    "": response([1], "good", "https://evil.example.net/other"),
+    "good": response([2]),
+}, []))
+assert [obj["id"] for obj in objects] == [1, 2]
+# An href is only interpreted if the start cursor is missing.
+malicious = json.dumps({
+    "objekter": [{"id": 1}], "metadata": {
+        "returnert": 1, "neste": {"href": "https://evil.example.net/other?start=attack"},
+    },
+}).encode()
+must_reject({"": malicious}, "trusted")
 try:
     module.fetch_collection_pages(INITIAL, fetch=fetch_from({
         "": response([1], "more"),
