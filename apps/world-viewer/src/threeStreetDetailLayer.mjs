@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
+import { sampleRenderedTerrainY } from './renderedTerrainHeight.mjs';
 import { createThreeTrafficSignLayer } from './threeTrafficSignLayer.mjs';
 import { drapeRoadOnTerrain } from './roadTerrainDrape.mjs';
 
@@ -43,11 +44,10 @@ function localPoint(world, payload, sampleHeight, lift = 0) {
   const northing = Number(world?.[1]);
   if (!Number.isFinite(easting) || !Number.isFinite(northing)) throw new Error('STREET_DETAIL_WORLD_POINT_INVALID');
   const origin = payload.mesh.metadata.origin;
-  return new THREE.Vector3(
-    easting - origin[0],
-    sampleHeight(easting, northing) - origin[2] + lift,
-    origin[1] - northing,
-  );
+  const x = easting - origin[0], z = origin[1] - northing;
+  const visibleY = sampleRenderedTerrainY(payload.mesh, x, z);
+  const groundY = visibleY ?? (sampleHeight(easting, northing) - origin[2]);
+  return new THREE.Vector3(x, groundY + lift, z);
 }
 
 function pushStripSegment(target, a, b, width, localLift = 0) {
