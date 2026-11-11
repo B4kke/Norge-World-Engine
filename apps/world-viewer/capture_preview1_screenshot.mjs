@@ -119,6 +119,49 @@ async function waitForReady(cdp, timeoutMs) {
   throw new Error(`Preview did not reach REAL WORLD READY within ${timeoutMs} ms. Last body text:\n${lastText.slice(-3000)}`);
 }
 
+// Native browser Image/Canvas decode is sufficient for a simple visual
+// sanity gate; no custom PNG parser or extra binary library is required.
+// Check only the world viewport, not the bright diagnostics sidebar.
+async function measureWorldViewportLuminance(cdp, png) {
+  const uri = `data:image/png;base64,${png.toString('base64')}`;
+  const expression = `(async () => {
+    const image = new Image();
+    image.src = ${JSON.stringify(uri)};
+    await image.decode();
+    const region = {
+      x: 16, y: 92,
+      width: Math.min(1020, image.naturalWidth - 16),
+      height: Math.min(510, image.naturalHeight - 92),
+    };
+    const canvas = document.createElement('canvas');
+    canvas.width = region.width;
+    canvas.height = region.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, region.x, region.y, region.width, region.height,
+      0, 0, region.width, region.height);
+    const pixels = context.getImageData(0, 0, region.width, region.height).data;
+    let sum = 0, bright = 0, count = 0;
+    for (let y = 0; y < region.height; y += 4) {
+      for (let x = 0; x < region.width; x += 4) {
+        const i = (y * region.width + x) * 4;
+        const luminance = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+        sum += luminance;
+        if (luminance > 45) bright += 1;
+        count += 1;
+      }
+    }
+    return { mean_luma: sum / count, bright_fraction: bright / count, sampled_pixels: count,
+      region: [region.x, region.y, region.width, region.height] };
+  })()`;
+  const result = await cdp.send('Runtime.evaluate', {
+    expression, returnByValue: true, awaitPromise: true,
+  });
+  if (result?.exceptionDetails || !Number.isFinite(result?.result?.value?.mean_luma)) {
+    throw new Error('VISUAL_PROOF_IMAGE_LUMA_UNAVAILABLE');
+  }
+  return result.result.value;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args['runtime-root']) throw new Error('--runtime-root is required');
@@ -204,6 +247,10 @@ async function main() {
     if (!screenshot?.data) throw new Error('CDP screenshot returned no PNG data');
     const png = Buffer.from(screenshot.data, 'base64');
     if (png.length < 1000) throw new Error(`screenshot PNG unexpectedly small: ${png.length} bytes`);
+    const daylightEvidence = await measureWorldViewportLuminance(cdp, png);
+    if (daylightEvidence.mean_luma < 18 || daylightEvidence.bright_fraction < 0.15) {
+      throw new Error(`VISUAL_PROOF_WORLD_TOO_DARK: ${JSON.stringify(daylightEvidence)}`);
+    }
     writeFileSync(output, png);
     console.log(JSON.stringify({
       schema: 'nwe.preview1-visual-proof/0.1',
@@ -216,6 +263,7 @@ async function main() {
       graphics_profile: 'high',
       solar_clock: 'fixed-utc-presentation-time',
       solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
+      daylight_world_viewport: daylightEvidence,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {
