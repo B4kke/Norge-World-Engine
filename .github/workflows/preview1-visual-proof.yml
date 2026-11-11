@@ -53,6 +53,9 @@ jobs:
       - name: Build exact World Viewer
         run: npm run build --workspace @nwe/world-viewer
 
+      - name: Verify immutable accepted-world staging and tamper guards
+        run: python -m pytest -q tools/preview/test_accepted_world_snapshot.py tools/preview/test_stage_preview1_snapshot.py
+
       - name: Materialize exact current Nannestad runtime snapshot
         env:
           PYTHONPATH: engine/compiler/src
@@ -61,6 +64,7 @@ jobs:
           rm -rf /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
           mkdir -p /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
           python tools/preview/stage_preview1_snapshot.py \
+            --base-source accepted \
             --cache-root /tmp/nwe-visual-cache \
             --output /tmp/nwe-visual-runtime \
             --commit-sha "$NWE_SOURCE_SHA" \
