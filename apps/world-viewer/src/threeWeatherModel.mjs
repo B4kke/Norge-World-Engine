@@ -95,7 +95,7 @@ export function resolveSolarClockFromSearch(search = '') {
   });
   // Require unambiguous seconds and UTC. Date.parse silently normalizes
   // impossible dates such as February 30, so roundtrip-check the result.
-  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(value)) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/.test(value)) {
     throw new RangeError('NWE_SOLAR_TIME_OVERRIDE_INVALID');
   }
   const milliseconds = Date.parse(value);
