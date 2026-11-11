@@ -714,3 +714,29 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-NEAR-FIELD-TREES`: acquire one CC0 source-verified Norway-appropriate tree asset, pin all source bytes and build bounded near/mid/far LOD; benchmark and screenshot A/B against the accepted daylight scene without changing SR16V truth.
+
+## 2026-11-11 02:40 CET — LUMEN — P1-NEAR-FIELD-TREES
+
+**What**
+- Converted a real CC0 licensed conifer visual model into a source-byte-verified, deterministic near-field GLB derivative. Innerscene `conifer_light`: 517,112-byte source SHA-256 `812f691eb68119681038aed7f45dd80bff0a152afe1fc8160ea5cbeeae9143da`, 365 meshes, 8,792 triangles, no textures. Pinned offline `numpy==2.5.3` and `trimesh==4.11.1`; baked original PBR foliage/trunk colors explicitly into vertex `COLOR_0`, flattened to one 232,160-byte mesh, SHA-256 `77705f017031ac8d7f7a31d78d5b24268eecd56da93bd051cfadee16230be3ba`. The first 200,532-byte uncolored attempt was rejected by actual Chrome and superseded.
+- Added a short-lived verified tree GLB/report snapshot and source-hash/byte/CC0/triangle/scale gates in both production preview and screenshot CI, plus `set -o pipefail` to avoid masking failed preprocessing commands.
+- Verified optional GLB+report via WebCrypto on the **same accepted runtime manifest origin**; dynamically instantiated max 36 conifers within 125 m of camera (balanced 18, low 0). Hidden near conifer proxies are restored as camera moves. SR16 representative coordinates, IDs and tree category remain unchanged; broadleaf fallback untouched.
+- Added an adversarial offline source bake test plus near-field/low/far/camera-movement regression. Extended Chrome browser audit to include the tree's own provenance report and assert CC0 resource source and derivative identity and active instanced renderer status, without allowing provider runtime requests.
+
+**Why**
+- The first verified daylight screenshot clearly exposed overly simple conical/dodecahedral tree crowns. Better real-asset silhouettes need low draw-call budgets and immutable model identity; source group != actual surveyed tree.
+
+**Result / evidence**
+- FACT: independent visual and preview-publish runs for code head `d0ad34b2256f299bc88f93360abafaa0c87b058c` yielded identical final derivative SHA `77705f017031ac8d7f7a31d78d5b24268eecd56da93bd051cfadee16230be3ba`; 1 mesh, 7,856 vertices, 8,792 triangles, 232,160 bytes and explicit `COLOR_0` (checked from Actions artifact). The previous 201k candidate lost `COLOR_0` in generic concatenation; a fail-closed real browser check caught it. Fixed by deliberate per-material vertex-color baking.
+- FACT: `world-viewer-vite` run [42940360341](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360341) **PASS** with targeted near-tree swap and world tests. `preview1-visual-proof` run [42940360475](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360475) **PASS** with the color-preserving model loaded and screenshot produced. `preview1-realdata-publish` run [42940360220](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360220) **PASS** including actual real-world Chrome browser composition, identical source/GLB identity and zero extra unmapped runtime requests. The browser audit initially failed because the new report path was not whitelisted, corrected to specifically require `tree_asset.report_path` while retaining strict manifest request-set control.
+- FACT: daylight screenshot inspected manually. General Nannestad view still contains visibly low-poly *deciduous* representatives and basic building/road proxies. The default camera is not a close-up of an admitted conifer; the near-field visual quality improvement at a conifer is therefore **NOT YET VISUALLY PROVEN** by this screenshot.
+- LIMITATION: current generic CC0 conifer is not a surveyed individual Nannestad tree. Up to 316,512 near-field triangles can be present at max budget; full physical-device GPU stress under continuous camera movement remains unmeasured.
+- Source evidence and inspection: `docs/proofs/2026-11-11-cc0-near-field-conifer-lod.md`.
+
+**Changed**
+- `tools/visual-data/build_nannestad_tree_lod.py`, `test_build_nannestad_tree_lod.py`, `requirements-tree-runtime.txt`, `tools/preview/stage_nannestad_tree_asset.py`.
+- `apps/world-viewer/src/threeTreeAssetLOD.mjs`, `nannestadRealismRuntime.mjs`, `threeVegetationLayer.mjs`, `threeGroundRenderer.mjs`, `preview1Renderer.mjs`, `run_preview1_browser_smoke.mjs`, `test_three_tree_asset_lod.mjs`, `test_three_ground_renderer.mjs`, `package.json`.
+- `.github/workflows/preview1-visual-proof.yml`, `.github/workflows/preview1-realdata-publish.yml`; `docs/proofs/2026-11-11-cc0-near-field-conifer-lod.md`, `docs/06-task-queue.md`.
+
+**Next**
+- `P1-NEAR-FIELD-TREES-CAMERA-AB`: capture a deterministic source-tree-targeted daylight camera view and compare image/triangle/frame evidence with proxy-only baseline before promoting measured visual quality. Preserve distant proxies and source truth.
