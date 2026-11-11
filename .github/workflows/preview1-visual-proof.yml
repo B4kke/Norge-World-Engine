@@ -107,7 +107,7 @@ jobs:
           }
           const street = JSON.parse(fs.readFileSync(path.join(root, manifest.realism_layers.street_detail.path.replace(/^\.\//, '')), 'utf8'));
           if (!(street.stats?.feature_part_count > 0)) throw new Error('street detail empty');
-          if (street.compiler_algorithm !== 'nvdb-v4-explicit-geometry-street-detail-v0.3') throw new Error('street detail algorithm mismatch');
+          if (street.compiler_algorithm !== 'nvdb-v4-explicit-geometry-street-detail-v0.5') throw new Error('street detail algorithm mismatch');
           if (!(street.stats?.features_with_source_location > 0)) throw new Error('street detail source location missing');
           const signManifestPath = path.join(root, manifest.realism_layers.sign_artwork.path.replace(/^\.\//, ''));
           const signManifest = JSON.parse(fs.readFileSync(signManifestPath, 'utf8'));
