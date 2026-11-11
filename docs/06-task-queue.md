@@ -223,13 +223,26 @@ The UE 5.8 foundation and packet-integrity hardening are merged to `main`. `UE5-
 A task closes when its stated acceptance passes. One cheap adversarial check may be added when a claim is dangerous. New testing/research cycles require a new failure, changed claim or materially different implementation. Visual quality is not proven by green unit tests alone; exact rendered evidence matters.
 
 
+## P0-VISUAL-DAYLIGHT-SNAPSHOT — Reproducible source-pinned, inspectable Nannestad A/B
+**Priority:** COMPLETED — 2026-11-11 / PR #85.
+
+- Former screenshot blocker fixed without repinning OSM: original accepted compiled terrain/road/building bytes plus complete provenance bundles are retrieved from immutable transport commit `a47b8920fb2a72078734cd3fba56c9cafa6344d5`; exact hashes/bytes, producer, tile, path and role checked. Fresh source compilation is an opt-in `--base-source live` path and continues to reject incompatible derived height/roof identity.
+- Fixed screenshot solar clock `2026-07-23T11:00:00Z`; normal browser retains live astronomical time. The screenshot gate checks **the scene pixels**, not just UI-ready text.
+- Exact code head `d7e097200240de508f437186490aaae2381762f9`: `preview1-visual-proof` run `42931242230` PASS (viewport luminance 177.44/255, 94.02% scene bright pixels); `preview1-realdata-publish` run `42931242287` PASS including real Chrome composition; `world-viewer-vite`, `baseline`, `viewer-benchmark`, `nvdb-road-semantics-proof` PASS.
+- Proof: `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`. This closes the visual *evidence* gate; it does not close photorealism.
+
+## P1-NEAR-FIELD-TREES — Replace visibly low-poly vegetation proxies
+**Priority:** NEXT RENDERER VISUAL QUALITY after source-pinned daylight proof (LiDAR exact-byte gate remains open separately).
+
+Daylight screenshot establishes current near-field trees are geometric multi-lobe/proxy silhouettes. Use the verified candidate inventories (`polyhaven_tree_candidates.json` / `innerscene_tree_candidates.json`) to select one small species-appropriate CC0 asset, acquire and SHA-pin full glTF/GLB file closure in offline preprocessing, measure tris/materials/textures/cost and bake near/mid/far LOD. Then compare fixed-camera A/B and browser budgets before integrating into the viewer. SR16V supplies category/representative placement, *not* measured individual tree identity; keep proxy fallback for distant LOD. Avoid further detailed proxy-only crown tuning.
+
 ## P1-SIGN-PAGINATION — NVDB sign inventory completeness
 **Priority:** LIVE MULTI-PAGE PROVIDER ACCEPTANCE PASS (2026-11-11); source-to-render visual acceptance open.
 
 Compiler algorithm v0.5 follows provider-issued NVDB V4 `metadata.neste.start` cursors while reconstructing requests from the exact trusted source URL/BBOX/CRS, never visiting the provider's next-page href. Every raw page has a separate SHA-256/byte count in the source snapshot, while aggregate input hash is length-prefixed. Duplicated source IDs, cursor cycles, missing/malformed cursors, invalid page counts and page overflow reject the artifact. Offline adversarial tests are wired to the NVDB CI gate. Live provider CI initially revealed that the real source is paginated and that href routing does not necessarily match the original request; source-link dependence has been removed when start is available. Hosted live source gate `nvdb-road-semantics-proof` run `42927733620` PASS: 367 geometry parts, including 67 type-95 sign points and 115 type-96 sign plates, source artifact SHA-256 `351cfcbd3a7504fa361231eb6b7363e9e6691ee12af144e8d4576af907b66dfa`. Both source relation/location snapshots present on all 367 geometry parts. This establishes a complete admission candidate for that exact live run, not surveyed sign artwork/true facing. Next gate: explicit type95/type96 relation coverage, source sign facing and official art licensing.
 
 ## P1-RENDER-SURFACE-ALIGNMENT — Roads, signs, trees and facades
-**Priority:** IMPLEMENTED CANDIDATE / VIEWER BUILD PASS; EXACT NEW VISUAL INSPECTION OPEN.
+**Priority:** INTEGRATED / EXPLICIT DAYLIGHT BROWSER VISUAL INSPECTED; MATERIAL/ASSET FIDELITY OPEN.
 
 - Road centerline source-width overlays preserve their small renderer-only lift through terrain triangle subdivision.
 - NVDB markings, curbs, sidewalks, ditches and rails use the same rendered terrain triangles as road asphalt; source marking thickness remains a separate per-feature presentation lift. White/yellow paint is raised above accepted 5 mm width-overlay surfaces to avoid hiding.
