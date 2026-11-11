@@ -88,7 +88,21 @@ def bake(raw: bytes, page_html: bytes) -> tuple[bytes, dict]:
         if not np.isfinite(copy.vertices).all():
             raise RuntimeError("TREE_ASSET_VERTEX_NOT_FINITE")
         normalized.append(copy)
-    merged = trimesh.util.concatenate(normalized)
+    # trimesh.util.concatenate may drop the visual payload when the source
+    # includes hundreds of separately materialized nodes. Preserve the
+    # per-vertex colors by joining the mesh buffers explicitly, in order.
+    colors = np.concatenate([np.asarray(part.visual.vertex_colors, dtype=np.uint8) for part in normalized], axis=0)
+    vertices = np.concatenate([np.asarray(part.vertices) for part in normalized], axis=0)
+    face_chunks = []
+    base = 0
+    for part in normalized:
+        face_chunks.append(np.asarray(part.faces, dtype=np.int64) + base)
+        base += len(part.vertices)
+    faces = np.concatenate(face_chunks, axis=0)
+    if colors.shape != (len(vertices), 4) or len(np.unique(colors[:, :3], axis=0)) < 2:
+        raise RuntimeError("TREE_ASSET_SOURCE_MATERIAL_COLORS_LOST")
+    merged = trimesh.Trimesh(vertices=vertices, faces=faces,
+                            vertex_colors=colors, process=False)
     original_bounds = np.asarray(merged.bounds)
     if not np.isfinite(original_bounds).all():
         raise RuntimeError("TREE_ASSET_INVALID_BOUNDS")
@@ -109,6 +123,9 @@ def bake(raw: bytes, page_html: bytes) -> tuple[bytes, dict]:
     geometry = summarize_geometry(document)
     if geometry["mesh_count"] != 1 or geometry["texture_count"] != 0:
         raise RuntimeError("TREE_ASSET_NOT_BAKED_TO_SINGLE_MESH")
+    primitive = document["meshes"][0]["primitives"][0]
+    if "COLOR_0" not in primitive.get("attributes", {}):
+        raise RuntimeError("TREE_ASSET_DERIVED_VERTEX_COLORS_MISSING")
     if geometry["triangle_estimate"] != len(merged.faces):
         raise RuntimeError("TREE_ASSET_DERIVED_TRIANGLE_IDENTITY")
     report = {
@@ -124,7 +141,8 @@ def bake(raw: bytes, page_html: bytes) -> tuple[bytes, dict]:
                     "vertices": geometry["total_vertices"], "nominal_height_m": height,
                     "max_near_instances": 36, "near_radius_m": 125.0},
         "truth_guard": "generic CC0 conifer model placed at source-derived SR16 representative points; NOT observed individual trees",
-        "bake": "trimesh-flatten-transforms-color-bake-1mesh-centerXZ-groundY-v0.1",
+        "bake": "trimesh-flatten-transforms-explicit-color0-bake-1mesh-centerXZ-groundY-v0.2",
+        "distinct_material_colors": len(np.unique(colors[:, :3], axis=0)),
         "runtime_provider_requests": 0,
     }
     return compiled, report
