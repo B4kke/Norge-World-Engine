@@ -36,7 +36,7 @@ export const NANNESTAD_REALISM_CONTRACT = Object.freeze({
   }),
   street_detail: Object.freeze({
     schema: 'nwe.nvdb-street-detail-artifact/0.1-candidate',
-    compiler_algorithm: 'nvdb-v4-explicit-geometry-street-detail-v0.3',
+    compiler_algorithm: 'nvdb-v4-explicit-geometry-street-detail-v0.5',
   }),
   sign_artwork: Object.freeze({
     schema: 'nwe.svv-sign-artwork-runtime-manifest/0.1',
