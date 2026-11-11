@@ -92,10 +92,14 @@ jobs:
       - name: Install World Compiler dependencies
         run: python -m pip install -r requirements-dev.txt
 
+      - name: Verify accepted immutable world staging contract
+        run: python -m pytest -q tools/preview/test_accepted_world_snapshot.py tools/preview/test_stage_preview1_snapshot.py
+
       - name: Compile and stage real Preview 1 snapshot
         run: |
           mkdir -p /tmp/nwe-preview-cache /tmp/nwe-preview
           python tools/preview/stage_preview1_snapshot.py \
+            --base-source accepted \
             --cache-root /tmp/nwe-preview-cache \
             --output /tmp/nwe-preview \
             --commit-sha "$NWE_SOURCE_SHA" \
