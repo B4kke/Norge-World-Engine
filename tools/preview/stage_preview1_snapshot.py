@@ -180,52 +180,64 @@ def build_terrain(cache_root: Path, working_dir: Path) -> tuple[Path, Path, dict
     return Path(persisted.bundle_path), Path(persisted.artifact_path), compiled.artifact_header
 
 
-def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: Path, commit_sha: str | None) -> dict:
+def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: Path, commit_sha: str | None, base_source: str = "accepted") -> dict:
     if output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True)
 
-    if terrain_proof_dir is not None:
-        terrain_report = read_json(terrain_proof_dir / "dtm1-realdata-proof.json")
-        terrain_info = terrain_report["compiled_artifact"]
-        terrain_bundle_path = terrain_proof_dir / terrain_info["bundle_file"]
-        terrain_artifact_path = terrain_proof_dir / terrain_info["artifact_file"]
-        terrain_header = terrain_info["header"]
-    else:
-        terrain_bundle_path, terrain_artifact_path, terrain_header = build_terrain(cache_root, output.parent / "terrain-work")
-    terrain = copy_runtime_pair(
-        bundle_path=terrain_bundle_path,
-        artifact_path=terrain_artifact_path,
-        output=output,
-        bundle_name="terrain.bundle.json",
-    )
-
-    vector_report = compile_vectors(cache_root)
-    vector_by_source = {item["source"]: item for item in vector_report["results"]}
-    if set(vector_by_source) != {"roads", "buildings"}:
-        raise RuntimeError(f"unexpected vector sources: {sorted(vector_by_source)}")
-
-    layers: dict[str, dict] = {}
-    for source, bundle_name in (("roads", "roads.bundle.json"), ("buildings", "buildings.bundle.json")):
-        item = vector_by_source[source]
-        layer = copy_runtime_pair(
-            bundle_path=Path(item["bundle_path"]),
-            artifact_path=Path(item["artifact_path"]),
+    if base_source == "accepted":
+        if terrain_proof_dir is not None:
+            raise RuntimeError("terrain proof input requires explicit --base-source live")
+        from accepted_world_snapshot import stage_accepted_base
+        terrain_header, terrain, layers = stage_accepted_base(output, download_bytes, copy_runtime_pair)
+    elif base_source == "live":
+        # Explicit live acquisition is the data-promotion path. In particular,
+        # a changed OSM snapshot must fail the derived-building SHA pin rather
+        # than being silently accepted by the visual renderer.
+        if terrain_proof_dir is not None:
+            terrain_report = read_json(terrain_proof_dir / "dtm1-realdata-proof.json")
+            terrain_info = terrain_report["compiled_artifact"]
+            terrain_bundle_path = terrain_proof_dir / terrain_info["bundle_file"]
+            terrain_artifact_path = terrain_proof_dir / terrain_info["artifact_file"]
+            terrain_header = terrain_info["header"]
+        else:
+            terrain_bundle_path, terrain_artifact_path, terrain_header = build_terrain(cache_root, output.parent / "terrain-work")
+        terrain = copy_runtime_pair(
+            bundle_path=terrain_bundle_path,
+            artifact_path=terrain_artifact_path,
             output=output,
-            bundle_name=bundle_name,
+            bundle_name="terrain.bundle.json",
         )
-        layer.update(
-            {
-                "raw_sha256": item["raw_sha256"],
-                "raw_object_count": item["raw_object_count"],
-                "source_selected_count": item["source_selected_count"],
-                "normalized_count": item["normalized_count"],
-                "compiled_count": item["compiled_count"],
-            }
-        )
-        if "semantic_stats" in item:
-            layer["semantic_stats"] = item["semantic_stats"]
-        layers[source] = layer
+    
+        vector_report = compile_vectors(cache_root)
+        vector_by_source = {item["source"]: item for item in vector_report["results"]}
+        if set(vector_by_source) != {"roads", "buildings"}:
+            raise RuntimeError(f"unexpected vector sources: {sorted(vector_by_source)}")
+    
+        layers: dict[str, dict] = {}
+        for source, bundle_name in (("roads", "roads.bundle.json"), ("buildings", "buildings.bundle.json")):
+            item = vector_by_source[source]
+            layer = copy_runtime_pair(
+                bundle_path=Path(item["bundle_path"]),
+                artifact_path=Path(item["artifact_path"]),
+                output=output,
+                bundle_name=bundle_name,
+            )
+            layer.update(
+                {
+                    "raw_sha256": item["raw_sha256"],
+                    "raw_object_count": item["raw_object_count"],
+                    "source_selected_count": item["source_selected_count"],
+                    "normalized_count": item["normalized_count"],
+                    "compiled_count": item["compiled_count"],
+                }
+            )
+            if "semantic_stats" in item:
+                layer["semantic_stats"] = item["semantic_stats"]
+            layers[source] = layer
+    
+    else:
+        raise ValueError("base_source must be accepted or live")
 
     header = terrain_header
     bounds = header["bounds"]
@@ -269,6 +281,10 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
         "realism_layers": realism_layers,
         "preview_semantics": {
             "raw_source_runtime_calls": 0,
+            "base_snapshot_source": (
+                "sha-and-size-verified-immutable-accepted-runtime-transport"
+                if base_source == "accepted" else "fresh-offline-compiled-with-explicit-source-drift-gate"
+            ),
             "road_width": "source-backed-when-present-otherwise-explicit-3.2m-renderer-fallback",
             "building_height": "OSM-source-first; guarded-NHM-DOM-minus-DTM-p90-presentation; explicit-fallback-otherwise",
             "roof_direction": "strong-NHM-DOM-derived-direction-may-orient-renderer-policy-gables; roof-shape-not-surveyed",
@@ -296,6 +312,8 @@ def stage_snapshot(*, terrain_proof_dir: Path | None, cache_root: Path, output: 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage content-addressed Nannestad Preview 1 runtime artifacts")
     parser.add_argument("--terrain-proof-dir", type=Path)
+    parser.add_argument("--base-source", choices=("accepted", "live"), default="accepted",
+                        help="accepted: reuse immutable verified world for visual A/B; live: compile raw sources and enforce building SHA gate")
     parser.add_argument("--cache-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--commit-sha", default=os.environ.get("GITHUB_SHA"))
@@ -309,6 +327,7 @@ def main() -> None:
         cache_root=args.cache_root,
         output=args.output,
         commit_sha=args.commit_sha,
+        base_source=args.base_source,
     )
     print(json.dumps({
         "status": "PASS",
