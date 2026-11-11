@@ -132,6 +132,7 @@ jobs:
 
       - name: Stage SHA-pinned CC0 conifer runtime derivative
         run: |
+          set -o pipefail
           python tools/preview/stage_nannestad_tree_asset.py \
             --snapshot-root /tmp/nwe-preview \
             | tee /tmp/nwe-preview-tree-asset.json
