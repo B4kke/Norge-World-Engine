@@ -64,7 +64,7 @@ def fixture_data(monkeypatch):
             "byte_size": size,
             "artifact_role": role,
             "tile_id": accepted.TILE_ID,
-            "transport": {"reference": f"cache://compiled/{accepted.accepted_path(name, 'artifact')}"},
+            "transport": {"reference": f"cache://{accepted.accepted_path(name, 'artifact')}"},
         }
         bundle = {"artifact_ref": ref, "artifact_ref_hash": "hash", "compile_lineage": {"schema": "nwe.compile-lineage/0.1"}}
         responses[f"{accepted.BASE_URL}/{accepted.accepted_path(name, 'bundle')}"] = json.dumps(bundle).encode()
