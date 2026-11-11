@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 SCHEMA = "nwe.nvdb-street-detail-artifact/0.1-candidate"
-ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.3"
+ALGORITHM = "nvdb-v4-explicit-geometry-street-detail-v0.5"
 TILE_ID = "epsg25832_611000_6677000_1000m"
 
 
@@ -63,9 +63,9 @@ def stage_street_detail(*, repo_root: Path, snapshot_root: Path) -> dict:
     if int(artifact.get("stats", {}).get("feature_part_count") or 0) < 1:
         raise RuntimeError("street detail artifact contains no explicit source geometry")
     if int(artifact.get("stats", {}).get("features_with_source_location") or 0) < 1:
-        raise RuntimeError("street detail v0.3 lacks preserved source-location evidence")
+        raise RuntimeError("street detail v0.5 lacks preserved source-location evidence")
     if int(artifact.get("stats", {}).get("feature_parts_by_type_id", {}).get("96") or 0) < 1:
-        raise RuntimeError("street detail v0.3 lacks source-backed sign plates")
+        raise RuntimeError("street detail v0.5 lacks source-backed sign plates")
 
     preview_path = snapshot_root / "manifest.json"
     preview = json.loads(preview_path.read_text(encoding="utf-8"))
