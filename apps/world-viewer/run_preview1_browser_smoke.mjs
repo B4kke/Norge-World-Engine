@@ -85,6 +85,13 @@ function expectedRuntimePaths(manifest) {
     const path = runtimePath(descriptor?.path);
     if (!path) throw new Error(`realism_layers.${name}.path missing from Preview 1 manifest`);
     expected.add(path);
+    // A baked tree is accompanied by independently SHA-verified source and
+    // derivative provenance; its report is an explicit runtime manifest field.
+    if (name === 'tree_asset') {
+      const reportPath = runtimePath(descriptor?.report_path);
+      if (!reportPath) throw new Error('realism_layers.tree_asset.report_path missing from Preview 1 manifest');
+      expected.add(reportPath);
+    }
   }
   return expected;
 }
@@ -169,6 +176,23 @@ function assertBrowserResult(report, manifest, serverRequests) {
       const descriptor = manifest.realism_layers?.[name];
       if (!descriptor?.artifact_sha256) throw new Error(`required realism descriptor missing: ${name}`);
       if (webRealism.transport?.[name]?.sha256 !== descriptor.artifact_sha256) throw new Error(`browser realism SHA mismatch for ${name}: ${webRealism.transport?.[name]?.sha256} != ${descriptor.artifact_sha256}`);
+    }
+    const tree = manifest.realism_layers?.tree_asset;
+    if (tree) {
+      if (webRealism.near_tree_asset?.status !== 'VERIFIED_PRESENTATION_ONLY'
+          || webRealism.near_tree_asset.runtime_sha256 !== tree.sha256
+          || webRealism.near_tree_asset.source_sha256 !== tree.source_sha256
+          || webRealism.near_tree_asset.triangles !== tree.triangles
+          || webRealism.near_tree_asset.instance_cap !== tree.max_near_instances) {
+        throw new Error('browser near-tree source/derivative identity mismatch');
+      }
+      const visualTrees = result.renderer?.vegetation;
+      if (visualTrees?.near_field_authored_asset !== true
+          || visualTrees.near_field_source_sha256 !== tree.source_sha256
+          || visualTrees.near_field_triangles_per_tree !== tree.triangles
+          || visualTrees.near_field_max_instances !== tree.max_near_instances) {
+        throw new Error('browser near-tree integration not active');
+      }
     }
     if (!(webRealism.street_detail?.feature_part_count > 0)) throw new Error(`required street detail source geometry missing: ${JSON.stringify(webRealism.street_detail)}`);
     if (result.renderer?.street_detail?.source_feature_part_count !== webRealism.street_detail.feature_part_count) throw new Error(`street detail renderer/source count mismatch: ${result.renderer?.street_detail?.source_feature_part_count} != ${webRealism.street_detail.feature_part_count}`);
