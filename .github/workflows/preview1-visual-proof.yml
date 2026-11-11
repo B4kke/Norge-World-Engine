@@ -92,6 +92,16 @@ jobs:
             | tee /tmp/nwe-visual-ground.json
           python -m json.tool /tmp/nwe-visual-runtime/manifest.json
 
+      - name: Upload verified 200 kB tree derivative for runtime inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: nannestad-cc0-tree-derivative-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            /tmp/nwe-visual-runtime/realism/trees/conifer-light-merged.glb
+            /tmp/nwe-visual-runtime/realism/trees/conifer-light-report.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Verify staged realism descriptors before rendering
         run: |
           node --input-type=module <<'NODE'
