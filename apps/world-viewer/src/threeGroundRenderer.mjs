@@ -8,6 +8,7 @@ import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { createGroundPostProcessing } from './threeGroundPostProcessing.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
 import { createThreeVegetationLayer } from './threeVegetationLayer.mjs';
+import { decodeNearFieldTreeResource } from './threeTreeAssetLOD.mjs';
 import { createThreeStreetDetailLayer } from './threeStreetDetailLayer.mjs';
 import { createThreeBuildingFacadeLayer } from './threeBuildingFacadeLayer.mjs';
 import {
@@ -93,7 +94,7 @@ async function initializeThreeRenderer(canvas, profile, forceWebGL) {
   return renderer;
 }
 
-export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement = null, streetDetail = null, realismEvidence = null, groundImagery = null, graphicsProfile, backend = 'auto', onBackendFallback = () => {}, onFrame = () => {} } = {}) {
+export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement = null, treeAsset = null, streetDetail = null, realismEvidence = null, groundImagery = null, graphicsProfile, backend = 'auto', onBackendFallback = () => {}, onFrame = () => {} } = {}) {
   if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('canvas is required');
   const initStartedAt = monotonicNow();
   const profile = graphicsProfile ?? { id: 'balanced', maxDpr: 1.5, webglAntialias: true };
@@ -111,10 +112,10 @@ export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsA
     forceWebGL = true;
     renderer = await initializeThreeRenderer(canvas, profile, true);
   }
-  return createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement, streetDetail, realismEvidence, groundImagery, profile, initStartedAt, onFrame });
+  return createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement, treeAsset, streetDetail, realismEvidence, groundImagery, profile, initStartedAt, onFrame });
 }
 
-async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement, streetDetail, realismEvidence, groundImagery, profile, initStartedAt, onFrame }) {
+async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement, treeAsset, streetDetail, realismEvidence, groundImagery, profile, initStartedAt, onFrame }) {
   const sceneStartedAt = monotonicNow();
   const sceneGeometry = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   sceneGeometry.roads = drapeRoadOnTerrain(sceneGeometry.roads, terrainPayload.mesh);
@@ -148,7 +149,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
-  const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile, terrainMesh: terrainPayload.mesh }) : null;
+  const detailedTreeResource = treeAsset && vegetationPlacement ? await decodeNearFieldTreeResource(treeAsset) : null;
+  const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile, terrainMesh: terrainPayload.mesh, detailedTreeResource }) : null;
   if (vegetationLayer) scene.add(vegetationLayer.root);
 
   const streetDetailLayer = streetDetail ? createThreeStreetDetailLayer({ artifact: streetDetail, terrainPayload, profile }) : null;
@@ -162,7 +164,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const terrainColorBytes = (terrainPayload.mesh.positions.length / 3) * 3 * Float32Array.BYTES_PER_ELEMENT;
   const terrainPayloadBytes = byteLengthOf(terrainPayload.mesh.positions, terrainPayload.mesh.normals, terrainPayload.mesh.uvs, terrainPayload.mesh.indices) + terrainColorBytes;
   const vectorPayloadBytes = byteLengthOf(sceneGeometry.roads.positions, sceneGeometry.roads.normals, sceneGeometry.roads.indices, sceneGeometry.roads.uvs, sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, sceneGeometry.buildingsResolved.walls.uvs, sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, sceneGeometry.buildingsResolved.roofs.uvs, sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, sceneGeometry.buildingsFallback.walls.uvs, sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices, sceneGeometry.buildingsFallback.roofs.uvs);
-  const vegetationInstanceMatrixBytesEstimate = (vegetationLayer?.stats.rendered_representative_count ?? 0) * 16 * Float32Array.BYTES_PER_ELEMENT * 3;
+  const vegetationInstanceMatrixBytesEstimate = ((vegetationLayer?.stats.rendered_representative_count ?? 0) * 3 + (vegetationLayer?.stats.near_field_max_instances ?? 0)) * 16 * Float32Array.BYTES_PER_ELEMENT;
+  const nearTreeGeometryBytesEstimate = detailedTreeResource ? detailedTreeResource.geometry.getAttribute('position').array.byteLength + (detailedTreeResource.geometry.getAttribute('normal')?.array.byteLength ?? 0) + (detailedTreeResource.geometry.getAttribute('color')?.array.byteLength ?? 0) + (detailedTreeResource.geometry.index?.array.byteLength ?? 0) : 0;
   const streetInstanceCountEstimate = (streetDetailLayer?.stats.sign_point_count ?? 0) * 2
     + ((streetDetailLayer?.stats.source_light_mast_count ?? 0) + (streetDetailLayer?.stats.deduplicated_additional_light_point_count ?? 0)) * 2
     + (streetDetailLayer?.stats.edge_post_count ?? 0);
@@ -221,6 +224,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     try {
       resize();
       const startedAt = monotonicNow();
+      vegetationLayer?.updateNearField([camera.position.x, camera.position.y, camera.position.z]);
       postProcessing.render();
       const cameraState = cameraControls.snapshot();
       const rendererCalls = Number(renderer.info?.render?.calls);
@@ -271,7 +275,8 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
     gpu_buffer_count: 25 + (vegetationLayer?.stats.mesh_count ?? 0) * 2 + (streetDetailLayer?.stats.rendered_line_mesh_count ?? 0) * 4 + (streetDetailLayer?.stats.rendered_instanced_mesh_count ?? 0) * 2 + facadeDrawCalls * 2,
-    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + streetInstanceMatrixBytesEstimate + facadeInstanceMatrixBytesEstimate,
+    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + nearTreeGeometryBytesEstimate + streetInstanceMatrixBytesEstimate + facadeInstanceMatrixBytesEstimate,
+    near_field_tree_geometry_bytes_estimate: nearTreeGeometryBytesEstimate,
     vegetation_instance_matrix_bytes_estimate: vegetationInstanceMatrixBytesEstimate,
     street_detail_instance_matrix_bytes_estimate: streetInstanceMatrixBytesEstimate,
     facade_instance_matrix_bytes_estimate: facadeInstanceMatrixBytesEstimate,
@@ -281,7 +286,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     material_library: materialLibrary.stats,
     post_processing: postProcessing.stats,
     web_realism: realismEvidence ?? { status: 'BASE_WORLD_ONLY' },
-    vegetation: vegetationLayer?.stats ?? { status: 'NOT_LOADED' },
+    vegetation: vegetationLayer ? { ...vegetationLayer.stats, near_field: vegetationLayer.nearFieldSnapshot() } : { status: 'NOT_LOADED' },
     street_detail: streetDetailLayer?.stats ?? { status: 'NOT_LOADED' },
     building_facades: buildingFacadeLayer.stats,
     terrain_material: {
