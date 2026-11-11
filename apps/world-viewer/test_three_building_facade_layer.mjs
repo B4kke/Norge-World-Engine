@@ -77,4 +77,25 @@ assert.ok(Math.abs(firstY - (wallGround - 100 + 0.085 + 1.55)) < 0.0001,
   'window must follow the SAME linearly interpolated wall-edge elevation, not a new center-pixel DTM sample');
 assert.ok(Math.abs(firstZ - 4.04) < 0.00001, 'window panel should face exterior, not sit half inside the wall');
 sloped.dispose();
+
+// OSM polygon winding is not a guaranteed normal direction; both ring
+// orders should give exterior-facing panels, not mirror-inward windows.
+for (const polygon of [
+  buildingsArtifact.features[0].polygon,
+  [...buildingsArtifact.features[0].polygon].reverse(),
+]) {
+  const winding = createThreeBuildingFacadeLayer({
+    buildingsArtifact: { features: [{ ...buildingsArtifact.features[0], polygon }] },
+    terrainPayload,
+    profile: { id: 'high' },
+  });
+  const pane = winding.root.children.find((child) => child.name === 'NWE_Procedural_Window_Glass');
+  const orientation = new THREE.Matrix4();
+  pane.getMatrixAt(0, orientation);
+  const position = new THREE.Vector3().setFromMatrixPosition(orientation);
+  const facing = new THREE.Vector3(0, 0, 1).transformDirection(orientation);
+  const centerToPanel = new THREE.Vector3(position.x, 0, position.z - 1);
+  assert.ok(facing.dot(centerToPanel) > 0, 'clockwise and counter-clockwise facade panels must face outside');
+  winding.dispose();
+}
 console.log('three building facade layer regression passed');
