@@ -82,7 +82,15 @@ def bake(raw: bytes, page_html: bytes) -> tuple[bytes, dict]:
             raise RuntimeError("TREE_ASSET_NONTRIANGLE_PART")
         copy = part.copy()
         if copy.visual.kind == "texture":
-            copy.visual = copy.visual.to_color()
+            # The provider uses untextured PBR materials: bake each source
+            # material's main color explicitly, not the generic trimesh
+            # fallback that may produce uniform mid-gray after export.
+            color = np.asarray(copy.visual.material.main_color, dtype=np.uint8)
+            if color.shape != (4,):
+                raise RuntimeError("TREE_ASSET_SOURCE_MATERIAL_COLOR_INVALID")
+            copy.visual = trimesh.visual.ColorVisuals(
+                mesh=copy, vertex_colors=np.tile(color, (len(copy.vertices), 1)),
+            )
         if copy.visual.kind != "vertex":
             raise RuntimeError("TREE_ASSET_MATERIAL_CANNOT_BAKE_VERTEX_COLOR")
         if not np.isfinite(copy.vertices).all():
@@ -100,7 +108,9 @@ def bake(raw: bytes, page_html: bytes) -> tuple[bytes, dict]:
         base += len(part.vertices)
     faces = np.concatenate(face_chunks, axis=0)
     if colors.shape != (len(vertices), 4) or len(np.unique(colors[:, :3], axis=0)) < 2:
-        raise RuntimeError("TREE_ASSET_SOURCE_MATERIAL_COLORS_LOST")
+        raise RuntimeError("TREE_ASSET_SOURCE_MATERIAL_COLORS_LOST:"
+                           + json.dumps({"colors": np.unique(colors[:, :3], axis=0).tolist()[:8],
+                                         "source_materials": doc.get("materials", [])}, default=str)[:1200])
     merged = trimesh.Trimesh(vertices=vertices, faces=faces,
                             vertex_colors=colors, process=False)
     original_bounds = np.asarray(merged.bounds)
