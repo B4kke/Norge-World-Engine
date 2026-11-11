@@ -149,6 +149,22 @@ assert.equal(offEnvironment.skip_reason, null);
 assert.equal(highLighting.snapshot().environment.available, false);
 assert.equal(highLighting.snapshot().environment.intensity > 0, true);
 
+const originalLocation = globalThis.location;
+globalThis.location = { search: '?solarTime=2026-07-23T11%3A00%3A00Z&weather=clear' };
+const fixedScene = new THREE.Scene();
+const fixedLighting = createGroundLighting(fixedScene);
+const fixedSnapshot = fixedLighting.snapshot();
+assert.equal(fixedSnapshot.sun.clock, 'fixed-utc-presentation-time');
+assert.equal(fixedSnapshot.sun.fixed_time_utc, '2026-07-23T11:00:00Z');
+assert.ok(fixedSnapshot.sun.altitude_deg > 40);
+assert.ok(fixedSnapshot.sun.intensity > 0);
+fixedLighting.updateSolar(Date.parse('2026-12-21T00:00:00Z'), true);
+assert.equal(fixedLighting.snapshot().sun.altitude_deg, fixedSnapshot.sun.altitude_deg,
+  'fixed A/B solar time must not drift into nighttime on live browser ticks');
+fixedLighting.dispose();
+if (originalLocation === undefined) delete globalThis.location;
+else globalThis.location = originalLocation;
+
 mesh.geometry.dispose();
 mesh.material.dispose();
 lighting.dispose();
