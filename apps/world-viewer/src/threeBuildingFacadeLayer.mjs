@@ -109,7 +109,10 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
     const dn = b[1] - a[1];
     const length = Math.hypot(de, dn);
     if (!(length > 1.2)) continue;
-    const yaw = Math.atan2(dn, de);
+    // The panel's +Z normal must face the exterior regardless of OSM ring
+    // winding. Render Z runs opposite source northing; clockwise polygons
+    // otherwise receive panels facing inward despite the exterior offset.
+    const yaw = Math.atan2(dn, de) + (outwardSign < 0 ? Math.PI : 0);
     const ux = de / length;
     const un = dn / length;
     const outward = [outwardSign * un, -outwardSign * ux];
