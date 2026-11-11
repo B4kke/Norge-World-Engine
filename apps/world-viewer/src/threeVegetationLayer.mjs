@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { sampleRenderedTerrainY } from './renderedTerrainHeight.mjs';
+import { selectNearFieldTreeRepresentatives } from './threeTreeAssetLOD.mjs';
 
 function hashUnit(text, salt = '') {
   const value = `${text}:${salt}`;
@@ -143,7 +144,7 @@ function configureBroadleaf(meshes, item, treeIndex) {
   }
 }
 
-export function createThreeVegetationLayer({ placement, profile, terrainMesh = null } = {}) {
+export function createThreeVegetationLayer({ placement, profile, terrainMesh = null, detailedTreeResource = null } = {}) {
   if (placement?.schema !== 'nwe.web-vegetation-placement/0.1') throw new TypeError('THREE_VEGETATION_PLACEMENT_REQUIRED');
   const source = placement.instances ?? [];
   const requestedBudget = Number(profile?.vegetationInstanceBudget);
@@ -172,10 +173,12 @@ export function createThreeVegetationLayer({ placement, profile, terrainMesh = n
   let meshCount = 0;
   let crownProxyInstances = 0;
   const shadowMode = profile?.shadows !== false;
+  const proxyMeshes = new Map();
 
   for (const [groupName, items] of byCategory) {
     if (!items.length) continue;
     const meshes = createCategoryMeshes(root, items.length, groupName, shadowMode);
+    proxyMeshes.set(groupName, meshes);
     crownProxyInstances += items.length * meshes.crownInstancesPerTree;
     for (const key of ['trunk', 'crown']) {
       const value = meshes[key];
@@ -195,6 +198,97 @@ export function createThreeVegetationLayer({ placement, profile, terrainMesh = n
     }
   }
 
+  const detailAllowed = detailedTreeResource?.presentationOnly === true
+    && profile?.id !== 'low' && visible.length > 0;
+  const detailBudget = detailAllowed ? Math.min(
+    detailedTreeResource.maxInstances, profile?.id === 'balanced' ? 18 : 36,
+  ) : 0;
+  let nearMesh = null;
+  let nearIds = [];
+  let updateCount = 0;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+
+  if (detailBudget > 0) {
+    if (!(detailedTreeResource.geometry instanceof THREE.BufferGeometry)
+        || !(detailedTreeResource.material instanceof THREE.Material)
+        || !Number.isFinite(detailedTreeResource.nominalHeightM)
+        || detailedTreeResource.nominalHeightM <= 0
+        || !(detailedTreeResource.radiusM > 0)) {
+      throw new Error('THREE_TREE_NEAR_RESOURCE_INVALID');
+    }
+    nearMesh = new THREE.InstancedMesh(
+      detailedTreeResource.geometry, detailedTreeResource.material, detailBudget,
+    );
+    nearMesh.name = 'NWE_CC0_Near_Conifer_One_Mesh';
+    nearMesh.castShadow = shadowMode;
+    nearMesh.receiveShadow = shadowMode;
+    nearMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    nearMesh.count = 0;
+    nearMesh.frustumCulled = true;
+    root.add(nearMesh);
+    disposableGeometries.add(nearMesh.geometry);
+    disposableMaterials.add(nearMesh.material);
+    drawCalls += 1;
+    meshCount += 1;
+  }
+
+  function updateNearField(cameraLocal) {
+    if (!nearMesh) return Object.freeze({ active: 0, updates: 0 });
+    const chosen = selectNearFieldTreeRepresentatives(
+      visible, cameraLocal, detailedTreeResource.radiusM, detailBudget,
+    );
+    const ids = chosen.map((item) => item.id);
+    if (ids.length === nearIds.length && ids.every((id, index) => id === nearIds[index])) {
+      return Object.freeze({ active: ids.length, updates: updateCount });
+    }
+    nearIds = ids;
+    updateCount += 1;
+    const selected = new Set(ids);
+    // Rebuild the inexpensive proxy matrices ONLY when membership changes.
+    // A high-detail conifer must never overlap its old trunk/cone proxy.
+    for (const [groupName, items] of byCategory) {
+      if (groupName === 'deciduous' || !items.length) continue;
+      const meshes = proxyMeshes.get(groupName);
+      for (let i = 0; i < items.length; i += 1) {
+        if (selected.has(items[i].id)) {
+          meshes.trunk.setMatrixAt(i, zero);
+          for (let tier = 0; tier < meshes.crownInstancesPerTree; tier += 1) {
+            meshes.crown.setMatrixAt(i * meshes.crownInstancesPerTree + tier, zero);
+          }
+        } else {
+          configureConifer(meshes, items[i], i, groupName);
+        }
+      }
+      meshes.trunk.instanceMatrix.needsUpdate = true;
+      meshes.crown.instanceMatrix.needsUpdate = true;
+      meshes.trunk.computeBoundingSphere?.();
+      meshes.crown.computeBoundingSphere?.();
+    }
+    for (let i = 0; i < chosen.length; i += 1) {
+      const item = chosen[i];
+      const scale = item.visual_height_m / detailedTreeResource.nominalHeightM;
+      nearMesh.setMatrixAt(i, matrixFor(item.local_position, item.yaw_rad, [scale, scale, scale]));
+    }
+    nearMesh.count = chosen.length;
+    nearMesh.instanceMatrix.needsUpdate = true;
+    nearMesh.computeBoundingSphere?.();
+    return Object.freeze({ active: chosen.length, updates: updateCount });
+  }
+
+  // Center-of-tile first frame is already deterministic, without requiring a
+  // user camera or mutating immutable SR16 representative coordinates.
+  updateNearField([0, 0, 0]);
+  function nearFieldSnapshot() {
+    return Object.freeze({
+      active_count: nearIds.length,
+      selected_ids: Object.freeze([...nearIds]),
+      selection_updates: updateCount,
+      source_sha256: nearMesh ? detailedTreeResource.sourceSha256 ?? null : null,
+      runtime_sha256: nearMesh ? detailedTreeResource.runtimeSha256 ?? null : null,
+      candidate_semantics: 'source-SR16-representative-with-CC0-presentation-only-tree',
+    });
+  }
+
   function dispose() {
     root.removeFromParent();
     for (const geometry of disposableGeometries) geometry.dispose();
@@ -204,6 +298,8 @@ export function createThreeVegetationLayer({ placement, profile, terrainMesh = n
   return Object.freeze({
     root,
     dispose,
+    updateNearField,
+    nearFieldSnapshot,
     stats: Object.freeze({
       schema: 'nwe.three-vegetation-layer/0.2',
       source_representative_count: source.length,
@@ -214,10 +310,14 @@ export function createThreeVegetationLayer({ placement, profile, terrainMesh = n
       crown_proxy_instance_count: crownProxyInstances,
       mesh_count: meshCount,
       draw_calls: drawCalls,
-      renderer_strategy: 'instanced-source-backed-representatives-with-multi-lobe-naturalized-proxy',
+      renderer_strategy: nearMesh ? 'bounded-CC0-single-mesh-near-LOD-with-far-instanced-proxy' : 'instanced-source-backed-representatives-with-multi-lobe-naturalized-proxy',
       source_semantics: placement.stats.placement_semantics,
       tree_groups: Object.freeze(Object.fromEntries([...byCategory].map(([key, value]) => [key, value.length]))),
-      near_field_authored_asset: false,
+      near_field_authored_asset: Boolean(nearMesh),
+      near_field_max_instances: detailBudget,
+      near_field_initial_count: nearIds.length,
+      near_field_source_sha256: nearMesh ? detailedTreeResource.sourceSha256 ?? null : null,
+      near_field_triangles_per_tree: nearMesh ? detailedTreeResource.triangleCount ?? null : null,
       truth_guard: 'individual meshes are renderer proxies; no exact individual-tree observation is claimed',
     }),
   });
