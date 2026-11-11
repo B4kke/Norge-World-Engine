@@ -52,7 +52,8 @@ assert.match(renderer, /createThreeVegetationLayer/, 'renderer must compose the 
 assert.match(renderer, /createThreeStreetDetailLayer/, 'renderer must compose the source-backed NVDB street-detail layer');
 assert.match(renderer, /createThreeBuildingFacadeLayer/, 'renderer must compose bounded renderer-only facade detail');
 assert.match(vegetationLayer, /new THREE\.InstancedMesh/, 'vegetation must use instancing rather than per-tree draw calls');
-assert.match(vegetationLayer, /near_field_authored_asset:\s*false/, 'procedural vegetation proxy must remain explicit instead of claiming authored photoreal assets');
+assert.match(vegetationLayer, /near_field_authored_asset:\s*Boolean\(nearMesh\)/, 'authored CC0 mesh status must depend on actual source-verified near mesh');
+assert.match(vegetationLayer, /truth_guard:/, 'source-backed SR16 representatives and authored visual asset are not survey truth');
 assert.match(streetDetailLayer, /new THREE\.InstancedMesh/, 'street point objects must use instancing');
 assert.match(streetDetailLayer, /source_sign_support_count/, 'street detail must consume admitted sign support semantics when available');
 assert.match(streetDetailLayer, /source_thickness_marking_parts/, 'street detail must expose admitted marking thickness use');
