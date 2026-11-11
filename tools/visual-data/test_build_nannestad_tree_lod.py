@@ -21,12 +21,12 @@ spec.loader.exec_module(baker)
 def make_source(height: float = 8.0) -> bytes:
     root = trimesh.Scene()
     stem = trimesh.creation.cone(radius=0.3, height=height * 0.7, sections=10)
-    stem.apply_translation([0, 0, height * 0.35])
+    stem.apply_translation([0, 0, 0])
     # trimesh generates Z-up. Rotate +90deg around X to make Y-up GLB.
     stem.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
     stem.visual.vertex_colors = [100, 75, 40, 255]
     crown = trimesh.creation.cone(radius=2.0, height=height * 0.9, sections=12)
-    crown.apply_translation([0, 0, height * 0.55])
+    crown.apply_translation([0, 0, height * 0.10])
     crown.apply_transform(trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0]))
     crown.visual.vertex_colors = [40, 100, 45, 255]
     root.add_geometry(stem, node_name="stem")
