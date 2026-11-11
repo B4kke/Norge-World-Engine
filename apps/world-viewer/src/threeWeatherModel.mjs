@@ -81,6 +81,35 @@ function normalizeDegrees(value) {
   return ((value % 360) + 360) % 360;
 }
 
+/**
+ * Fixed presentation solar clock for deterministic visual regression captures.
+ * Ordinary gameplay remains live-time when the explicit UTC override is absent.
+ * Never describe this URL parameter as observed weather or live clock data.
+ */
+export function resolveSolarClockFromSearch(search = '') {
+  const value = new URLSearchParams(search).get('solarTime');
+  if (value == null) return Object.freeze({
+    mode: 'live-browser-time',
+    fixed_time_ms: null,
+    fixed_time_utc: null,
+  });
+  // Require unambiguous seconds and UTC. Date.parse silently normalizes
+  // impossible dates such as February 30, so roundtrip-check the result.
+  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/.test(value)) {
+    throw new RangeError('NWE_SOLAR_TIME_OVERRIDE_INVALID');
+  }
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds)
+      || new Date(milliseconds).toISOString().replace('.000Z', 'Z') !== value) {
+    throw new RangeError('NWE_SOLAR_TIME_OVERRIDE_INVALID');
+  }
+  return Object.freeze({
+    mode: 'fixed-utc-presentation-time',
+    fixed_time_ms: milliseconds,
+    fixed_time_utc: value,
+  });
+}
+
 /** NOAA-style solar approximation, sufficient for daylight direction/rendering. */
 export function solarPositionForDate(dateInput, location = NANNESTAD_WEATHER_LOCATION) {
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
