@@ -267,6 +267,63 @@ async function loadSignArtwork({ fetchImpl, manifestUrl, descriptor }) {
   });
 }
 
+const ADMITTED_TREE_SOURCE_SHA256 = '812f691eb68119681038aed7f45dd80bff0a152afe1fc8160ea5cbeeae9143da';
+
+async function loadOptionalTreeAsset({ fetchImpl, manifestUrl, descriptor }) {
+  if (!descriptor) return null;
+  if (descriptor.schema !== 'nwe.tree-presentation-asset/0.1'
+      || descriptor.license !== 'CC0-1.0'
+      || descriptor.source_sha256 !== ADMITTED_TREE_SOURCE_SHA256
+      || descriptor.truth_status !== 'presentation-only-generic-conifer-not-an-observed-tree'
+      || descriptor.max_near_instances !== 36
+      || descriptor.near_radius_m !== 125
+      || !(descriptor.nominal_height_m >= 7.5 && descriptor.nominal_height_m <= 8.5)
+      || !(descriptor.triangles >= 100 && descriptor.triangles <= 12000)
+      || !Number.isInteger(descriptor.byte_size) || descriptor.byte_size > 700000) {
+    throw new Error('NANNESTAD_TREE_PRESENTATION_DESCRIPTOR_INVALID');
+  }
+  // An untrusted descriptor must not turn the browser into an external model
+  // downloader. Only the same compiled snapshot origin is acceptable.
+  const allowedBase = new URL(manifestUrl);
+  const glbUrl = new URL(descriptor.path, manifestUrl);
+  const reportUrl = new URL(descriptor.report_path, manifestUrl);
+  if (glbUrl.origin !== allowedBase.origin || reportUrl.origin !== allowedBase.origin
+      || !glbUrl.pathname.endsWith('/realism/trees/conifer-light-merged.glb')
+      || !reportUrl.pathname.endsWith('/realism/trees/conifer-light-report.json')) {
+    throw new Error('NANNESTAD_TREE_PRESENTATION_URL_OUTSIDE_RUNTIME');
+  }
+  const [glb, report] = await Promise.all([
+    fetchVerifiedBytes({ fetchImpl, url: glbUrl.href,
+      expectedSha256: descriptor.sha256, expectedByteSize: descriptor.byte_size, label: 'tree-asset-glb' }),
+    fetchVerifiedJson({ fetchImpl, url: reportUrl.href,
+      expectedSha256: descriptor.report_sha256, label: 'tree-asset-source-report' }),
+  ]);
+  const source = report.value?.source, runtime = report.value?.runtime;
+  if (report.value?.schema !== descriptor.schema || report.value?.status !== 'PASS'
+      || report.value?.tile_id !== TILE_ID
+      || source?.sha256 !== ADMITTED_TREE_SOURCE_SHA256 || source?.license !== 'CC0-1.0'
+      || runtime?.sha256 !== glb.sha256 || runtime?.byte_size !== glb.byte_size
+      || runtime?.triangles !== descriptor.triangles || runtime?.mesh_count !== 1
+      || runtime?.max_near_instances !== descriptor.max_near_instances
+      || runtime?.near_radius_m !== descriptor.near_radius_m
+      || report.value?.runtime_provider_requests !== 0) {
+    throw new Error('NANNESTAD_TREE_PRESENTATION_PROVENANCE_MISMATCH');
+  }
+  const header = new DataView(glb.bytes.buffer, glb.bytes.byteOffset, glb.bytes.byteLength);
+  if (glb.bytes.byteLength < 20 || header.getUint32(0, true) !== 0x46546c67
+      || header.getUint32(4, true) !== 2 || header.getUint32(8, true) !== glb.byte_size) {
+    throw new Error('NANNESTAD_TREE_PRESENTATION_GLB_HEADER_INVALID');
+  }
+  return Object.freeze({
+    schema: descriptor.schema, bytes: glb.bytes,
+    sha256: glb.sha256, source_sha256: source.sha256,
+    nominal_height_m: runtime.nominal_height_m,
+    max_near_instances: runtime.max_near_instances,
+    near_radius_m: runtime.near_radius_m, triangle_count: runtime.triangles,
+    presentation_only: true,
+  });
+}
+
 export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch, manifestUrl = null } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('NANNESTAD_REALISM_FETCH_REQUIRED');
   const resolvedManifestUrl = resolvePreviewManifestUrl(manifestUrl);
@@ -278,8 +335,9 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
   const roadDescriptor = layers.road_realism;
   const streetDescriptor = layers.street_detail;
   const signArtworkDescriptor = layers.sign_artwork;
+  const treeAssetDescriptor = layers.tree_asset;
 
-  const [surface, roof, vegetation, roads, street, signArtwork] = await Promise.all([
+  const [surface, roof, vegetation, roads, street, signArtwork, treeAsset] = await Promise.all([
     fetchVerifiedJson({
       fetchImpl,
       url: descriptorUrl(resolvedManifestUrl, surfaceDescriptor, NANNESTAD_REALISM_CONTRACT.building_surface.fallback_url),
@@ -301,6 +359,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
     loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: roadDescriptor, label: 'road-realism', assertValue: assertRoadRealism }),
     loadOptionalDerivedLayer({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: streetDescriptor, label: 'street-detail', assertValue: assertStreetDetail }),
     loadSignArtwork({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: signArtworkDescriptor }),
+    loadOptionalTreeAsset({ fetchImpl, manifestUrl: resolvedManifestUrl, descriptor: treeAssetDescriptor }),
   ]);
 
   assertBuildingSurface(surface.value);
@@ -316,6 +375,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
     road_realism: roads?.value ?? null,
     street_detail: street?.value ?? null,
     sign_artwork: signArtwork,
+    tree_asset: treeAsset,
     transport: Object.freeze({
       manifest_url: resolvedManifestUrl,
       manifest_staged_layers: Boolean(surfaceDescriptor && roofDescriptor && vegetationDescriptor),
@@ -325,6 +385,7 @@ export async function loadNannestadRealismRuntime({ fetchImpl = globalThis.fetch
       road_realism: roads ? Object.freeze({ sha256: roads.sha256, byte_size: roads.byte_size, url: roads.url }) : null,
       street_detail: street ? Object.freeze({ sha256: street.sha256, byte_size: street.byte_size, url: street.url }) : null,
       sign_artwork: signArtwork?.transport ?? null,
+      tree_asset: treeAsset ? Object.freeze({ sha256: treeAsset.sha256, source_sha256: treeAsset.source_sha256 }) : null,
     }),
   });
 }
