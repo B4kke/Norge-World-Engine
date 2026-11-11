@@ -4,6 +4,10 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, resolve, sep } from 'node:path';
 
+// Fixed local-summer afternoon for comparable geometry/material screenshots;
+// it is NOT the user's live clock and is explicitly reported in evidence.
+const VISUAL_PROOF_SOLAR_TIME_UTC = '2026-07-23T11:00:00Z';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -165,6 +169,7 @@ async function main() {
     previewManifest: `${origin}/runtime/manifest.json`,
     renderer: 'webgl2',
     graphics: 'high',
+    solarTime: VISUAL_PROOF_SOLAR_TIME_UTC,
   });
   if (args['ground-imagery-manifest']) {
     const relative = args['ground-imagery-manifest'].replace(/^\/+/, '');
@@ -209,6 +214,8 @@ async function main() {
       viewport: [1440, 900],
       renderer_request: 'webgl2',
       graphics_profile: 'high',
+      solar_clock: 'fixed-utc-presentation-time',
+      solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {
