@@ -687,3 +687,30 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Verify the exact-head live type-95/type-96 NVDB multi-page gate; inspect actual skiltplate/parent relation coverage and stage an SHA-pinned browser A/B before promoting sign art or newly gathered roadside objects.
+
+## 2026-11-11 01:27 CET — SENTINEL / LUMEN — P0-VISUAL-DAYLIGHT-SNAPSHOT
+
+**What**
+- Found and corrected the visual-proof source drift without weakening any admitted source SHA. `tools/preview/accepted_world_snapshot.py` stages pinned, content-addressed terrain/roads/buildings from immutable `preview-runtime` transport commit `a47b8920fb2a72078734cd3fba56c9cafa6344d5`; exact accepted producer commit, file roles/paths/byte sizes/SHA-256 and full verifier-bundle provenance remain checked. `stage_preview1_snapshot.py` defaults to accepted A/B; explicit `--base-source live` still compiles live sources and fails the incompatible OSM base-SHA gate until separate promotion.
+- Added offline adversarial accepted-source tests, wired into both screenshot and real browser publishing workflows. Aligned stale `street_detail` v0.3 contract checks in staging, GitHub screenshot and runtime loader to the actual source-proven v0.5.
+- Inspected the actual screenshot ZIP from the former green run: 3D viewport was nearly black because sun followed real Norwegian midnight. Added opt-in strictly parsed `?solarTime=2026-07-23T11:00:00Z` as a fixed UTC **presentation-only** render clock for screenshot A/B; ordinary UI remains live-time. Added browser-native Image/Canvas luminance gate for the world ROI so a black scene can no longer be classified as a successful visual proof.
+- Inspected a new daylight screenshot: source geometry displays, but visibly stylized tree proxies, blocky buildings and dark broad road bands remain. No false photoreal claim.
+
+**Why**
+- The old staging pipeline mixed fresh/live OSM geometry with a previously accepted DOM building-height/roof derivative; it blocked real visual comparison. Green-but-black screenshots hid whether details improved.
+
+**Result / evidence**
+- FACT: exact code head `d7e097200240de508f437186490aaae2381762f9` passes `preview1-visual-proof` run `42931242230`; world ROI mean luminance **177.4388/255**, bright-pixel share **0.9402**, with 32,640 sampled pixels.
+- FACT: `preview1-realdata-publish` run `42931242287` PASS including Chrome real-data composition; `world-viewer-vite` run `42931242202`, `baseline` `42931242358`, `viewer-benchmark` `42931242232` and `nvdb-road-semantics-proof` `42931242179` PASS.
+- FACT: immutable accepted base building SHA remains `678c59603fba2b66d93e7a2252a3c3260a3d80d6a1da0db2c235b9c71423f7cd`; incompatible live OSM SHA has **not** been accepted or silently repinned.
+- LIMITATION: daylight/luminance test proves visibility, not photorealism. Current SR16V vegetation representatives do not encode observed individual tree location. Better actual tree geometry, surveyed roofs and road near-field remain open.
+- Proof: `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`.
+
+**Changed**
+- `tools/preview/accepted_world_snapshot.py`, `tools/preview/test_accepted_world_snapshot.py`, `tools/preview/stage_preview1_snapshot.py`, `tools/preview/stage_nvdb_street_detail.py`.
+- `.github/workflows/preview1-visual-proof.yml`, `.github/workflows/preview1-realdata-publish.yml`.
+- `apps/world-viewer/src/nannestadRealismRuntime.mjs`, `threeWeatherModel.mjs`, `threeGroundVisualStyle.mjs`, `capture_preview1_screenshot.mjs`, and solar tests.
+- `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`, `docs/06-task-queue.md`.
+
+**Next**
+- `P1-NEAR-FIELD-TREES`: acquire one CC0 source-verified Norway-appropriate tree asset, pin all source bytes and build bounded near/mid/far LOD; benchmark and screenshot A/B against the accepted daylight scene without changing SR16V truth.
