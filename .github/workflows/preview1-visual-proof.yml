@@ -67,6 +67,7 @@ jobs:
           PYTHONPATH: engine/compiler/src
           NWE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          set -o pipefail
           rm -rf /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
           mkdir -p /tmp/nwe-visual-runtime /tmp/nwe-visual-cache
           python tools/preview/stage_preview1_snapshot.py \
