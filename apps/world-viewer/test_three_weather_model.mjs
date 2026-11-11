@@ -6,6 +6,7 @@ import {
   renderSunDirection,
   resolveWeatherPreset,
   resolveWeatherPresetFromSearch,
+  resolveSolarClockFromSearch,
   solarPositionForDate,
 } from './src/threeWeatherModel.mjs';
 
@@ -30,4 +31,15 @@ assert.ok(daylightFactor(3) > 0 && daylightFactor(3) < 1);
 assert.equal(NANNESTAD_WEATHER_LOCATION.latitude_deg, 60.21899101080523);
 assert.equal(NANNESTAD_WEATHER_LOCATION.longitude_deg, 11.012531197026972);
 
+const liveClock = resolveSolarClockFromSearch('?weather=rain');
+assert.equal(liveClock.mode, 'live-browser-time');
+assert.equal(liveClock.fixed_time_ms, null);
+const visualClock = resolveSolarClockFromSearch('?solarTime=2026-07-23T11%3A00%3A00Z');
+assert.equal(visualClock.mode, 'fixed-utc-presentation-time');
+assert.equal(visualClock.fixed_time_utc, '2026-07-23T11:00:00Z');
+assert.equal(visualClock.fixed_time_ms, Date.parse('2026-07-23T11:00:00Z'));
+assert.ok(solarPositionForDate(new Date(visualClock.fixed_time_ms)).altitude_deg > 40);
+for (const invalid of ['2026-02-30T11:00:00Z', '2026-07-23T11:00:00+02:00', 'today', '2026-07-23T11:00:00.000Z']) {
+  assert.throws(() => resolveSolarClockFromSearch(`?solarTime=${encodeURIComponent(invalid)}`), /NWE_SOLAR_TIME_OVERRIDE_INVALID/);
+}
 console.log('THREE_WEATHER_MODEL_PASS');
