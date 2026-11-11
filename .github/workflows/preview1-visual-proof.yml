@@ -47,6 +47,12 @@ jobs:
           python -m pip install --disable-pip-version-check -r requirements-dev.txt
           python -m pip install --disable-pip-version-check -r apps/unreal-runtime/requirements-authoring.txt
 
+      - name: Install pinned offline tree-bake dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/visual-data/requirements-tree-runtime.txt
+
+      - name: Verify mesh flattening, source license and byte guards
+        run: python tools/visual-data/test_build_nannestad_tree_lod.py
+
       - name: Install World Viewer dependencies
         run: npm install --workspace @nwe/world-viewer --workspace @nwe/schemas-js --include-workspace-root=false --no-audit --no-fund
 
@@ -78,6 +84,9 @@ jobs:
           python tools/preview/stage_svv_sign_artwork.py \
             --snapshot-root /tmp/nwe-visual-runtime \
             | tee /tmp/nwe-visual-sign-artwork.json
+          python tools/preview/stage_nannestad_tree_asset.py \
+            --snapshot-root /tmp/nwe-visual-runtime \
+            | tee /tmp/nwe-visual-tree-asset.json
           python tools/preview/stage_sentinel_ground.py \
             --snapshot-root /tmp/nwe-visual-runtime \
             | tee /tmp/nwe-visual-ground.json
@@ -101,6 +110,18 @@ jobs:
             const bytes = new Uint8Array(fs.readFileSync(path.join(root, layer.compiled_path.replace(/^\.\//, ''))));
             const verification = verifyRuntimeBundle(bundle, bytes);
             if (!verification.ok || verification.decision !== 'READY_FOR_RUNTIME') throw new Error(`${name}: ${verification.code}`);
+          }
+          const tree = manifest.realism_layers?.tree_asset;
+          if (!tree?.path || !tree?.report_path || tree.license !== 'CC0-1.0') throw new Error('pinned CC0 tree descriptor missing');
+          const treeBytes = fs.readFileSync(path.join(root, tree.path.replace(/^\\.\\//, '')));
+          if (crypto.createHash('sha256').update(treeBytes).digest('hex') !== tree.sha256 || treeBytes.length !== tree.byte_size) {
+            throw new Error('pinned CC0 tree derivative byte mismatch');
+          }
+          const treeReportBytes = fs.readFileSync(path.join(root, tree.report_path.replace(/^\\.\\//, '')));
+          if (crypto.createHash('sha256').update(treeReportBytes).digest('hex') !== tree.report_sha256) throw new Error('tree provenance report SHA mismatch');
+          const treeReport = JSON.parse(treeReportBytes);
+          if (treeReport.source.sha256 !== tree.source_sha256 || treeReport.runtime.sha256 !== tree.sha256 || treeReport.runtime.mesh_count !== 1) {
+            throw new Error('tree source/derivative provenance mismatch');
           }
           for (const name of ['building_surface', 'roof_orientation', 'vegetation', 'road_realism', 'street_detail', 'sign_artwork']) {
             const layer = manifest.realism_layers?.[name];
