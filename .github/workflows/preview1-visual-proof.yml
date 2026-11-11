@@ -113,11 +113,11 @@ jobs:
           }
           const tree = manifest.realism_layers?.tree_asset;
           if (!tree?.path || !tree?.report_path || tree.license !== 'CC0-1.0') throw new Error('pinned CC0 tree descriptor missing');
-          const treeBytes = fs.readFileSync(path.join(root, tree.path.replace(/^\\.\\//, '')));
+          const treeBytes = fs.readFileSync(path.join(root, tree.path.slice(2)));
           if (crypto.createHash('sha256').update(treeBytes).digest('hex') !== tree.sha256 || treeBytes.length !== tree.byte_size) {
             throw new Error('pinned CC0 tree derivative byte mismatch');
           }
-          const treeReportBytes = fs.readFileSync(path.join(root, tree.report_path.replace(/^\\.\\//, '')));
+          const treeReportBytes = fs.readFileSync(path.join(root, tree.report_path.slice(2)));
           if (crypto.createHash('sha256').update(treeReportBytes).digest('hex') !== tree.report_sha256) throw new Error('tree provenance report SHA mismatch');
           const treeReport = JSON.parse(treeReportBytes);
           if (treeReport.source.sha256 !== tree.source_sha256 || treeReport.runtime.sha256 !== tree.sha256 || treeReport.runtime.mesh_count !== 1) {
