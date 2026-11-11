@@ -98,6 +98,7 @@ export async function createPreview1Renderer({
   let buildingsArtifact = options.buildingsArtifact;
   let roadsArtifact = options.roadsArtifact;
   let vegetationPlacement = null;
+  let treeAsset = null;
   let roadRealism = null;
   let streetDetail = null;
   let realismEvidence = Object.freeze({ status: 'NOT_REQUESTED' });
@@ -123,6 +124,7 @@ export async function createPreview1Renderer({
         buildingsArtifact,
         maxInstances: Number(profile?.vegetationBudget) || Number.POSITIVE_INFINITY,
       });
+      treeAsset = runtime.tree_asset;
       roadRealism = runtime.road_realism;
       streetDetail = attachTrafficSignPresentation(runtime.street_detail, runtime.sign_artwork);
       roadsArtifact = enrichRoadsForWeb(options.roadsArtifact, roadRealism);
@@ -132,6 +134,7 @@ export async function createPreview1Renderer({
         transport: runtime.transport,
         buildings: buildingsArtifact.web_realism,
         vegetation: vegetationPlacement.stats,
+        near_tree_asset: treeAsset ? Object.freeze({ status: 'VERIFIED_PRESENTATION_ONLY', runtime_sha256: treeAsset.sha256, source_sha256: treeAsset.source_sha256, triangles: treeAsset.triangle_count, instance_cap: treeAsset.max_near_instances }) : Object.freeze({ status: 'NOT_STAGED_PROXY_FALLBACK' }),
         roads: roadRealism ? Object.freeze({
           ...roadsArtifact.web_realism,
           width_feature_part_count: roadRealism.stats?.width_feature_part_count ?? 0,
@@ -168,6 +171,7 @@ export async function createPreview1Renderer({
     roadsArtifact,
     buildingsArtifact,
     vegetationPlacement,
+    treeAsset,
     streetDetail,
     realismEvidence,
     graphicsProfile: profile,
