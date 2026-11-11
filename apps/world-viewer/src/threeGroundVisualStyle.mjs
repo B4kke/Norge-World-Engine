@@ -6,6 +6,7 @@ import {
   renderSunDirection,
   resolveWeatherPreset,
   resolveWeatherPresetFromSearch,
+  resolveSolarClockFromSearch,
   solarPositionForDate,
 } from './threeWeatherModel.mjs';
 
@@ -318,8 +319,9 @@ export function createGroundLighting(scene, profile, options = {}) {
   if (!scene?.add) throw new TypeError('scene is required');
   const style = resolveGroundVisualStyle(profile);
   const initialWeather = resolveWeatherPresetFromSearch(globalThis.location?.search ?? '');
+  const solarClock = resolveSolarClockFromSearch(globalThis.location?.search ?? '');
   let currentWeather = initialWeather;
-  let currentSolar = solarPositionForDate(new Date());
+  let currentSolar = solarPositionForDate(new Date(solarClock.fixed_time_ms ?? Date.now()));
   let currentSunDirection = renderSunDirection(currentSolar);
   let lastSolarUpdateAt = 0;
   const environmentIntensity = style.environmentIntensity;
@@ -403,7 +405,7 @@ export function createGroundLighting(scene, profile, options = {}) {
   }
 
   function updateSolar(nowMs = Date.now(), force = false) {
-    const now = Number(nowMs) || Date.now();
+    const now = solarClock.fixed_time_ms ?? (Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now());
     if (!force && lastSolarUpdateAt && now - lastSolarUpdateAt < style.solarUpdateIntervalMs) return false;
     lastSolarUpdateAt = now;
     currentSolar = solarPositionForDate(new Date(now));
@@ -477,7 +479,8 @@ export function createGroundLighting(scene, profile, options = {}) {
         direction: currentSunDirection,
         altitude_deg: currentSolar.altitude_deg,
         azimuth_deg: currentSolar.azimuth_deg,
-        clock: 'live-browser-time',
+        clock: solarClock.mode,
+        fixed_time_utc: solarClock.fixed_time_utc,
       }),
       shadow: Object.freeze({
         strategy: 'camera-or-player-following-directional-frustum',
