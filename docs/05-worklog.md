@@ -740,3 +740,24 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-NEAR-FIELD-TREES-CAMERA-AB`: capture a deterministic source-tree-targeted daylight camera view and compare image/triangle/frame evidence with proxy-only baseline before promoting measured visual quality. Preserve distant proxies and source truth.
+
+## 2026-11-13 13:08 CET — LUMEN — WEB-REALISM-CLOCK-01
+
+**What**
+- Continued active PR #85 from its latest WebUI renderer state, rather than modifying the historical Unreal-only clock.
+- Added a visible Oslo-local time slider, noon shortcut, live reset and persistence across page reloads. Fixed UTC `?solarTime=` retains deterministic screenshot priority.
+- Reused the existing solar model for sky, sun, shadows and atmospheric fill; deferred PMREM/IBL refresh until a manual clock change is committed to avoid recapturing on every slider tick.
+
+**Why**
+- Real browser time caused the normal Nannestad view to be black after sunset even when the user wanted to explore the world in daylight.
+
+**Result / evidence**
+- Code-level regression coverage added for winter-midnight to manual-noon transition, live reset, fixed screenshot time, UTC+1/+2 and DST gap. Hosted exact-head build and graphical validation remain pending until CI readback.
+- Presentation-only semantics: geography, artifact identities, entity world state and authoritative simulation clock are unchanged.
+
+**Changed**
+- `apps/world-viewer/src/threeWeatherModel.mjs`, `threeGroundVisualStyle.mjs`, two associated regression tests and viewer README.
+- `docs/06-task-queue.md`, this worklog entry. PR #85 remains draft.
+
+**Next**
+- `P1-NEAR-FIELD-TREES-CAMERA-AB`: stage a deterministic near-conifer daylight screenshot and compare its triangles, frame and image quality against proxy-only baseline.

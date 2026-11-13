@@ -8,6 +8,8 @@ import {
   resolveWeatherPresetFromSearch,
   resolveSolarClockFromSearch,
   solarPositionForDate,
+  osloTimeOfDayMinutes,
+  osloTimestampForTimeOfDay,
 } from './src/threeWeatherModel.mjs';
 
 assert.equal(resolveWeatherPreset('rain').id, 'rain');
@@ -41,5 +43,17 @@ assert.equal(visualClock.fixed_time_ms, Date.parse('2026-07-23T11:00:00Z'));
 assert.ok(solarPositionForDate(new Date(visualClock.fixed_time_ms)).altitude_deg > 40);
 for (const invalid of ['2026-02-30T11:00:00Z', '2026-07-23T11:00:00+02:00', 'today', '2026-07-23T11:00:00.000Z']) {
   assert.throws(() => resolveSolarClockFromSearch(`?solarTime=${encodeURIComponent(invalid)}`), /NWE_SOLAR_TIME_OVERRIDE_INVALID/);
+}
+
+assert.equal(osloTimeOfDayMinutes(Date.parse('2026-06-21T10:30:00Z')), 750, 'Norwegian summer UTC+2');
+assert.equal(osloTimeOfDayMinutes(Date.parse('2026-12-21T11:30:00Z')), 750, 'Norwegian winter UTC+1');
+assert.equal(new Date(osloTimestampForTimeOfDay(720, Date.parse('2026-06-21T00:00:00Z'))).toISOString(),
+  '2026-06-21T10:00:00.000Z', 'summer noon uses Oslo DST');
+assert.equal(new Date(osloTimestampForTimeOfDay(720, Date.parse('2026-12-21T00:00:00Z'))).toISOString(),
+  '2026-12-21T11:00:00.000Z', 'winter noon uses standard Oslo time');
+assert.equal(new Date(osloTimestampForTimeOfDay(150, Date.parse('2026-03-29T00:00:00Z'))).toISOString(),
+  '2026-03-29T01:00:00.000Z', 'nonexistent spring 02:30 advances to 03:00 CEST');
+for (const invalidMinute of [-1, 1440, Number.NaN, 1.2, '720']) {
+  assert.throws(() => osloTimestampForTimeOfDay(invalidMinute), /NWE_OSLO_TIME_OF_DAY_INVALID/);
 }
 console.log('THREE_WEATHER_MODEL_PASS');

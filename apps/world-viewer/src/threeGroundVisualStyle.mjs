@@ -8,6 +8,8 @@ import {
   resolveWeatherPresetFromSearch,
   resolveSolarClockFromSearch,
   solarPositionForDate,
+  osloTimeOfDayMinutes,
+  osloTimestampForTimeOfDay,
 } from './threeWeatherModel.mjs';
 
 export const GROUND_VISUAL_STYLE = Object.freeze({
@@ -154,14 +156,13 @@ export function createGroundEnvironment(renderer, scene, style, atmosphere = {})
       renderer_name: rasterizer.renderer_name,
       texture: null,
       hemisphereFillScale: 1,
+      captureCount: 0,
+      refresh() { return false; },
       dispose() {},
     };
   }
   const environment = new SkyMesh();
   environment.scale.setScalar(style.environmentCaptureRadiusM);
-  const preset = atmosphere.weather ?? resolveWeatherPreset('partly-cloudy');
-  const sunDirection = atmosphere.sunDirection ?? [0.4, 0.75, 0.5];
-  applySkyWeather(environment, preset, sunDirection);
   environment.showSunDisc.value = 0;
   environment.material.depthWrite = false;
   environment.material.fog = false;
@@ -170,30 +171,58 @@ export function createGroundEnvironment(renderer, scene, style, atmosphere = {})
   environmentScene.add(environment);
   const pmrem = new THREE.PMREMGenerator(renderer);
   let texture = null;
+  let captureCount = 0;
+
+  // PMREM is expensive: capture once at startup, then only on committed clock
+  // changes. While dragging the slider, sunlight/sky update without a recapture.
+  function capture(preset, sunDirection) {
+    applySkyWeather(environment, preset, sunDirection);
+    const nextTexture = pmrem.fromScene(
+      environmentScene, 0, 1, style.environmentCaptureRadiusM * 2,
+    ).texture;
+    if (!nextTexture) throw new Error('PMREM returned no environment texture');
+    const previous = texture;
+    texture = nextTexture;
+    scene.environment = texture;
+    captureCount += 1;
+    previous?.dispose();
+  }
   try {
-    texture = pmrem.fromScene(environmentScene, 0, 1, style.environmentCaptureRadiusM * 2).texture;
+    capture(
+      atmosphere.weather ?? resolveWeatherPreset('partly-cloudy'),
+      atmosphere.sunDirection ?? [0.4, 0.75, 0.5],
+    );
   } catch (error) {
     environmentScene.remove(environment);
     environment.geometry.dispose();
     environment.material.dispose();
     pmrem.dispose();
+    texture?.dispose();
     throw new Error(`GROUND_ENVIRONMENT_CAPTURE_FAILED: ${error instanceof Error ? error.message : String(error)}`);
   }
-  environmentScene.remove(environment);
-  environment.geometry.dispose();
-  environment.material.dispose();
-  pmrem.dispose();
-  scene.environment = texture;
-  scene.environmentIntensity = environmentIntensity;
   return {
     available: true,
     skip_reason: null,
     renderer_name: rasterizer.renderer_name,
-    texture,
+    get texture() { return texture; },
+    get captureCount() { return captureCount; },
     hemisphereFillScale: 1 - style.environmentHemisphereFillScale * Math.min(1, environmentIntensity),
+    refresh(preset, sunDirection) {
+      try {
+        capture(preset, sunDirection);
+        return true;
+      } catch (error) {
+        console.warn('NWE_ENVIRONMENT_REFRESH_FAILED:', error);
+        return false; // Keep the last successful capture and current direct lighting.
+      }
+    },
     dispose() {
       if (scene.environment === texture) scene.environment = null;
-      texture.dispose();
+      texture?.dispose();
+      pmrem.dispose();
+      environmentScene.remove(environment);
+      environment.geometry.dispose();
+      environment.material.dispose();
     },
   };
 }
@@ -315,11 +344,131 @@ function installWeatherOverlay(renderer, currentPreset, onPreset) {
   };
 }
 
+
+const SOLAR_CLOCK_PREFERENCE_KEY = 'nwe:solar-time-of-day:v1';
+
+function rememberedSolarMinutes() {
+  try {
+    const value = JSON.parse(globalThis.localStorage?.getItem(SOLAR_CLOCK_PREFERENCE_KEY) ?? 'null');
+    if (value?.mode === 'manual-oslo-time' && Number.isInteger(value.minutes)
+        && value.minutes >= 0 && value.minutes <= 1439) return value.minutes;
+  } catch { /* Private browsing may deny localStorage; keep live mode. */ }
+  return null;
+}
+
+function persistSolarMinutes(minutes) {
+  try {
+    if (minutes === null) globalThis.localStorage?.removeItem(SOLAR_CLOCK_PREFERENCE_KEY);
+    else globalThis.localStorage?.setItem(
+      SOLAR_CLOCK_PREFERENCE_KEY, JSON.stringify({ mode: 'manual-oslo-time', minutes }),
+    );
+  } catch { /* Clock controls work without persistent storage. */ }
+}
+
+function manualOsloSolarClock(minutes, referenceMs) {
+  const timestamp = osloTimestampForTimeOfDay(minutes, referenceMs);
+  return Object.freeze({
+    mode: 'manual-oslo-time',
+    fixed_time_ms: timestamp,
+    fixed_time_utc: new Date(timestamp).toISOString().replace('.000Z', 'Z'),
+  });
+}
+
+function formatClockMinutes(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function installSolarTimeOverlay(renderer, currentClock, onTimeChange, onLiveTime) {
+  const documentRef = globalThis.document;
+  const parent = renderer?.domElement?.parentElement ?? documentRef?.body;
+  if (!documentRef?.createElement || !parent) return { setClock() {}, dispose() {} };
+  const panel = documentRef.createElement('section');
+  panel.dataset.solarClockControls = 'true';
+  panel.setAttribute('aria-label', 'Klokkeslett i Nannestad');
+  Object.assign(panel.style, {
+    position: parent === documentRef.body ? 'fixed' : 'absolute',
+    right: 'max(12px, env(safe-area-inset-right))',
+    bottom: '118px', zIndex: '34', width: 'min(248px, calc(100vw - 24px))',
+    boxSizing: 'border-box', padding: '9px 11px', borderRadius: '11px',
+    display: 'grid', gap: '7px',
+    border: '1px solid rgba(255,255,255,.24)',
+    background: 'rgba(8,17,21,.78)', color: '#fff',
+    font: '600 12px/1.25 system-ui, sans-serif', backdropFilter: 'blur(8px)',
+  });
+  const header = documentRef.createElement('div');
+  Object.assign(header.style, { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' });
+  const title = documentRef.createElement('span');
+  title.textContent = 'Tid · Nannestad';
+  const output = documentRef.createElement('output');
+  output.setAttribute('aria-live', 'off');
+  Object.assign(output.style, { fontVariantNumeric: 'tabular-nums', fontSize: '14px' });
+  header.append(title, output);
+  const slider = documentRef.createElement('input');
+  slider.type = 'range'; slider.min = '0'; slider.max = '1439'; slider.step = '5';
+  slider.setAttribute('aria-label', 'Juster klokkeslett i Nannestad');
+  slider.style.width = '100%';
+  slider.style.margin = '0';
+  slider.style.accentColor = '#f4c67e';
+  const footer = documentRef.createElement('div');
+  Object.assign(footer.style, { display: 'flex', gap: '6px', alignItems: 'center' });
+  const mode = documentRef.createElement('span');
+  mode.style.flex = '1';
+  mode.style.font = '500 10px/1 system-ui, sans-serif';
+  mode.style.opacity = '0.82';
+  const noon = documentRef.createElement('button');
+  noon.type = 'button'; noon.textContent = '12:00';
+  noon.setAttribute('aria-label', 'Sett klokken til 12');
+  const live = documentRef.createElement('button');
+  live.type = 'button'; live.textContent = 'Nå';
+  live.setAttribute('aria-label', 'Bruk faktisk klokkeslett igjen');
+  for (const button of [noon, live]) Object.assign(button.style, {
+    border: '1px solid rgba(255,255,255,.24)', borderRadius: '7px',
+    background: 'rgba(255,255,255,.12)', color: '#fff',
+    padding: '5px 8px', font: '600 11px/1 system-ui, sans-serif',
+    cursor: 'pointer',
+  });
+  footer.append(mode, noon, live);
+  panel.append(header, slider, footer);
+  parent.append(panel);
+
+  const change = (committed) => onTimeChange(Number(slider.value), committed);
+  const onInput = () => change(false);
+  const onCommit = () => change(true);
+  const onNoon = () => onTimeChange(720, true);
+  const onNow = () => onLiveTime();
+  slider.addEventListener('input', onInput);
+  slider.addEventListener('change', onCommit);
+  noon.addEventListener('click', onNoon);
+  live.addEventListener('click', onNow);
+  const result = {
+    setClock(clock) {
+      const minutes = osloTimeOfDayMinutes(clock.fixed_time_ms ?? Date.now());
+      slider.value = String(minutes);
+      output.textContent = formatClockMinutes(minutes);
+      mode.textContent = clock.mode === 'live-browser-time' ? 'Faktisk tid'
+        : clock.mode === 'manual-oslo-time' ? 'Manuell' : 'Fast visning';
+      live.disabled = clock.mode === 'live-browser-time';
+      live.style.opacity = live.disabled ? '0.48' : '1';
+    },
+    dispose() {
+      slider.removeEventListener('input', onInput);
+      slider.removeEventListener('change', onCommit);
+      noon.removeEventListener('click', onNoon);
+      live.removeEventListener('click', onNow);
+      panel.remove();
+    },
+  };
+  result.setClock(currentClock);
+  return result;
+}
+
 export function createGroundLighting(scene, profile, options = {}) {
   if (!scene?.add) throw new TypeError('scene is required');
   const style = resolveGroundVisualStyle(profile);
   const initialWeather = resolveWeatherPresetFromSearch(globalThis.location?.search ?? '');
-  const solarClock = resolveSolarClockFromSearch(globalThis.location?.search ?? '');
+  const urlClock = resolveSolarClockFromSearch(globalThis.location?.search ?? '');
+  const savedMinutes = urlClock.fixed_time_ms === null ? rememberedSolarMinutes() : null;
+  let solarClock = savedMinutes === null ? urlClock : manualOsloSolarClock(savedMinutes, Date.now());
   let currentWeather = initialWeather;
   let currentSolar = solarPositionForDate(new Date(solarClock.fixed_time_ms ?? Date.now()));
   let currentSunDirection = renderSunDirection(currentSolar);
@@ -365,6 +514,7 @@ export function createGroundLighting(scene, profile, options = {}) {
   let shadowAnchor = null;
   let shadowUpdates = 0;
   let weatherChanges = 0;
+  let clockOverlay = { setClock() {}, dispose() {} };
 
   const highSunColor = new THREE.Color(style.sunColor);
   const horizonSunColor = new THREE.Color(0xffa15b);
@@ -412,7 +562,27 @@ export function createGroundLighting(scene, profile, options = {}) {
     currentSunDirection = renderSunDirection(currentSolar);
     updateAtmosphereLighting();
     if (shadowAnchor) applyShadowAnchor(shadowAnchor, true);
+    clockOverlay.setClock(solarClock);
     return true;
+  }
+
+  function setTimeOfDay(minutes, referenceMs = Date.now(), commit = true) {
+    const nextClock = manualOsloSolarClock(minutes, referenceMs);
+    solarClock = nextClock;
+    persistSolarMinutes(osloTimeOfDayMinutes(nextClock.fixed_time_ms));
+    updateSolar(nextClock.fixed_time_ms, true);
+    if (commit) environment.refresh(currentWeather, currentSunDirection);
+    return snapshot();
+  }
+
+  function useLiveTime(nowMs = Date.now()) {
+    solarClock = Object.freeze({
+      mode: 'live-browser-time', fixed_time_ms: null, fixed_time_utc: null,
+    });
+    persistSolarMinutes(null);
+    updateSolar(nowMs, true);
+    environment.refresh(currentWeather, currentSunDirection);
+    return snapshot();
   }
 
   function setWeatherPreset(id) {
@@ -481,6 +651,8 @@ export function createGroundLighting(scene, profile, options = {}) {
         azimuth_deg: currentSolar.azimuth_deg,
         clock: solarClock.mode,
         fixed_time_utc: solarClock.fixed_time_utc,
+        time_of_day_oslo: formatClockMinutes(osloTimeOfDayMinutes(solarClock.fixed_time_ms ?? Date.now())),
+        source_semantics: 'presentation-only Nannestad civil clock; world/simulation time unchanged',
       }),
       shadow: Object.freeze({
         strategy: 'camera-or-player-following-directional-frustum',
@@ -503,13 +675,19 @@ export function createGroundLighting(scene, profile, options = {}) {
         intensity: scene.environmentIntensity ?? environmentIntensity,
         hemisphere_fill_scale: environment.hemisphereFillScale,
         capture_radius_m: style.environmentCaptureRadiusM,
-        refresh: 'initial-capture; dynamic weather scales intensity without per-frame PMREM recapture',
+        refresh: 'initial-capture plus committed time changes; no per-frame PMREM recapture',
+        capture_count: environment.captureCount,
       }),
     });
   }
 
   let overlay = { setPreset() {}, dispose() {} };
   overlay = installWeatherOverlay(options.renderer, currentWeather, setWeatherPreset);
+  clockOverlay = installSolarTimeOverlay(
+    options.renderer, solarClock,
+    (minutes, commit) => setTimeOfDay(minutes, Date.now(), commit),
+    () => useLiveTime(),
+  );
   const weatherKey = (event) => {
     if (editableTarget(event.target) || event.code !== 'KeyV' || event.repeat) return;
     event.preventDefault();
@@ -544,12 +722,15 @@ export function createGroundLighting(scene, profile, options = {}) {
     sky,
     updateAnchor,
     updateSolar,
+    setTimeOfDay,
+    useLiveTime,
     setWeatherPreset,
     cycleWeather,
     snapshot,
     dispose() {
       globalThis.window?.removeEventListener?.('keydown', weatherKey);
       overlay.dispose();
+      clockOverlay.dispose();
       rain.dispose();
       scene.remove(hemisphere, sunTarget, sun, sky);
       sky.onBeforeRender = null;

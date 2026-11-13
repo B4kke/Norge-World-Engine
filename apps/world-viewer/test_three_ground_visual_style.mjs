@@ -162,6 +162,29 @@ fixedLighting.updateSolar(Date.parse('2026-12-21T00:00:00Z'), true);
 assert.equal(fixedLighting.snapshot().sun.altitude_deg, fixedSnapshot.sun.altitude_deg,
   'fixed A/B solar time must not drift into nighttime on live browser ticks');
 fixedLighting.dispose();
+
+// Manual control must illuminate a November/December night without mutating world
+// state, and should remain stable on subsequent live browser clock ticks.
+const manualScene = new THREE.Scene();
+const manualLighting = createGroundLighting(manualScene);
+const winterMidnight = Date.parse('2026-12-21T00:00:00Z');
+manualLighting.updateSolar(winterMidnight, true);
+assert.equal(manualLighting.snapshot().sun.intensity, 0);
+const manualNoon = manualLighting.setTimeOfDay(720, winterMidnight);
+assert.equal(manualNoon.sun.clock, 'manual-oslo-time');
+assert.equal(manualNoon.sun.time_of_day_oslo, '12:00');
+assert.equal(manualNoon.sun.fixed_time_utc, '2026-12-21T11:00:00Z');
+assert.ok(manualNoon.sun.intensity > 0, 'manual Norway noon must light up a winter night');
+const direction = manualNoon.sun.direction;
+manualLighting.updateSolar(winterMidnight, true);
+assert.deepEqual(manualLighting.snapshot().sun.direction, direction, 'manual clock must not snap to actual night');
+assert.throws(() => manualLighting.setTimeOfDay(1440, winterMidnight), /NWE_OSLO_TIME_OF_DAY_INVALID/);
+assert.equal(manualLighting.snapshot().sun.clock, 'manual-oslo-time', 'invalid input must not mutate clock');
+const restoredNight = manualLighting.useLiveTime(winterMidnight);
+assert.equal(restoredNight.sun.clock, 'live-browser-time');
+assert.equal(restoredNight.sun.fixed_time_utc, null);
+assert.equal(restoredNight.sun.intensity, 0);
+manualLighting.dispose();
 if (originalLocation === undefined) delete globalThis.location;
 else globalThis.location = originalLocation;
 

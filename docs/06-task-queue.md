@@ -223,6 +223,22 @@ The UE 5.8 foundation and packet-integrity hardening are merged to `main`. `UE5-
 A task closes when its stated acceptance passes. One cheap adversarial check may be added when a claim is dangerous. New testing/research cycles require a new failure, changed claim or materially different implementation. Visual quality is not proven by green unit tests alone; exact rendered evidence matters.
 
 
+## WEB-REALISM-CLOCK-01 — User-adjustable Nannestad daylight
+**Priority:** IMPLEMENTED IN PR #85 / HOSTED VALIDATION PENDING — 2026-11-13
+**Owner:** LUMEN
+
+The ordinary browser view retains live Norwegian solar time, but now offers a
+visible 24-hour Oslo-local slider, 12:00 daylight shortcut and "Nå" live reset.
+Manual time is stored locally across reloads, with strict `?solarTime=` UTC
+screenshot overrides retaining priority. The same astronomical sun/sky/shadow
+model is reused, including CET/CEST and spring-forward gap handling; world truth
+and simulation time remain untouched. Daylight updates immediately while
+PMREM/IBL recaptures only on committed changes. Targeted winter-night,
+summer/winter offset, DST and fixed-A/B regression tests have been added.
+
+**Open evidence:** exact-head hosted browser build and UI interaction are not
+claimed PASS until CI/smoke readback confirms them.
+
 ## P0-VISUAL-DAYLIGHT-SNAPSHOT — Reproducible source-pinned, inspectable Nannestad A/B
 **Priority:** COMPLETED — 2026-11-11 / PR #85.
 

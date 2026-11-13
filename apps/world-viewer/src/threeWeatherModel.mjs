@@ -110,6 +110,49 @@ export function resolveSolarClockFromSearch(search = '') {
   });
 }
 
+
+const OSLO_CLOCK_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Oslo', year: 'numeric', month: '2-digit',
+  day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+function osloWallClockFields(timestampMs) {
+  if (!Number.isFinite(timestampMs)) throw new RangeError('NWE_OSLO_CLOCK_INVALID_TIMESTAMP');
+  const fields = Object.fromEntries(
+    OSLO_CLOCK_FORMATTER.formatToParts(new Date(timestampMs))
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, Number(value)]),
+  );
+  return fields;
+}
+
+/** Norway-local civil time is deliberate: remote browsers must not shift the Nannestad sun. */
+export function osloTimeOfDayMinutes(timestampMs) {
+  const { hour, minute } = osloWallClockFields(timestampMs);
+  return hour * 60 + minute;
+}
+
+/** Resolve today's Oslo wall clock, including UTC+1/UTC+2 and the spring DST gap. */
+export function osloTimestampForTimeOfDay(minutes, referenceMs = Date.now()) {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1439) {
+    throw new RangeError('NWE_OSLO_TIME_OF_DAY_INVALID');
+  }
+  const { year, month, day } = osloWallClockFields(referenceMs);
+  for (let minute = minutes; minute <= Math.min(1439, minutes + 120); minute += 1) {
+    const desired = Date.UTC(year, month - 1, day, Math.floor(minute / 60), minute % 60);
+    let candidate = desired;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const wall = osloWallClockFields(candidate);
+      const observed = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute);
+      const correction = desired - observed;
+      if (correction === 0) return candidate;
+      candidate += correction;
+    }
+    // A non-existent 02:xx on spring-forward day advances to 03:00.
+  }
+  throw new RangeError('NWE_OSLO_TIME_OF_DAY_UNRESOLVED');
+}
+
 /** NOAA-style solar approximation, sufficient for daylight direction/rendering. */
 export function solarPositionForDate(dateInput, location = NANNESTAD_WEATHER_LOCATION) {
   const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
