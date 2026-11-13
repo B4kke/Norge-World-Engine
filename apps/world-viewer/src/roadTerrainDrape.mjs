@@ -31,13 +31,21 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
   const x0 = p[0], z0 = p[2];
   const dx = p[3] - x0, dz = p[n * 3 + 2] - z0;
   const positions = [], uvs = [], indices = [];
+  // Optional renderer-only lifts (one per source vertex), interpolated through
+  // terrain-triangle clipping. Used to keep physical paint thickness and curb
+  // relief rather than flattening all source markings to one fixed height.
+  const vertexLifts = road.vertex_lifts_m;
+  const vertexCount = road.positions.length / 3;
+  if (vertexLifts != null && (vertexLifts.length !== vertexCount || Array.from(vertexLifts).some(v => !Number.isFinite(v) || v < 0 || v > 0.2))) {
+    throw new RangeError('ROAD_DRAPE_VERTEX_LIFT_INVALID');
+  }
   let degenerateTrianglesDropped = 0;
   const bound = v => Math.max(0, Math.min(n - 2, Math.floor(v)));
   for (let t = 0; t < road.indices.length; t += 3) {
     const polygon = Array.from(road.indices.slice(t, t + 3), i => [
       (road.positions[i * 3] - x0) / dx,
       (road.positions[i * 3 + 2] - z0) / dz,
-      road.uvs[i * 2], road.uvs[i * 2 + 1],
+      road.uvs[i * 2], road.uvs[i * 2 + 1], vertexLifts?.[i] ?? 0,
     ]);
     const xs = polygon.map(v => v[0]), zs = polygon.map(v => v[1]);
     for (let r = bound(Math.min(...zs)); r <= bound(Math.max(...zs)); r++) {
@@ -53,7 +61,7 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
           for (const v of part) {
             const u = v[0]-c, w = v[1]-r;
             const h = lower ? a+(b-a)*u+(d-a)*w : e+(d-e)*(1-u)+(b-e)*(1-w);
-            positions.push(x0+v[0]*dx, h+lift, z0+v[1]*dz);
+            positions.push(x0+v[0]*dx, h+lift+v[4], z0+v[1]*dz);
             uvs.push(v[2],v[3]);
           }
           for (let i = 1; i < part.length - 1; i++) {
@@ -63,5 +71,8 @@ export function drapeRoadOnTerrain(road, terrain, lift = 0.06) {
       }
     }
   }
-  return { ...road, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', winding:'upward-y', degenerate_triangles_dropped:degenerateTrianglesDropped, vertex_count:positions.length/3, triangle_count:indices.length/3} };
+  // The input per-vertex lifts no longer index the subdivision vertices.
+  // The relief is baked into Y above; do not expose a stale array on output.
+  const { vertex_lifts_m: _consumedVertexLifts, ...roadWithoutSourceLifts } = road;
+  return { ...roadWithoutSourceLifts, positions:new Float32Array(positions), uvs:new Float32Array(uvs), indices:new Uint32Array(indices), metadata:{...road.metadata, surface_policy:'rendered-terrain-triangle-drape', vertex_lift_semantics:vertexLifts ? 'interpolated-source-detail-lift' : 'uniform-surface-lift', winding:'upward-y', degenerate_triangles_dropped:degenerateTrianglesDropped, vertex_count:positions.length/3, triangle_count:indices.length/3} };
 }

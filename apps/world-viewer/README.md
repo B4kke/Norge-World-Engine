@@ -24,6 +24,24 @@ CC0-1.0. Runtime never contacts Poly Haven. Material choice, tint, UVs, light,
 fog and post processing are presentation only; they do not alter accepted DTM,
 road or building geometry.
 
+## Adjusting the Nannestad time of day
+
+The normal WebUI has **Tid · Nannestad** above the weather selector: drag the
+00:00–23:59 slider or tap **12:00** for daylight even when the PC/browser clock
+is at night. Tap **Nå** to return to real time. Manual time is saved locally in
+the browser and restored on the next visit; storage denial safely falls back to
+the live clock. The selected civil time is always Europe/Oslo (CET/CEST),
+including when a viewer is opened from another timezone. Changing time updates
+the procedural solar direction, sun/shadows, sky and ambient fill immediately;
+expensive environment/IBL capture refreshes only when the slider is released or
+a shortcut is pressed, not on every drag event.
+
+For deterministic screenshots, `?solarTime=2026-07-23T11:00:00Z` still overrides
+the stored preference at startup. This strict UTC timestamp fixes the full
+solar date/time until manually changed. Neither mode changes authoritative
+geographic data, simulation ticks nor live meteorology. Weather presets are
+separate presentation-only controls.
+
 ## Deployable app boundary
 
 `index.html` + `src/` form the deployable Vite application shell for the browser viewer. Vite is only the replaceable web build/development tool; it does not select WebGPU, WebGL2, Three.js, Cesium, terrain format or world-coordinate policy.

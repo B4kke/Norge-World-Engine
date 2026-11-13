@@ -1,0 +1,324 @@
+import * as THREE from 'three/webgpu';
+import { sampleRenderedTerrainY } from './renderedTerrainHeight.mjs';
+import { selectNearFieldTreeRepresentatives } from './threeTreeAssetLOD.mjs';
+
+function hashUnit(text, salt = '') {
+  const value = `${text}:${salt}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 0xffffffff;
+}
+
+function paletteFor(group) {
+  if (group === 'spruce') return { crown: 0x183f25, trunk: 0x473526 };
+  if (group === 'pine' || group === 'conifer-mixed') return { crown: 0x2f5532, trunk: 0x65432d };
+  if (group === 'mixed') return { crown: 0x4e7037, trunk: 0x5b4433 };
+  return { crown: 0x5b7d3d, trunk: 0x604735 };
+}
+
+function category(group) {
+  if (group === 'spruce') return 'spruce';
+  if (group === 'pine' || group === 'conifer-mixed') return 'pine';
+  return 'deciduous';
+}
+
+function makeMaterials(group) {
+  const palette = paletteFor(group);
+  return {
+    trunk: new THREE.MeshStandardMaterial({ color: palette.trunk, roughness: 0.97, metalness: 0 }),
+    crown: new THREE.MeshStandardMaterial({ color: palette.crown, roughness: 0.92, metalness: 0 }),
+  };
+}
+
+function addInstancedPart(group, geometry, material, count, shadowMode) {
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  mesh.castShadow = shadowMode;
+  mesh.receiveShadow = shadowMode;
+  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  mesh.frustumCulled = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function createCategoryMeshes(container, count, groupName, shadowMode) {
+  const materials = makeMaterials(groupName);
+  const trunkGeometry = new THREE.CylinderGeometry(0.12, 0.2, 1, 7, 1, false);
+  const crownGeometry = groupName === 'deciduous'
+    ? new THREE.DodecahedronGeometry(0.5, 0)
+    : new THREE.ConeGeometry(0.5, 1, 10, 1, false);
+  const crownInstancesPerTree = groupName === 'deciduous' ? 5 : 4;
+  return {
+    trunk: addInstancedPart(container, trunkGeometry, materials.trunk, count, shadowMode),
+    crown: addInstancedPart(container, crownGeometry, materials.crown, count * crownInstancesPerTree, shadowMode),
+    crownInstancesPerTree,
+    materials,
+  };
+}
+
+function matrixFor(position, yaw, scale, offset = [0, 0, 0], rotation = [0, 0, 0]) {
+  const object = new THREE.Object3D();
+  object.position.set(position[0] + offset[0], position[1] + offset[1], position[2] + offset[2]);
+  object.rotation.set(rotation[0], yaw + rotation[1], rotation[2]);
+  object.scale.set(scale[0], scale[1], scale[2]);
+  object.updateMatrix();
+  return object.matrix;
+}
+
+function configureConifer(meshes, item, treeIndex, groupName) {
+  const height = item.visual_height_m;
+  const yaw = item.yaw_rad;
+  const pine = groupName === 'pine';
+  const trunkHeight = Math.max(2.1, height * (pine ? 0.58 : 0.48));
+  const trunkRadiusScale = Math.max(0.7, height * 0.065);
+  meshes.trunk.setMatrixAt(
+    treeIndex,
+    matrixFor(item.local_position, yaw, [trunkRadiusScale, trunkHeight, trunkRadiusScale], [0, trunkHeight * 0.5, 0]),
+  );
+
+  const baseWidth = height * (pine ? 0.22 : 0.25) * (0.88 + hashUnit(item.id, 'width') * 0.24);
+  const crownBaseY = height * (pine ? 0.48 : 0.34);
+  const crownTopY = height * 0.95;
+  const span = crownTopY - crownBaseY;
+  for (let tier = 0; tier < meshes.crownInstancesPerTree; tier += 1) {
+    const t = tier / (meshes.crownInstancesPerTree - 1);
+    const width = baseWidth * (1 - t * 0.55) * (0.92 + hashUnit(item.id, `tier-width-${tier}`) * 0.16);
+    const tierHeight = Math.max(1.5, span * (0.54 - t * 0.08));
+    const radialOffset = tier === 0 ? 0 : (hashUnit(item.id, `tier-offset-${tier}`) - 0.5) * width * 0.14;
+    const angle = yaw + hashUnit(item.id, `tier-angle-${tier}`) * Math.PI * 2;
+    const offset = [
+      Math.cos(angle) * radialOffset,
+      crownBaseY + span * (0.17 + t * 0.26),
+      Math.sin(angle) * radialOffset,
+    ];
+    const leanX = (hashUnit(item.id, `tier-lean-x-${tier}`) - 0.5) * 0.08;
+    const leanZ = (hashUnit(item.id, `tier-lean-z-${tier}`) - 0.5) * 0.08;
+    meshes.crown.setMatrixAt(
+      treeIndex * meshes.crownInstancesPerTree + tier,
+      matrixFor(item.local_position, yaw + tier * 0.63, [width, tierHeight, width], offset, [leanX, 0, leanZ]),
+    );
+  }
+}
+
+function configureBroadleaf(meshes, item, treeIndex) {
+  const height = item.visual_height_m;
+  const yaw = item.yaw_rad;
+  const trunkHeight = Math.max(2.6, height * 0.53);
+  const trunkRadiusScale = Math.max(0.75, height * 0.075);
+  meshes.trunk.setMatrixAt(
+    treeIndex,
+    matrixFor(item.local_position, yaw, [trunkRadiusScale, trunkHeight, trunkRadiusScale], [0, trunkHeight * 0.5, 0]),
+  );
+
+  const crownDiameter = Math.max(2.7, height * (0.42 + hashUnit(item.id, 'crown') * 0.12));
+  const lobePattern = [
+    [0, 0.22, 0, 0.82],
+    [-0.24, 0.04, 0.05, 0.64],
+    [0.24, 0.08, -0.04, 0.68],
+    [-0.05, 0.08, -0.24, 0.62],
+    [0.08, 0.12, 0.24, 0.60],
+  ];
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  for (let lobe = 0; lobe < meshes.crownInstancesPerTree; lobe += 1) {
+    const [localX, localY, localZ, baseScale] = lobePattern[lobe];
+    const jitter = 0.92 + hashUnit(item.id, `lobe-${lobe}`) * 0.18;
+    const x = localX * crownDiameter;
+    const z = localZ * crownDiameter;
+    const rotatedX = x * cos - z * sin;
+    const rotatedZ = x * sin + z * cos;
+    const lobeScale = crownDiameter * baseScale * jitter;
+    const offset = [rotatedX, trunkHeight + crownDiameter * (0.18 + localY), rotatedZ];
+    meshes.crown.setMatrixAt(
+      treeIndex * meshes.crownInstancesPerTree + lobe,
+      matrixFor(
+        item.local_position,
+        yaw + hashUnit(item.id, `lobe-yaw-${lobe}`) * Math.PI,
+        [lobeScale, lobeScale * (0.78 + hashUnit(item.id, `lobe-y-${lobe}`) * 0.14), lobeScale * (0.88 + hashUnit(item.id, `lobe-z-${lobe}`) * 0.18)],
+        offset,
+        [(hashUnit(item.id, `lobe-rx-${lobe}`) - 0.5) * 0.18, 0, (hashUnit(item.id, `lobe-rz-${lobe}`) - 0.5) * 0.18],
+      ),
+    );
+  }
+}
+
+export function createThreeVegetationLayer({ placement, profile, terrainMesh = null, detailedTreeResource = null } = {}) {
+  if (placement?.schema !== 'nwe.web-vegetation-placement/0.1') throw new TypeError('THREE_VEGETATION_PLACEMENT_REQUIRED');
+  const source = placement.instances ?? [];
+  const requestedBudget = Number(profile?.vegetationInstanceBudget);
+  const budget = Number.isFinite(requestedBudget) && requestedBudget > 0 ? Math.floor(requestedBudget) : source.length;
+  // Keep original SR16 placement untouched. Shift only the disposable GPU
+  // instance to the actually visible, possibly coarser terrain triangle mesh.
+  let groundedToVisibleMesh = 0;
+  let maximumVerticalCorrectionM = 0;
+  const visible = source.slice(0, Math.min(source.length, budget)).map((item) => {
+    const p = item.local_position;
+    const renderedY = sampleRenderedTerrainY(terrainMesh, p?.[0], p?.[2]);
+    if (renderedY === null || !Number.isFinite(p?.[1])) return item;
+    const correction = Math.abs(renderedY - p[1]);
+    if (correction > 0.0001) groundedToVisibleMesh += 1;
+    maximumVerticalCorrectionM = Math.max(maximumVerticalCorrectionM, correction);
+    return { ...item, local_position: [p[0], renderedY, p[2]] };
+  });
+  const byCategory = new Map([['spruce', []], ['pine', []], ['deciduous', []]]);
+  for (const item of visible) byCategory.get(category(item.species_group)).push(item);
+
+  const root = new THREE.Group();
+  root.name = 'NWE_Nannestad_Vegetation';
+  const disposableGeometries = new Set();
+  const disposableMaterials = new Set();
+  let drawCalls = 0;
+  let meshCount = 0;
+  let crownProxyInstances = 0;
+  const shadowMode = profile?.shadows !== false;
+  const proxyMeshes = new Map();
+
+  for (const [groupName, items] of byCategory) {
+    if (!items.length) continue;
+    const meshes = createCategoryMeshes(root, items.length, groupName, shadowMode);
+    proxyMeshes.set(groupName, meshes);
+    crownProxyInstances += items.length * meshes.crownInstancesPerTree;
+    for (const key of ['trunk', 'crown']) {
+      const value = meshes[key];
+      meshCount += 1;
+      drawCalls += 1;
+      disposableGeometries.add(value.geometry);
+    }
+    for (const material of Object.values(meshes.materials)) disposableMaterials.add(material);
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      if (groupName === 'deciduous') configureBroadleaf(meshes, item, index);
+      else configureConifer(meshes, item, index, groupName);
+    }
+    for (const key of ['trunk', 'crown']) {
+      meshes[key].instanceMatrix.needsUpdate = true;
+      meshes[key].computeBoundingSphere?.();
+    }
+  }
+
+  const detailAllowed = detailedTreeResource?.presentationOnly === true
+    && profile?.id !== 'low' && visible.length > 0;
+  const detailBudget = detailAllowed ? Math.min(
+    detailedTreeResource.maxInstances, profile?.id === 'balanced' ? 18 : 36,
+  ) : 0;
+  let nearMesh = null;
+  let nearIds = [];
+  let updateCount = 0;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+
+  if (detailBudget > 0) {
+    if (!(detailedTreeResource.geometry instanceof THREE.BufferGeometry)
+        || !(detailedTreeResource.material instanceof THREE.Material)
+        || !Number.isFinite(detailedTreeResource.nominalHeightM)
+        || detailedTreeResource.nominalHeightM <= 0
+        || !(detailedTreeResource.radiusM > 0)) {
+      throw new Error('THREE_TREE_NEAR_RESOURCE_INVALID');
+    }
+    nearMesh = new THREE.InstancedMesh(
+      detailedTreeResource.geometry, detailedTreeResource.material, detailBudget,
+    );
+    nearMesh.name = 'NWE_CC0_Near_Conifer_One_Mesh';
+    nearMesh.castShadow = shadowMode;
+    nearMesh.receiveShadow = shadowMode;
+    nearMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    nearMesh.count = 0;
+    nearMesh.frustumCulled = true;
+    root.add(nearMesh);
+    disposableGeometries.add(nearMesh.geometry);
+    disposableMaterials.add(nearMesh.material);
+    drawCalls += 1;
+    meshCount += 1;
+  }
+
+  function updateNearField(cameraLocal) {
+    if (!nearMesh) return Object.freeze({ active: 0, updates: 0 });
+    const chosen = selectNearFieldTreeRepresentatives(
+      visible, cameraLocal, detailedTreeResource.radiusM, detailBudget,
+    );
+    const ids = chosen.map((item) => item.id);
+    if (ids.length === nearIds.length && ids.every((id, index) => id === nearIds[index])) {
+      return Object.freeze({ active: ids.length, updates: updateCount });
+    }
+    nearIds = ids;
+    updateCount += 1;
+    const selected = new Set(ids);
+    // Rebuild the inexpensive proxy matrices ONLY when membership changes.
+    // A high-detail conifer must never overlap its old trunk/cone proxy.
+    for (const [groupName, items] of byCategory) {
+      if (groupName === 'deciduous' || !items.length) continue;
+      const meshes = proxyMeshes.get(groupName);
+      for (let i = 0; i < items.length; i += 1) {
+        if (selected.has(items[i].id)) {
+          meshes.trunk.setMatrixAt(i, zero);
+          for (let tier = 0; tier < meshes.crownInstancesPerTree; tier += 1) {
+            meshes.crown.setMatrixAt(i * meshes.crownInstancesPerTree + tier, zero);
+          }
+        } else {
+          configureConifer(meshes, items[i], i, groupName);
+        }
+      }
+      meshes.trunk.instanceMatrix.needsUpdate = true;
+      meshes.crown.instanceMatrix.needsUpdate = true;
+      meshes.trunk.computeBoundingSphere?.();
+      meshes.crown.computeBoundingSphere?.();
+    }
+    for (let i = 0; i < chosen.length; i += 1) {
+      const item = chosen[i];
+      const scale = item.visual_height_m / detailedTreeResource.nominalHeightM;
+      nearMesh.setMatrixAt(i, matrixFor(item.local_position, item.yaw_rad, [scale, scale, scale]));
+    }
+    nearMesh.count = chosen.length;
+    nearMesh.instanceMatrix.needsUpdate = true;
+    nearMesh.computeBoundingSphere?.();
+    return Object.freeze({ active: chosen.length, updates: updateCount });
+  }
+
+  // Center-of-tile first frame is already deterministic, without requiring a
+  // user camera or mutating immutable SR16 representative coordinates.
+  updateNearField([0, 0, 0]);
+  function nearFieldSnapshot() {
+    return Object.freeze({
+      active_count: nearIds.length,
+      selected_ids: Object.freeze([...nearIds]),
+      selection_updates: updateCount,
+      source_sha256: nearMesh ? detailedTreeResource.sourceSha256 ?? null : null,
+      runtime_sha256: nearMesh ? detailedTreeResource.runtimeSha256 ?? null : null,
+      candidate_semantics: 'source-SR16-representative-with-CC0-presentation-only-tree',
+    });
+  }
+
+  function dispose() {
+    root.removeFromParent();
+    for (const geometry of disposableGeometries) geometry.dispose();
+    for (const material of disposableMaterials) material.dispose();
+  }
+
+  return Object.freeze({
+    root,
+    dispose,
+    updateNearField,
+    nearFieldSnapshot,
+    stats: Object.freeze({
+      schema: 'nwe.three-vegetation-layer/0.2',
+      source_representative_count: source.length,
+      rendered_representative_count: visible.length,
+      terrain_alignment: terrainMesh ? 'exact-rendered-terrain-triangle-presentation-only' : 'source-dtm-height-no-render-mesh',
+      height_adjusted_instance_count: groundedToVisibleMesh,
+      maximum_renderer_vertical_adjustment_m: maximumVerticalCorrectionM,
+      crown_proxy_instance_count: crownProxyInstances,
+      mesh_count: meshCount,
+      draw_calls: drawCalls,
+      renderer_strategy: nearMesh ? 'bounded-CC0-single-mesh-near-LOD-with-far-instanced-proxy' : 'instanced-source-backed-representatives-with-multi-lobe-naturalized-proxy',
+      source_semantics: placement.stats.placement_semantics,
+      tree_groups: Object.freeze(Object.fromEntries([...byCategory].map(([key, value]) => [key, value.length]))),
+      near_field_authored_asset: Boolean(nearMesh),
+      near_field_max_instances: detailBudget,
+      near_field_initial_count: nearIds.length,
+      near_field_source_sha256: nearMesh ? detailedTreeResource.sourceSha256 ?? null : null,
+      near_field_triangles_per_tree: nearMesh ? detailedTreeResource.triangleCount ?? null : null,
+      truth_guard: 'individual meshes are renderer proxies; no exact individual-tree observation is claimed',
+    }),
+  });
+}

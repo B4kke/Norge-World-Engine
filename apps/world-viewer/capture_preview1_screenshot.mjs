@@ -4,6 +4,10 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { extname, resolve, sep } from 'node:path';
 
+// Fixed local-summer afternoon for comparable geometry/material screenshots;
+// it is NOT the user's live clock and is explicitly reported in evidence.
+const VISUAL_PROOF_SOLAR_TIME_UTC = '2026-07-23T11:00:00Z';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -115,6 +119,102 @@ async function waitForReady(cdp, timeoutMs) {
   throw new Error(`Preview did not reach REAL WORLD READY within ${timeoutMs} ms. Last body text:\n${lastText.slice(-3000)}`);
 }
 
+// Native browser Image/Canvas decode is sufficient for a simple visual
+// sanity gate; no custom PNG parser or extra binary library is required.
+// Check only the world viewport, not the bright diagnostics sidebar.
+async function measureWorldViewportLuminance(cdp, png) {
+  const uri = `data:image/png;base64,${png.toString('base64')}`;
+  const expression = `(async () => {
+    const image = new Image();
+    image.src = ${JSON.stringify(uri)};
+    await image.decode();
+    const region = {
+      x: 16, y: 92,
+      width: Math.min(1020, image.naturalWidth - 16),
+      height: Math.min(510, image.naturalHeight - 92),
+    };
+    const canvas = document.createElement('canvas');
+    canvas.width = region.width;
+    canvas.height = region.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, region.x, region.y, region.width, region.height,
+      0, 0, region.width, region.height);
+    const pixels = context.getImageData(0, 0, region.width, region.height).data;
+    let sum = 0, bright = 0, count = 0;
+    for (let y = 0; y < region.height; y += 4) {
+      for (let x = 0; x < region.width; x += 4) {
+        const i = (y * region.width + x) * 4;
+        const luminance = 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+        sum += luminance;
+        if (luminance > 45) bright += 1;
+        count += 1;
+      }
+    }
+    return { mean_luma: sum / count, bright_fraction: bright / count, sampled_pixels: count,
+      region: [region.x, region.y, region.width, region.height] };
+  })()`;
+  const result = await cdp.send('Runtime.evaluate', {
+    expression, returnByValue: true, awaitPromise: true,
+  });
+  if (result?.exceptionDetails || !Number.isFinite(result?.result?.value?.mean_luma)) {
+    throw new Error('VISUAL_PROOF_IMAGE_LUMA_UNAVAILABLE');
+  }
+  return result.result.value;
+}
+
+// Exercise the real DOM wiring in Chrome after capturing the immutable A/B
+// frame. This intentionally checks button/input events and local persistence,
+ // not just the pure solar math already covered by Node tests.
+async function assertSolarClockUi(cdp) {
+  const expression = `(() => {
+    const panel = document.querySelector('[data-solar-clock-controls="true"]');
+    if (!panel) return { status: 'CLOCK_PANEL_MISSING' };
+    const slider = panel.querySelector('input[type="range"]');
+    const output = panel.querySelector('output');
+    const mode = panel.querySelector('div:last-child > span');
+    const noon = panel.querySelector('button[aria-label="Sett klokken til 12"]');
+    const live = panel.querySelector('button[aria-label="Bruk faktisk klokkeslett igjen"]');
+    if (!slider || !output || !mode || !noon || !live) {
+      return { status: 'CLOCK_ELEMENTS_MISSING' };
+    }
+    const initial = { label: output.textContent, mode: mode.textContent };
+    noon.click();
+    const afterNoon = {
+      label: output.textContent, mode: mode.textContent,
+      stored: JSON.parse(localStorage.getItem('nwe:solar-time-of-day:v1') || 'null'),
+    };
+    slider.value = '315';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    const duringDrag = { label: output.textContent, mode: mode.textContent };
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+    const afterDrag = {
+      label: output.textContent,
+      stored: JSON.parse(localStorage.getItem('nwe:solar-time-of-day:v1') || 'null'),
+    };
+    live.click();
+    const afterLive = {
+      mode: mode.textContent, reset_disabled: live.disabled,
+      stored: localStorage.getItem('nwe:solar-time-of-day:v1'),
+    };
+    return { status: 'PASS', range: { min: slider.min, max: slider.max, step: slider.step },
+      initial, afterNoon, duringDrag, afterDrag, afterLive };
+  })()`;
+  const result = await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
+  const proof = result?.result?.value;
+  if (result?.exceptionDetails || proof?.status !== 'PASS'
+      || proof.range?.min !== '0' || proof.range?.max !== '1439' || proof.range?.step !== '1'
+      || proof.initial?.mode !== 'Fast visning'
+      || proof.afterNoon?.label !== '12:00' || proof.afterNoon?.mode !== 'Manuell'
+      || proof.afterNoon?.stored?.minutes !== 720
+      || proof.duringDrag?.label !== '05:15' || proof.duringDrag?.mode !== 'Manuell'
+      || proof.afterDrag?.label !== '05:15' || proof.afterDrag?.stored?.minutes !== 315
+      || proof.afterLive?.mode !== 'Faktisk tid' || proof.afterLive?.reset_disabled !== true
+      || proof.afterLive?.stored !== null) {
+    throw new Error(`VISUAL_PROOF_SOLAR_CLOCK_UI_FAILED: ${JSON.stringify(proof)}`);
+  }
+  return proof;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args['runtime-root']) throw new Error('--runtime-root is required');
@@ -165,6 +265,7 @@ async function main() {
     previewManifest: `${origin}/runtime/manifest.json`,
     renderer: 'webgl2',
     graphics: 'high',
+    solarTime: VISUAL_PROOF_SOLAR_TIME_UTC,
   });
   if (args['ground-imagery-manifest']) {
     const relative = args['ground-imagery-manifest'].replace(/^\/+/, '');
@@ -199,7 +300,12 @@ async function main() {
     if (!screenshot?.data) throw new Error('CDP screenshot returned no PNG data');
     const png = Buffer.from(screenshot.data, 'base64');
     if (png.length < 1000) throw new Error(`screenshot PNG unexpectedly small: ${png.length} bytes`);
+    const daylightEvidence = await measureWorldViewportLuminance(cdp, png);
+    if (daylightEvidence.mean_luma < 18 || daylightEvidence.bright_fraction < 0.15) {
+      throw new Error(`VISUAL_PROOF_WORLD_TOO_DARK: ${JSON.stringify(daylightEvidence)}`);
+    }
     writeFileSync(output, png);
+    const solarClockUi = await assertSolarClockUi(cdp);
     console.log(JSON.stringify({
       schema: 'nwe.preview1-visual-proof/0.1',
       status: 'PASS',
@@ -209,6 +315,10 @@ async function main() {
       viewport: [1440, 900],
       renderer_request: 'webgl2',
       graphics_profile: 'high',
+      solar_clock: 'fixed-utc-presentation-time',
+      solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
+      daylight_world_viewport: daylightEvidence,
+      solar_clock_ui: solarClockUi,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {

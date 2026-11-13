@@ -1,370 +1,286 @@
 # 06 — Active task queue
 
-This file is the **current execution queue**. Historical queue states remain in Git history and the archived Drive logs; do not append old status prose here.
+This file is the **current execution queue**. Historical queue states remain in Git history and archived logs; do not reintroduce stale priorities.
 
-## Priority rule
+## Priority rule — 2026-11-01
 
-The next task must advance the Unreal Nannestad milestone in `docs/09-unreal-game-plan.md` unless it discovers a genuine hard dependency. Do not let unrelated whole-Norway, multi-tile, device or source research displace the active vertical slice.
+The explicit product priority is **Nannestad 1×1 km in the normal WebUI, freely navigable and as realistic as admitted data/performance allows**. Unreal Engine remains a parallel adapter track and does not block this Web milestone.
 
-## Known proven foundation — do not re-prove by default
+The next engineering priority is no longer another generic proxy/post-processing pass. It is a bounded **LiDAR gold-tile source-fidelity experiment** over the existing accepted 1×1 km tile. Existing visual/runtime acceptance remains valid and must not be weakened, but source-derived roof/canopy/near-field terrain fidelity is now the highest-value unknown.
 
-- single-tile real Nannestad DTM1 compiler/runtime artifact: PASS;
-- real compiled NVDB roads: PASS;
-- real compiled OSM building footprints: PASS;
-- runtime-verifiable world-artifact provenance in Node + real Chrome: PASS;
-- world-artifact browser path with zero raw Kartverket/NVDB/OSM acquisition calls: PASS;
-- module DedicatedWorker terrain mesh path: PASS;
-- scheduler/cache/resource lifecycle roundtrip for the accepted terrain tile: PASS;
-- high-precision Float64 world state + render-local Float32/origin invariants: PASS;
-- deterministic verified NWE → UE Landscape/runtime package: PASS outside UE;
-- UE 5.8 C++ project, explicit georeference, bootstrap and third-person character: IMPLEMENTED / WINDOWS EDITOR COMPILE OPEN;
-- Three.js ground renderer adapter over renderer-neutral buffers: PASS in hosted Chrome/WebGL2; hosted WebGPU device evidence remains unavailable and is not claimed as performance proof;
-- walking-distance renderer-only terrain PBR/detail over unchanged accepted DTM geometry: PASS / merged PR #70;
-- connected renderer-side road surfaces over 246 accepted compiled NVDB paths: PASS / merged PR #73;
-- polygon-safe batched building walls/roofs over 135 accepted footprints: PASS / merged PR #74;
-- licensed animated KayKit Knight humanoid with fail-closed idle/walk state: PASS / merged PR #75;
-- renderer-neutral character world-transform contract: PASS / merged ATLAS PR #72;
-- ATLAS-backed character movement, accepted-DTM grounding, renderer pose binding, keyboard/touch controls and third-person follow camera: PASS / merged PR #77.
+Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, networking, AI/NPC work or unrelated renderer comparisons.
 
-### Historical web renderer-asset network boundary
+## Proven foundation — do not re-prove by default
 
-`P0-GROUND-05` currently loads the CC0 KayKit Knight from an immutable commit-pinned `raw.githubusercontent.com` URL. This is an explicit renderer-asset runtime dependency, **not** raw geodata acquisition. The existing injected world-artifact `fetchImpl` audit does not enumerate GLTFLoader's separate request, so do not claim that the seven audited world-artifact requests are the browser's entire network surface. Vendoring/promotion into an NWE asset pipeline is later hardening work, not a blocker for the current single-character P0.
-
-## Historical agent capability maintenance
-
-- `AGENT-SKILLS-GPU-01` — **COMPLETED / MERGED PR #76**: ten upstream Three.js skill concept areas were adapted into renderer-neutral NWE GPU skills. WebGPU is first-class, WebGL2 remains fallback/baseline, and Three.js/TSL stays presentation-only.
+- accepted single-tile Kartverket DTM1 terrain: PASS;
+- accepted compiled NVDB road centerlines: PASS;
+- accepted compiled OSM building footprints: PASS;
+- runtime provenance verification in Node + real Chrome: PASS;
+- zero raw Kartverket/NVDB/OSM acquisition in normal browser runtime: PASS;
+- Float64 authoritative movement + render-local Float32 invariants: PASS;
+- freely navigable DTM-grounded first-person browser movement: PASS;
+- local pinned CC0 PBR surfaces, lighting/shadows/tone mapping and quality profiles: IMPLEMENTED;
+- guarded NHM DOM−DTM building-height enrichment: PASS candidate;
+- conservative strong DOM-derived roof-direction candidate: PASS candidate;
+- NIBIO SR16V + AR50 representative vegetation: PASS candidate;
+- NVDB type 838/583 width + type 241 surface realism: PASS candidate;
+- NVDB explicit street-detail source compiler: HOSTED PASS candidate;
+- manifest-driven exact browser proof with required derived realism: PASS;
+- published `preview-runtime` snapshot generated from code head `e57f574d195c474c493acd2f59ddd8dab5488493`: PASS evidence for that immutable head;
+- exact-head asphalt presentation calibration with unchanged NVDB geometry/source semantics: PASS;
+- milestone-grade WebGPU device-evidence assessment and deployable Vercel preview: PASS tooling; physical-device capture still open;
+- shared Unreal/PBR foundation and mesh-packet SHA-256 hardening are merged to `main`; PR #85 remains the Three.js/WebGPU development surface.
 
 ---
 
-# P0 — UNREAL NANNESTAD
+# P0 — NANNESTAD 1×1 WEB REALISM
 
-## UE5-FOUNDATION — Deterministic adapter and game scaffold
-**Priority:** IMPLEMENTED / VALIDATION PARTIAL
-**Owner:** LUMEN
-**Status:** Python unit PASS + real pinned-snapshot package PASS; UE Editor unavailable in the current environment; PR #84 integration dependency repair complete, merge and CI pending; follow-up branch `agent/lumen-unreal-packet-integrity` adds fail-closed packet SHA-256 verification, a verified level-script enum fix and self-contained setup (PR dependency on #84)
+## P0-HYPERREAL-LIDAR-01 — Nannestad LiDAR gold-tile source gate
+**Priority:** 1 — ACTIVE / SOURCE SELECTED; LAZ BYTE GATE OPEN  
+**Owner:** FORGE + LUMEN + SENTINEL  
 
-**Implemented:** UE 5.8 C++ project; immutable Nannestad snapshot verification;
-1009² Landscape derivative; 21 chunked runtime mesh packets; explicit
-EPSG:25832/NN2000 mapping; third-person Quinn character; collision bootstrap;
-Lumen/VSM atmosphere; Open World level and Windows setup automation.
-Fail-closed hardening: every mesh packet is SHA-256-verified against the derived
-package manifest before decoding (engine-bundled OpenSSL 1.1.1), and the level
-script now uses the only group-driven `TextureFilter.TF_DEFAULT` value after
-`TF_ANISOTROPIC` was confirmed absent from the UE enum surface.
+**Goal:** determine from exact source bytes whether openly obtainable Nannestad LiDAR materially improves roof geometry, canopy/tree candidates and near-field terrain enough to justify a production reconstruction layer.
 
-**Truth guard:** road widths and most building heights/roofs remain visibly
-classified presentation fallbacks. No photorealism or UE compile claim yet.
+**Implemented and proven:**
+- public, key-free source discovery through Kartverket/Geonorge `Høydedata Metadata prosjekt WFS` using exact tile BBOX `611000,6677000,612000,6678000,EPSG:25832`;
+- WFS response is restricted to source fields rather than multi-megabyte project geometry; BBOX result is explicitly classified as **intersection**, not complete tile coverage;
+- deterministic GML parser/regressions and candidate policy for laser `TYPE=1`, `TILGANG`, publication, source frame, year and ordered point density;
+- live legacy `projectMetadata.ashx` returned `499: Token Required`; auth/provider errors are fail-closed and can never become `NO_CANDIDATE`;
+- exact WFS query reported `numberMatched=9` / `numberReturned=9`; six metadata-bearing project objects were returned, while three provider-declared features lacked requested admission metadata and are surfaced as unresolved rather than silently admitted;
+- metadata-complete published/open laser overlaps include `Ullensaker Nes Nannestad 2010` (0.7 pkt/m²), `Romeriksåsene 2013` (0.7), `NDH Akershus 5pkt 2015` (5) and `NDH Akershus 2pkt 2015` (2), all in EPSG:25832 + EPSG:5941/NN2000;
+- **first gold-tile acquisition source selected:** `NDH Akershus 5pkt 2015` / `LACH0002`, because it is the highest-density metadata-complete candidate proven published, explicitly open and frame-compatible;
+- `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is confirmed `TILGANG=2` closed and rejected as the anonymous/open default despite the same 5 pkt/m² ordered density;
+- current `Romerike laser 2025` / `LACIAK53` remains a freshness cross-check while its project state is ongoing rather than a delivered open source;
+- fail-closed export request builder for exact polygon/LAZ/EPSG:25832, requiring explicit project, explicit `ProjectProduct`, explicit `CopyEmail` or BAAT user, and explicit `--submit`; operator identity/credentials are redacted from evidence;
+- chunked/NumPy-vectorized LAZ inspector records exact SHA-256, bounds/CRS, point count, exact-tile measured density and LAS class counts for ground/vegetation/buildings;
+- normal PR CI validates source/export/inspection contracts without making provider availability a merge gate; manual live discovery remains `workflow_dispatch` only.
 
-## UE5-RUN-01 — Windows compile, map creation and PIE evidence
-**Priority:** 1 — ACTIVE / START HERE
-**Owner:** LUMEN + SENTINEL
-**Status:** WAITING FOR UE 5.8 WINDOWS RUNNER
+**Validation evidence:**
+- diagnostic live WFS run `41308978719`: contract PASS + live-provider PASS; exact source-field artifact `13084781636`;
+- current source/export/inspection contract head `ba40c08604232fbb71ce5c4885a548d9288e54fd`: `nannestad-lidar-source-probe` run `41309741805` PASS, `baseline` run `41309741814` PASS, `world-viewer-vite` run `41309741822` PASS and `viewer-benchmark` run `41309741806` PASS;
+- actual LAZ bytes are **not yet acquired or admitted**. See `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
 
-**Acceptance:** clean setup script run; Editor target compiles; Open World map is
-created; Quinn spawns/animates/moves/jumps; real terrain/building collision
-works; 21 packets load; no raw geodata request occurs; frame/log/performance
-evidence is retained.
+**Remaining acceptance sequence:**
+1. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it;
+2. make one explicit operator export of `NDH Akershus 5pkt 2015` with a supplied delivery identity; raw LAZ stays outside Git/runtime;
+3. SHA-bind the delivered bytes and inspect LAS header, CRS/vertical frame, point count, exact-tile coverage/density and source classes;
+4. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.
 
-## UE5-LANDSCAPE-01 — Native Landscape/World Partition bake
-**Priority:** 2 — after UE5-RUN-01
-**Owner:** LUMEN + ATLAS
-**Status:** DERIVATIVE READY / EDITOR IMPORT OPEN
+**Truth guard:** WFS overlap, metadata saying “5 pkt/m²”, a project name or a historical report does not prove complete exact-tile coverage, actual delivered density, LAS classes, roof reconstructability or individual-tree observations.
 
-**Acceptance:** generated `.r16` imports with the recorded scale/location and
-north/south orientation; representative height samples match DTM1 within the
-recorded quantization bound; native collision replaces bootstrap terrain only
-after parity.
+## P0-HYPERREAL-LIDAR-02 — Gold-tile reconstruction A/B
+**Priority:** 2 — BLOCKED ON `P0-HYPERREAL-LIDAR-01`  
+**Owner:** FORGE + LUMEN  
 
-## UE5-VISUAL-01 — Production realism pass
-**Priority:** 3 — after native terrain parity
-**Owner:** LUMEN
-**Status:** IMPLEMENTATION SLICE READY / UE FRAME ACCEPTANCE OPEN
+When exact LAZ bytes pass source admission, compile a separately versioned derived experiment containing:
+- candidate LoD2 roof geometry for representative buildings, retaining per-building quality/fallback state;
+- canopy-height/tree-candidate extraction with source epoch/confidence and SR16 used only for class/density calibration;
+- higher-detail near-field terrain representation from admitted elevation evidence;
+- engine-neutral render payloads suitable for the existing Three.js/WebGPU adapter and later Unreal import.
 
-**Acceptance:** licensed authored PBR surfaces, source-backed Norwegian
-vegetation and measured daylight lighting produce a street-level frame that is
-clearly beyond baseline materials without changing geometry truth.
+**Acceptance:** fixed-camera A/B against the current scene plus geometry error/source-quality statistics and measured browser CPU/GPU/memory/network cost. Do not promote a LiDAR-first production policy merely because the result looks better.
 
-**Implemented slice:** four pinned local Poly Haven CC0 1K surface sets with
-diffuse/roughness/OpenGL+DirectX normals; deterministic Web/UE mapping; Unreal
-Epic/Cinematic quality ceilings and 75,000 lux daylight. This is material and
-configuration evidence, not a UE render or exact land-cover claim.
-
-## UE5-GEO-01 — Road/building fidelity
-**Priority:** 4
-**Owner:** FORGE + LUMEN
-**Status:** PARTIAL PASS — BUILDING HEIGHT ENRICHMENT PROVEN / ROAD WIDTH + ROOF SHAPE OPEN
-
-**Building-height evidence — 2026-09-15:** Kartverket NHM DOM and DTM are admitted on the exact
-1 m EPSG:25832 Nannestad grid and compile into the renderer-neutral
-`nwe.building-surface-artifact/0.1-candidate`. The candidate is bound to the
-accepted OSM building artifact and carries only per-footprint DOM-DTM
-distributions; no raw raster or renderer geometry is promoted.
-
-The active Unreal adapter now resolves the derived transport to one immutable
-commit and fails closed on artifact SHA, semantic/config identity, building
-artifact SHA and calibration. Height priority is: OSM source height first;
-otherwise guarded DOM-DTM p90 with >=8 valid cells, >=2.2 m and conservative
-building-type plausibility ceiling; otherwise explicit fallback.
-
-**Exact current slice:** 135 footprints = **15 OSM source heights + 105 guarded
-DOM-derived presentation heights + 15 explicit fallbacks**. Current OSM roof
-shape/material coverage remains 0. Pitched presentation roofs may use DOM
-p95-p25 relief only for rise magnitude; roof shape/ridge/eave direction remains
-unproven.
-
-**Evidence:** `nhm-dom-building-height-proof` run `34971239381` PASS;
-baseline run `34971239525` passes the active Unreal real-snapshot integration
-and deterministic `all -> build` byte comparison with 105 DOM heights,
-15 fallback heights and 819 vegetation instances in both builds. Overall
-baseline remains red only at the historical non-active Cesium prototype build.
-
-**Acceptance remaining:** admitted road widths/lanes/surfaces; a measured
-high-confidence roof-orientation/shape source or inference candidate; exact
-missing values remain explicit.
-
-**Truth guard:** p90 height selection, plausibility thresholds, DOM relief roof
-rise and fallback roof shape are presentation policies, not surveyed building
-geometry.
-
-## UE5-PACKAGE-01 — Windows packaged-build gate
-**Priority:** 5
-**Owner:** SENTINEL
-**Status:** WAITING
-
-**Acceptance:** Development package repeats data identity, movement, collision,
-visual and performance checks outside PIE.
-
----
-
-# HISTORICAL P0 — THREE.JS PLAYABLE NANNESTAD
-
-## P0-GROUND-01 — Three.js ground-level renderer adapter
-**Priority:** COMPLETED
-**Owner:** LUMEN
-**Status:** MERGED / HOSTED CHROME WEBGL2 PASS / WEBGPU DEVICE EVIDENCE OPEN, NON-BLOCKING
-
-**Acceptance evidence:** accepted Nannestad terrain/roads/buildings rendered through the Three adapter; production build, provenance/decode, terrain-resource lifecycle and browser gates pass.
-
-## P0-GROUND-02 — Terrain mesh + walking-distance material
-**Priority:** COMPLETED
-**Owner:** LUMEN
-**Status:** MERGED PR #70
-
-**Implemented:** worker normals/UVs, renderer-only macro variation, generated detail textures, PBR roughness/bump response and no DTM displacement.
-
-**Truth guard:** all material/detail variation is presentation-only; accepted DTM positions remain world truth.
-
-## P0-GROUND-03 — Road-surface meshes
-**Priority:** COMPLETED
-**Owner:** LUMEN
-**Status:** MERGED PR #73 / ALL FIVE HOSTED WORKFLOWS PASS ON INTEGRATED HEAD
-
-**Implemented:** connected path strips, shared corner pairs, duplicate-point removal, capped miter joins, meter-based UVs, 0.06 m renderer-only surface lift and 3.2 m renderer-only visual width fallback.
-
-**Truth guard:** current visual width is **not authoritative physical road width**.
-
-## P0-GROUND-04 — Building meshes + roofs
-**Priority:** COMPLETED
-**Owner:** LUMEN
-**Status:** MERGED PR #74 / ALL FIVE HOSTED WORKFLOWS PASS ON INTEGRATED HEAD
-
-**Implemented:** polygon-safe Earcut roof triangulation, batched wall/roof buffers, separate source-backed/fallback PBR material classes and explicit unresolved-height semantics.
-
-**Truth guard:** unresolved building height remains unresolved in world data; 5 m height and 0.08 m ground lift are renderer-only fallbacks.
-
-## P0-GROUND-05 — Licensed humanoid glTF/GLB + animation
-**Priority:** COMPLETED
-**Owner:** LUMEN
-**Status:** MERGED PR #75 / ALL FIVE HOSTED WORKFLOWS PASS
-
-**Implemented:** CC0 KayKit Adventurers `Knight.glb`, commit-pinned upstream provenance, `GLTFLoader`, `AnimationMixer`, fail-closed idle/walk clip resolution, 1.75 m renderer normalization and in-browser `idle -> walk -> idle` state probe.
-
-**Truth guard:** model pose/spawn is renderer state. ATLAS/world state remains authoritative for position/heading.
-
-## P0-GROUND-06 — Character movement + terrain grounding + camera
-**Priority:** COMPLETED
-**Owner:** LUMEN + ATLAS
-**Status:** MERGED PR #77 / ALL FIVE HOSTED WORKFLOWS PASS ON EXACT HEAD
+## WEB-REALISM-01 — Verified realism runtime composition
+**Priority:** COMPLETED / IN PR #85  
+**Owner:** LUMEN + FORGE  
 
 **Implemented:**
-- Preview 1 EPSG:25832 / NN2000 character world frame;
-- ATLAS `WorldPosition` / character-transform authority rather than Three-owned world coordinates;
-- accepted-DTM height grounding after authoritative planar movement;
-- explicit ATLAS `[east,north,up]` -> Three `[east,up,-north]` adapter;
-- canonical positive zero in derived renderer coordinates;
-- render-origin-shift regression requiring unchanged authoritative character state;
-- one-way renderer pose sink into the KayKit Knight with explicit 0.02 m presentation-only ground lift;
-- renderer-neutral runtime composition mapping authoritative movement to pose + walk/idle state;
-- W/S + A/D and arrow keyboard controls, plus separate non-conflicting touch overlay controls;
-- 3.2 m/s movement budget, 1.9 rad/s turn budget and 50 ms input-delta clamp;
-- third-person follow-orbit camera with 6.5 m initial distance and +1.2 m follow target height;
-- exact Chrome 1.00 m movement probe validating authoritative distance, DTM grounding, walk -> idle, renderer pose agreement and camera follow.
+- SHA-verified building-surface, roof-direction and vegetation runtime layers;
+- guarded DOM−DTM heights over accepted OSM footprints;
+- source-backed NVDB road-width overlays where available;
+- Sentinel-2 10 m macro ground color + pinned CC0 PBR surfaces;
+- realism remains fail-closed under `?requireRealism=1` and degrades explicitly otherwise.
 
-**Acceptance evidence:** exact implementation head `4fd753767106e3d56957ff555d7069f0c4d7e5b4` passed `baseline` run 32302005719, `world-viewer-vite` run 32302005703, `viewer-benchmark` run 32302005752, `preview1-realdata-publish` run 32302005712 and `preview3-realdata-publish` run 32302005733; merged as `8971dff662f4743be8b48302c1b4f1b286ead858`.
+**Truth guard:** derived height/direction and renderer materials are not surveyed building/land-cover truth.
 
-**Truth guard:** Three/GLTF state remains presentation-only. Authoritative position/heading stays in ATLAS Float64 world state; the 0.02 m character lift and follow-camera parameters are renderer-only.
+## WEB-REALISM-02 — Norwegian vegetation presentation
+**Priority:** IMPLEMENTED / EXACT VISUAL INSPECTED  
+**Owner:** LUMEN  
 
-## P0-GROUND-07 — First graphics/shader pass
-**Priority:** SUPERSEDED BY UE5-VISUAL-01
+**Implemented:** deterministic SR16V representatives, DTM grounding, road/building/spawn/slope exclusion, instanced spruce/pine/deciduous categories and naturalized multi-tier/multi-lobe proxy silhouettes.
+
+**Exact evidence:** the accepted hosted screenshot renders the admitted vegetation layer; exact browser proof reports 828 source representatives and 817 visible representatives after explicit exclusions.
+
+**Known limit:** the current trees remain renderer-authored proxy silhouettes, not observed individual trees and not photoreal near-field assets. Freeze further proxy-shape refinement unless needed as fallback/far LOD; source-derived placement and better licensed assets are evaluated through the LiDAR gold-tile path.
+
+## WEB-REALISM-03 — NVDB physical road semantics
+**Priority:** IMPLEMENTED CANDIDATE / INTEGRATED  
+**Owner:** FORGE + LUMEN  
+
+**Implemented:** type 838 calculated road width primary, type 583 non-overlap fallback and type 241 surface semantics. Source-backed width overlays progressively replace the old 3.2 m visual fallback; fallback remains explicit where no admitted width exists.
+
+## WEB-REALISM-04 — Source-backed street detail
+**Priority:** COMPLETED / EXACT BROWSER PASS  
+**Owner:** FORGE + LUMEN  
+
+**Source evidence:** hosted compiler PASS for exact Nannestad tile with 252 explicit geometry parts: 25 longitudinal markings, 12 transverse markings, 1 crosswalk point, 67 sign points, 57 lighting points, 41 light masts, 29 open ditches, 19 kerb segments and 1 sidewalk segment; current sample has 0 edge-post, guardrail and bike-lane parts.
+
+**Implemented and accepted:**
+- deterministic NVDB V4 compiler with source type/object IDs, raw hashes, CRS transform and exact tile clipping;
+- Preview runtime staging + SHA verification;
+- runtime loader verification;
+- batched source road markings and DTM-grounded instanced sign/light objects;
+- kerb/sidewalk/ditch presentation along explicit NVDB geometry;
+- generic sign face/pole dimensions remain renderer-only because exact sign-face identity is not yet admitted;
+- exact Chrome composition reports `web_realism=READY`, 252 source feature parts reaching the renderer, 9 street-detail draw calls and zero raw NVDB runtime acquisition.
+
+## WEB-REALISM-05 — Near-field buildings
+**Priority:** IMPLEMENTED PRESENTATION / SOURCE FIDELITY OPEN  
+**Owner:** FORGE + LUMEN  
+
+**Current truth:** 135 footprints; 15 OSM source heights + 105 guarded DOM-derived presentation heights + 15 explicit fallbacks. Strong roof directions are admitted only where the fit gate passes.
+
+**Implemented presentation:** deterministic, instanced façade detail is explicitly renderer-only. Exact browser proof renders 3,000 window instances and 127 door instances in 2 draw calls over the accepted source footprints/best-available heights. Window/door placement, count and dimensions are not source-backed and must never be presented as observed Nannestad façade truth.
+
+**Current direction:** do not spend the main realism budget inventing more aperture detail. Prefer source-derived roof/building geometry and geometrically honest façades; generic windows/doors remain optional presentation fallback.
+
+## WEB-REALISM-06 — Exact integrated browser acceptance
+**Priority:** 3 — AUTOMATED/DEPLOY EVIDENCE PASS ON IMMUTABLE HEAD; PHYSICAL ANDROID CHROME WEBGPU CAPTURE OPEN  
+**Owner:** SENTINEL + LUMEN  
+
+**Passed on exact code head `e57f574d195c474c493acd2f59ddd8dab5488493`:**
+- production Vite / `world-viewer-vite` run `38482495892`: PASS;
+- baseline run `38482496004`: PASS;
+- viewer benchmark run `38482495838`: PASS;
+- NVDB road-semantics proof run `38482495981`: PASS;
+- exact visual proof run `38482495969`: PASS;
+- exact real-data/browser publish run `38482495877`: PASS;
+- exact Vercel Preview deployment `dpl_DtzoLD1AbzEjEqbBADTe6BQ7L1xs` is `READY` and serves the normal WebUI plus `device-evidence.html` from this exact SHA;
+- `preview-runtime` manifest reports `generated_from_commit=e57f574d195c474c493acd2f59ddd8dab5488493`;
+- runtime remains `REAL_COMPILED_WITH_DERIVED_REALISM` with the same accepted terrain/roads/buildings, Sentinel-2 macro color and five staged realism layers;
+- free movement/DTM grounding remains PASS;
+- zero raw Norwegian source acquisition remains required;
+- runtime request contract remains manifest-driven.
+
+**Asphalt calibration accepted on parent implementation `91b82196ed02c604c89ff205c6da26dec8a56a2a` and inherited unchanged:**
+- the pinned Poly Haven `asphalt_02` diffuse/normal/roughness assets are unchanged;
+- renderer-only extra diffuse tint `0xc8c9c8` was removed so the authored diffuse albedo is no longer darkened a second time;
+- same fixed near-road screenshot region improved from median luminance `16.44` to `20.87` (~27%) and mean `20.34` to `24.65` (~21%);
+- exact visual-proof run `37852464305` PASS, artifact `11582397470`, screenshot SHA-256 `344b4ac02389b12ac1cf8e44b6f7fd707e5aa8eaf071937cac8501fad13b8330`;
+- no road geometry, width, material source semantics, artifact SHA or provenance was changed.
+
+**Milestone-grade device-evidence gate implemented:**
+- ordinary runtime/provenance capture `PASS` is explicitly separate from WebGPU milestone readiness;
+- milestone assessment is `nwe.webgpu-milestone-evidence-assessment/0.1` and reports `READY_FOR_REVIEW` only when viewer/runtime build identity is bound, capture session exists, Android Chrome is detected, the operator explicitly attests a physical device, requested+active backend are both WebGPU with no fallback, `web_realism=READY`, provenance/raw-source/strict streaming lifecycle gates pass, and the 90-frame measurement window contains first-visible, frame-gap, draw-CPU and GPU resource observations;
+- timestamp-query support is recorded as a capability and is not required to be available;
+- no arbitrary FPS/frame-time target is invented.
+
+**Remaining closure gate:** physical Android Chrome WebGPU capture remains valuable milestone evidence, but it is no longer allowed to block source-fidelity engineering. Re-run exact browser/deployment acceptance after the LiDAR A/B materially changes the render payload.
+
+## WEB-REALISM-07 — Advanced photoreal graphics pipeline
+**Priority:** IMPLEMENTED / CI-SAFE ON `high`, FULL STACK ON `ultra`  
 **Owner:** LUMEN
-**Status:** HISTORICAL MILESTONE / REFERENCE VIEWER QUALITY REFRESH IMPLEMENTED
 
-**Implement:** bounded near-player shadows, sun/directional light, sky/fog, tone mapping, material roughness/normal variation and conservative shader detail. Prefer batching/instancing and shared materials over unique draws/textures.
+**Implemented (web-native, no world-truth change):**
+- sky image-based lighting / one-time PMREM environment capture;
+- ordered, fail-closed TSL post graph with profile-gated SSR, GTAO, god rays, DOF, bloom, chromatic aberration and film grain;
+- `low`/`balanced` retain cheaper paths, `high` uses bounded effects and `ultra` carries the expensive stack;
+- software-rasterizer detection prevents the expensive environment path from stalling headless capture.
 
-**Acceptance:** screenshot/video-level output is visibly beyond debug geometry while automated sample metrics show no obvious navigation-breaking regression.
+**Measured evidence (2026-10-31):** high-profile headless SwiftShader capture completed inside the CI screenshot budget; the `ultra` stack does not, which is why the heavy effects remain ultra-gated.
 
-**2026-09-04 refresh:** the reference viewer now has local pinned PBR surfaces,
-meter-scaled road/building UVs, low/balanced/high/ultra profiles, profile-bounded
-shadows/fog/DPR/anisotropy and high/ultra TSL GTAO + bloom. Production build and
-local structural/hash tests pass; exact-commit hosted browser evidence remains
-the push/CI gate.
+**Truth guard:** IBL and every post pass are presentation-only. Freeze post-processing expansion until source geometry/asset fidelity has materially improved or measured hardware evidence identifies a specific renderer problem.
 
-## P0-GROUND-08 — Integrated acceptance + Preview
-**Priority:** SUPERSEDED BY UE5-PACKAGE-01
-**Owner:** SENTINEL
-**Status:** HISTORICAL / NOT ACTIVE
-
-**Run once for the milestone:** production build; touched provenance regressions; one browser smoke for terrain + roads + buildings + character spawn/movement; zero raw geodata acquisition; backend/first-visible/frame/draw metrics where available; exact-commit Preview when deployment tooling is available.
+**Known infrastructure issue:** the branch has previously seen snapshot staging fail because a freshly compiled OSM building artifact no longer matched a pinned `BUILDING_ARTIFACT_SHA256`. Treat this as artifact-promotion/reproducibility work, not evidence against the renderer changes.
 
 ---
 
-# P1 — NEXT VISIBLE QUALITY
+# P1 — NEXT WEB QUALITY
 
-## P1-BUILDINGS-01 — Better building truth
-**Status:** DOM-DTM HEIGHT + STRONG ROOF-DIRECTION HANDOFF PASS / SOURCE ROOF-SHAPE STILL OPEN
+## P1-SIGN-SEMANTICS
+Resolve exact sign face/type/orientation from admitted NVDB relations before rendering actual symbols.
 
-Kartverket NHM DOM-DTM enrichment is proven for the accepted 1 km tile:
-132/135 footprints have usable surface distributions; Unreal currently uses
-15 OSM source heights + 105 guarded DOM-derived presentation heights + 15
-explicit height fallbacks.
+## P1-VEGETATION-ASSETS
+Map source-derived/SR16-calibrated species/height classes to better permissively licensed near-field tree assets/LOD while retaining source epoch, confidence and budgets. Blender may be used offline for retopology/LOD/baking, never as world truth or runtime dependency.
 
-Spatial roof analysis is also admitted as a separately versioned derived
-candidate. 118 buildings can be analyzed; 53 pass the broad gable-like model
-and 30 pass the strict strong-direction gate. Candidate compiler config is
-`325cd39feca447c9b1a8995d805525ee9abf37359d5089e9df81069c916b8682`;
-artifact SHA-256 is
-`0f6eedb225821da4e0760b96cb843ec01707f99478691c85c8304d847c7270d3`.
-Repeated hosted compiles over identical source hashes are byte/semantic
-identical after explicit 9-decimal fit-metric quantization.
+## P1-BUILDING-FIDELITY
+Admit better roof shape, multipolygon/relations, building use and façade semantics where legal sources permit. LiDAR reconstruction is an experiment until exact-byte and A/B gates pass.
 
-The Unreal adapter applies 10 strong directions to existing presentation
-gables. It applies **0** hipped ridge replacements because every strong
-candidate in the current presentation-hipped class has a concave/complex OSM
-footprint; convex-hull simplification is intentionally rejected.
-
-**Evidence:** `nhm-dom-building-height-proof` run `34981973095` PASS.
-Baseline run `34981973005` passes the active Unreal unit and real-package
-integration gates with deterministic `all -> build` output.
-
-**Remaining building gate:** source/admitted roof shape/ridge/eave geometry,
-multipolygon/relations and façade semantics where legal sources permit. Do not
-treat fitted DOM direction as FKB `Mønelinje` or surveyed roof truth.
-
-**Truth guard:** DOM-DTM distributions and fitted direction are source-derived;
-p90 height, roof-rise proxy, fitted direction and fallback roof shape remain
-explicit downstream presentation policies.
-
-## P1-ROADS-01 — Physical road semantics
-Compile width/lane/surface/intersection fields that actually support those claims; progressively replace visual fallback width.
-
-## P1-VEGETATION-01 — Norwegian vegetation layer
-**Status:** REAL-SOURCE REPRESENTATIVE ARTIFACT PASS / RENDERER HANDOFF OPEN / CANDIDATE NOT PROMOTED
-**Owner:** FORGE source/compiler + LUMEN presentation
-
-**Proven public preprocessing baseline candidate:** NIBIO `SR16V` forest polygons + NIBIO `AR50` coarse nationwide area classification/exclusion. Existing accepted NWE terrain/road/building artifacts remain separate downstream inputs; do not pretend this first representative artifact already applies precise road/building suppression or authoritative ground height.
-
-**Source admission evidence:** `P1-VEGETATION-01-SAMPLE` passed on code-bearing head `5594fe073edf0c20b03911c56f5b454a7aba4dc9`: `baseline` run `32312909195` PASS and heavy `visual-source-probe` run `32312909181` PASS. The 1 km EPSG:25832 tile normalized 124 SR16V polygons + 15 AR50 polygons, same-cache A1/A2 was byte-identical, independent AR50 acquisitions were semantically identical after excluding only proven volatile `kopidato`, and no provider network was required during normalization.
-
-**Representative artifact evidence:** `P1-VEGETATION-01-ARTIFACT` passed on code-bearing head `de91525ac45c4ca19eb5ed4b5fb470e2be1dbedd`: `baseline` run `32314719926` PASS and heavy `visual-source-probe` run `32314719935` PASS. The real Nannestad sample compiled 92 usable SR16V segments into 828 deterministic representative points over 516,753.05 m² after 112,923.69 m² of coarse AR50 non-forest suppression. The compiled source semantics represent 23,493.8875 modeled trees/ha-derived trees with DBH >=16 cm through weighted representatives; the representative-weight sum matches that modeled aggregate. Same normalized cache input was byte-identical, and an independent AR50 acquisition produced the same artifact semantic hash. Artifact SHA-256 is `9b20fdc38c8d672ab5d5e7c089905de477973f383caf2cc571c0e63d7ff75636`; semantic SHA-256 is `320a7e8aadc00fce2ef3912e48f64e279962c5084a89210bca853f506a2f4f1f`; compiler-config identity is `f3a3206a559c00196c2a8fc9c397697aae20bef98a25e5e598766fc4de5bd90e`.
-
-**Candidate representation policy, not world truth:** the current config targets 16 representatives/hectare to produce a bounded proof artifact. It is a versioned representation/LOD experiment, **not** a claim that Norway has 16 trees/hectare. Each representative carries a modeled-tree weight derived from source-backed `srtrean_ge16`; changing this target changes compiler-config identity and artifact identity.
-
-**SR16V semantics preserved:** `srtreslagsam` source classes remain 1 spruce-dominated, 2 pine-dominated, 3 conifer-mixed, 4 mixed, 5 deciduous-dominated; `srhoydem` is converted from source decimetres to metres; `srtrean_ge16` remains modeled trees/hectare for DBH >=16 cm; available lower/upper uncertainty and standard-error percentage, canopy cover, remote-sensing year and source update date remain attached to the source segment. Representative easting/northing and yaw are explicitly deterministic procedural values, not observed individual-tree positions.
-
-**SR16V source binding:** official Nannestad municipality `3238` Atom/SOSI snapshot, source SHA-256 `09dc03637097c485d1b80a863eb1bd36a65ebc9b29c2505b0e95cc15a5533adf`. Provider UTF-8 bytes remain authoritative; a strict round-trip ISO8859-10 compatibility copy exists only because hosted GDAL/FYBA cannot open the valid UTF-8 SOSI directly.
-
-**SR16R status:** technically attractive higher-fidelity candidate, but **not admitted as the required public baseline**. Current split-raster metadata mixes open-data and Norge digitalt license signals, while the tested legacy/open raster UUID exposes NLOD metadata but no working NIBIO capabilities endpoint. Re-evaluate only with a concrete unambiguous raster lineage + real-byte gate.
-
-**Licensed enrichments, not baseline:** FKB-AR5 and Nasjonalt grunnkart for arealanalyse currently require Geovekst/Norge digitalt rights under the verified access model. NIBIO regional vegetation maps may enrich covered areas but are not nationwide.
-
-**Truth guard:** SR16 does not provide authoritative individual-tree positions. The candidate artifact contains no Three.js/WebGPU object types, asset IDs, render origin or terrain Z. It also does not yet apply exact accepted road/building exclusion. Tree placement/yaw and representation density are deterministic procedural data; source class/height/density/uncertainty remain separately identifiable.
-
-**Next integration gate — `P1-VEGETATION-01-RENDERER-HANDOFF`:** LUMEN may adapt PR #80's renderer to consume `nwe.vegetation-representative-artifact/0.1-candidate` instead of treating `nwe.synthetic-vegetation-placement/0.1` as the only accepted input. Render-local conversion, accepted-DTM grounding, road/building/spawn/slope presentation filtering, Poly Haven/other asset mapping, visible-instance budgets and LOD remain renderer/runtime concerns. PR #80's 48-visible-instance limit may remain a presentation budget; it must not overwrite source-modeled density or representative weights.
-
-**Later compiler gate:** if vegetation positions themselves become authoritative simulation/collision state rather than visual representatives, integrate accepted road/building/water exclusion geometry into a separately versioned compiler transform and re-run provenance/determinism gates before promotion.
-
-## P1-MATERIALS-01 — Renderer-neutral material semantics
-Stable material IDs/parameters in world/runtime data; Unreal and reference adapters map them to PBR/shaders. Do not encode renderer material classes into compiled world artifacts.
-
-## P1-IMAGERY-01 — Production imagery/orthophoto
-Only after coverage, CRS, resolution, update cadence, license, attribution, preprocessing/cache and redistribution rights are proven. Runtime consumes compiled texture tiles, not raw provider services.
-
-## P1-CHARACTER-01 — Formal locomotion/physics boundary
-Entity/component movement state, animation state machine, building/road collision needs and a measured physics-library choice if required.
-
-## P1-ASSETS-01 — Promote renderer assets into NWE pipeline
-Vendor or reproducibly acquire licensed assets, retain source/license/hash provenance, and remove avoidable third-party runtime dependency where redistribution rights permit.
+## P1-LAND-COVER
+Improve field/forest/grass/residential material classification beyond generic PBR + 10 m macro color under a verified license/redistribution model.
 
 ---
 
 # P2 — LARGER WORLD
 
-## P2-MULTITILE-TERRAIN-01 — Neighboring terrain source/seam gate
-**Status:** OPEN / DEFERRED FROM ACTIVE CRITICAL PATH
-Continue only when it becomes the active larger-world task; do not block the single-tile playable slice.
+## P2-MULTITILE-TERRAIN
+Resolve neighboring DTM source/seam authority before production 3×3 terrain promotion.
 
-## P2-STREAMING-01 — 3×3 movement-driven residency + budgets
-Reuse the existing scheduler/cache foundation. Prove bounded working set around a moving player after the player experience exists.
+## P2-STREAMING
+Movement-driven 3×3 residency, budgets and failure handling using the existing scheduler/cache foundation. Stream compiled semantic/render payloads; never raw provider data.
 
-## P2-LOD-01 — Terrain/object LOD
-Measure actual traversal and geometry pressure first; select the least expensive LOD representation meeting walking/driving error requirements.
-
-## P2-SCALE-01 — 10×10 then 25×25
-Prove RAM/GPU/network/cache costs follow active/retained working set rather than total world size.
+## P2-LOD
+Select terrain/object LOD from measured traversal error and resource pressure. Near-field terrain must preserve materially more source detail than distant tiles without rendering the full 1 m grid everywhere.
 
 ---
 
-# P3 — SIMULATION / ENGINE PORTABILITY
+# PARALLEL UNREAL TRACK
 
-## P3-SIM-01 — Entity/simulation foundation
-Deterministic tick/events, renderer-neutral dynamic entities, collision/physics boundary, vehicles/NPC-ready state.
-
-## P3-UNREAL-01 — Minimal Unreal adapter spike
-**Status:** SUPERSEDED BY UE5-FOUNDATION. The adapter is now the active runtime rather than a future spike.
-
----
-
-# Explicitly not active now
-
-- Cesium/globe UX as the primary renderer path;
-- whole-Norway terrain format/LOD selection;
-- repeated 3×3 terrain-source archaeology while the single-tile slice is sufficient;
-- production orthophoto before license/cache rights are clear;
-- full physics-engine selection before collision requirements demand it;
-- networking/persistence;
-- AI/NPC behavior;
-- repeated manual handset validation.
+The UE 5.8 foundation and packet-integrity hardening are merged to `main`. `UE5-RUN-01`, native Landscape/World Partition and packaged-build evidence remain open parallel gates, but they do not block the current WebUI/LiDAR gold-tile milestone. Three.js/WebGPU and Unreal must consume the same engine-neutral source/reconstruction identities rather than separate Norwegian data pipelines.
 
 # Task completion rule
 
-A task closes when its stated acceptance passes. SENTINEL may add **one** cheap adversarial check when the claim is dangerous. Additional test/research cycles require a new failure, changed claim or materially different implementation; otherwise log the issue and move to the next priority.
+A task closes when its stated acceptance passes. One cheap adversarial check may be added when a claim is dangerous. New testing/research cycles require a new failure, changed claim or materially different implementation. Visual quality is not proven by green unit tests alone; exact rendered evidence matters.
 
-### WEB-PRESENTATION-REPAIR — 2026-09-05
-Atmospheric sky, terrain-triangle road draping and 1.70 m FPV implemented. Build/regressions pass; live visual/mobile acceptance and realistic building/vegetation assets remain open.
 
-### WEB-VISUAL-PROOF-01 — 2026-09-15
-**Status:** PARTIAL PASS — exact WebGL2 reference proof established; WebGPU/mobile acceptance still open.
+## WEB-REALISM-CLOCK-01 — User-adjustable Nannestad daylight
+**Priority:** COMPLETED / ALL 12 HOSTED WORKFLOWS + REAL CHROME UI SMOKE PASS — 2026-11-13
+**Owner:** LUMEN
 
-Proven:
-- exact PR-head checkout + pinned snapshot/provenance materialization in the screenshot gate;
-- `REAL WORLD READY` and artifact upload pass on the exact implementation head;
-- road drape triangles are normalized to positive-Y winding and the former large black triangular artifacts are removed.
+The ordinary browser view retains live Norwegian solar time, but now offers a
+visible 24-hour Oslo-local slider, 12:00 daylight shortcut and "Nå" live reset.
+Manual time is stored locally across reloads, with strict `?solarTime=` UTC
+screenshot overrides retaining priority. The same astronomical sun/sky/shadow
+model is reused, including CET/CEST and spring-forward gap handling; world truth
+and simulation time remain untouched. Daylight updates immediately while
+PMREM/IBL recaptures only on committed changes. Targeted winter-night,
+summer/winter offset, DST and fixed-A/B regression tests have been added.
 
-Still open:
-- current high-profile asphalt presentation is too dark and needs measured material/post-process calibration rather than arbitrary albedo hacks;
-- source-backed vegetation is admitted by the compiler but not yet rendered in this reference frame;
-- unresolved building heights/roof semantics remain visibly generic;
-- physical WebGPU/mobile visual and performance evidence remains unproven.
+**Evidence:** exact code-bearing SHA `8dce4fb5dd88fb6666bcf163507840465f723e46` passed all 12 applicable hosted checks:
+`world-viewer-vite` run `43424157894`, `preview1-visual-proof` `43424157864`,
+`preview1-realdata-publish` `43424157923`, `baseline` `43424157879`,
+`viewer-benchmark` `43424157824` and all other source/build gates PASS.
+Final exact code head `0119b31cb76b0cd330be726df0f926ddcdb7c344`: all 12
+hosted workflows PASS, including `preview1-visual-proof` run `43424723509`,
+`world-viewer-vite` run `43424723602`, `baseline` run `43424723586`,
+`preview1-realdata-publish` run `43424723449`, and `viewer-benchmark`
+run `43424723429`. The actual Chrome screenshot script executed a native
+DOM interaction smoke against the accepted Nannestad scene: fixed-time mode,
+12:00 button and stored minutes 720, 05:15 slider input/commit and stored
+minutes 315, then live `Nå` reset with storage removed. Range min=0/max=1439/
+step=1. Screenshot capture occurred *before* interaction to preserve fixed
+A/B geometry/material evidence. This proves UI control wiring, not gameplay
+quality or visual realism. PR #85 remains draft and unmerged.
 
-This follow-up is **secondary to `UE5-RUN-01`** and must not block the current Unreal game-runtime acceptance gate.
+## P0-VISUAL-DAYLIGHT-SNAPSHOT — Reproducible source-pinned, inspectable Nannestad A/B
+**Priority:** COMPLETED — 2026-11-11 / PR #85.
 
+- Former screenshot blocker fixed without repinning OSM: original accepted compiled terrain/road/building bytes plus complete provenance bundles are retrieved from immutable transport commit `a47b8920fb2a72078734cd3fba56c9cafa6344d5`; exact hashes/bytes, producer, tile, path and role checked. Fresh source compilation is an opt-in `--base-source live` path and continues to reject incompatible derived height/roof identity.
+- Fixed screenshot solar clock `2026-07-23T11:00:00Z`; normal browser retains live astronomical time. The screenshot gate checks **the scene pixels**, not just UI-ready text.
+- Exact code head `d7e097200240de508f437186490aaae2381762f9`: `preview1-visual-proof` run `42931242230` PASS (viewport luminance 177.44/255, 94.02% scene bright pixels); `preview1-realdata-publish` run `42931242287` PASS including real Chrome composition; `world-viewer-vite`, `baseline`, `viewer-benchmark`, `nvdb-road-semantics-proof` PASS.
+- Proof: `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`. This closes the visual *evidence* gate; it does not close photorealism.
+
+## P1-NEAR-FIELD-TREES — Source-verified CC0 conifer near-field renderer
+**Priority:** CODE + REAL BROWSER GATES PASS; TARGETED NEAR-CONIFER CAMERA VISUAL A/B OPEN (2026-11-11, PR #85).
+
+Implemented offline CC0 conifer intake from pinned Innerscene GLB (source 517,112 B, SHA-256 `812f691eb68119681038aed7f45dd80bff0a152afe1fc8160ea5cbeeae9143da`). The source contains 365 meshes and 8,792 triangles; `trimesh` and NumPy flatten transforms and explicitly bake both original PBR colors to glTF `COLOR_0`, producing one mesh (232,160 B, SHA-256 `77705f017031ac8d7f7a31d78d5b24268eecd56da93bd051cfadee16230be3ba`). An earlier 200,532-byte derivative lost vertex color and was correctly rejected by real Chrome; it was superseded. Original provider bytes are discarded from source pipeline, no runtime provider traffic, and renderer checks content-addressed GLB + source report on the same manifest origin.
+
+One `InstancedMesh` replaces at most 36 nearby SR16 conifer representatives within 125 m (18 balanced, 0 low), hiding the old proxy instances while selected and restoring them on camera movement. Source-derived tree locations and coordinates remain immutable; broadleaf representatives are still placeholders. Max near mesh triangle cost 316,512 at full budget. Offline tests verify source SHA/licensing/colors/height and camera swaps; `world-viewer-vite` [42940360341](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360341) PASS, `preview1-visual-proof` [42940360475](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360475) PASS, `preview1-realdata-publish` [42940360220](https://github.com/B4kke/Norge-World-Engine/actions/runs/42940360220) PASS including actual Chrome composition, hash/provenance and exact request set with tree report. Initial central camera shows mainly distant deciduous proxies: the *near-field visual uplift* must still be A/B photographed from a camera close to a source-backed conifer. Next task: deterministic conifer-targeted camera framing and triangle/frame budget vs old proxy. After that, separate CC0 pine/deciduous authored models if budgets permit; LoD2 source roofs still require LiDAR admission.
+
+Proof: `docs/proofs/2026-11-11-cc0-near-field-conifer-lod.md`.
+
+## P1-SIGN-PAGINATION — NVDB sign inventory completeness
+**Priority:** LIVE MULTI-PAGE PROVIDER ACCEPTANCE PASS (2026-11-11); source-to-render visual acceptance open.
+
+Compiler algorithm v0.5 follows provider-issued NVDB V4 `metadata.neste.start` cursors while reconstructing requests from the exact trusted source URL/BBOX/CRS, never visiting the provider's next-page href. Every raw page has a separate SHA-256/byte count in the source snapshot, while aggregate input hash is length-prefixed. Duplicated source IDs, cursor cycles, missing/malformed cursors, invalid page counts and page overflow reject the artifact. Offline adversarial tests are wired to the NVDB CI gate. Live provider CI initially revealed that the real source is paginated and that href routing does not necessarily match the original request; source-link dependence has been removed when start is available. Hosted live source gate `nvdb-road-semantics-proof` run `42927733620` PASS: 367 geometry parts, including 67 type-95 sign points and 115 type-96 sign plates, source artifact SHA-256 `351cfcbd3a7504fa361231eb6b7363e9e6691ee12af144e8d4576af907b66dfa`. Both source relation/location snapshots present on all 367 geometry parts. This establishes a complete admission candidate for that exact live run, not surveyed sign artwork/true facing. Next gate: explicit type95/type96 relation coverage, source sign facing and official art licensing.
+
+## P1-RENDER-SURFACE-ALIGNMENT — Roads, signs, trees and facades
+**Priority:** INTEGRATED / EXPLICIT DAYLIGHT BROWSER VISUAL INSPECTED; MATERIAL/ASSET FIDELITY OPEN.
+
+- Road centerline source-width overlays preserve their small renderer-only lift through terrain triangle subdivision.
+- NVDB markings, curbs, sidewalks, ditches and rails use the same rendered terrain triangles as road asphalt; source marking thickness remains a separate per-feature presentation lift. White/yellow paint is raised above accepted 5 mm width-overlay surfaces to avoid hiding.
+- Signs, lamps and tree proxies are grounded against the displayed triangulation rather than the independently sampled 1 m source grid; source coordinates/placements are unchanged. Out-of-tile positions do not extrapolate source terrain.
+- Façade openings interpolate the same two DTM-grounded footprint endpoints as each wall edge and have exterior-side visual offset. Geometry/placement of openings remain deterministic renderer-only, not observed source truth.
+- Narrow regressions added for triangle interpolation, road relief and sloped facades; complete world-viewer-vite test/build passed on code head `4c7e7b3920090af379751fc1bf58f3a98198528c` and newest candidate viewer CI is green on `ba3ab7af9b2157d69643c60f2c36cd59f9896537`.
+
+**Quality limits:** this eliminates obvious floating/sinking on mismatched LOD but does not prove photorealism. Vegetation is still procedural proxy crown geometry; walls still have inferred openings; road junction/cross-sectional topology and near-field 1 m source resolution need source/geometric A/B. Exact new screenshot/hardware performance validation remains open, without mixing generated detail into world truth.
