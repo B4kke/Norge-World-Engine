@@ -761,3 +761,23 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-NEAR-FIELD-TREES-CAMERA-AB`: stage a deterministic near-conifer daylight screenshot and compare its triangles, frame and image quality against proxy-only baseline.
+
+## 2026-11-13 13:22 CET — SENTINEL / LUMEN — WEB-REALISM-CLOCK-01-BROWSER-GATE
+
+**What**
+- Repaired one new test-isolation failure (manual clock test inherited fixed A/B URL) without changing production clock code.
+- Confirmed all 12 hosted workflows passed against code-bearing SHA `8dce4fb5dd88fb6666bcf163507840465f723e46`.
+- Added a native Chrome DevTools DOM smoke after the existing accepted daylight screenshot: 12:00, slider input/commit to 05:15, saved preference and live reset; enabled single-minute slider precision (23:59 reachable).
+
+**Why**
+- Unit tests of the solar model alone cannot prove the user-facing controls actually respond in Chrome. The screenshot remains fixed before UI interaction to retain A/B comparability.
+
+**Result / evidence**
+- Hosted `world-viewer-vite` run `43424157894`, `preview1-visual-proof` run `43424157864`, `baseline` run `43424157879`, `preview1-realdata-publish` run `43424157923` and eight additional workflows are all green on the corrected code-bearing head.
+- The newly added CDP interaction test requires a separate exact-head CI result before it can be called PASS. It preserves the pre-click screenshot and source/provenance acceptance boundary.
+
+**Changed**
+- `apps/world-viewer/src/threeGroundVisualStyle.mjs`, `capture_preview1_screenshot.mjs`, this worklog and active queue.
+
+**Next**
+- `P1-NEAR-FIELD-TREES-CAMERA-AB`: deterministic near-conifer targeted daylight A/B, not another unmeasured proxy pass.

@@ -224,7 +224,7 @@ A task closes when its stated acceptance passes. One cheap adversarial check may
 
 
 ## WEB-REALISM-CLOCK-01 — User-adjustable Nannestad daylight
-**Priority:** IMPLEMENTED IN PR #85 / HOSTED VALIDATION PENDING — 2026-11-13
+**Priority:** IMPLEMENTED / EXACT CODE-HEAD CI PASS; BROWSER BUTTON SMOKE ADDED — 2026-11-13
 **Owner:** LUMEN
 
 The ordinary browser view retains live Norwegian solar time, but now offers a
@@ -236,8 +236,13 @@ and simulation time remain untouched. Daylight updates immediately while
 PMREM/IBL recaptures only on committed changes. Targeted winter-night,
 summer/winter offset, DST and fixed-A/B regression tests have been added.
 
-**Open evidence:** exact-head hosted browser build and UI interaction are not
-claimed PASS until CI/smoke readback confirms them.
+**Evidence:** exact code-bearing SHA `8dce4fb5dd88fb6666bcf163507840465f723e46` passed all 12 applicable hosted checks:
+`world-viewer-vite` run `43424157894`, `preview1-visual-proof` `43424157864`,
+`preview1-realdata-publish` `43424157923`, `baseline` `43424157879`,
+`viewer-benchmark` `43424157824` and all other source/build gates PASS.
+A subsequent exact-browser UI interaction smoke exercises actual noon, slider drag/commit,
+localStorage and live reset on the accepted daylight scene; its hosted result must
+be read back before that stronger claim is accepted.
 
 ## P0-VISUAL-DAYLIGHT-SNAPSHOT — Reproducible source-pinned, inspectable Nannestad A/B
 **Priority:** COMPLETED — 2026-11-11 / PR #85.

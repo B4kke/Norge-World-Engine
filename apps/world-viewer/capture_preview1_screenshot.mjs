@@ -162,6 +162,59 @@ async function measureWorldViewportLuminance(cdp, png) {
   return result.result.value;
 }
 
+// Exercise the real DOM wiring in Chrome after capturing the immutable A/B
+// frame. This intentionally checks button/input events and local persistence,
+ // not just the pure solar math already covered by Node tests.
+async function assertSolarClockUi(cdp) {
+  const expression = `(() => {
+    const panel = document.querySelector('[data-solar-clock-controls="true"]');
+    if (!panel) return { status: 'CLOCK_PANEL_MISSING' };
+    const slider = panel.querySelector('input[type="range"]');
+    const output = panel.querySelector('output');
+    const mode = panel.querySelector('div:last-child > span');
+    const noon = panel.querySelector('button[aria-label="Sett klokken til 12"]');
+    const live = panel.querySelector('button[aria-label="Bruk faktisk klokkeslett igjen"]');
+    if (!slider || !output || !mode || !noon || !live) {
+      return { status: 'CLOCK_ELEMENTS_MISSING' };
+    }
+    const initial = { label: output.textContent, mode: mode.textContent };
+    noon.click();
+    const afterNoon = {
+      label: output.textContent, mode: mode.textContent,
+      stored: JSON.parse(localStorage.getItem('nwe:solar-time-of-day:v1') || 'null'),
+    };
+    slider.value = '315';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    const duringDrag = { label: output.textContent, mode: mode.textContent };
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+    const afterDrag = {
+      label: output.textContent,
+      stored: JSON.parse(localStorage.getItem('nwe:solar-time-of-day:v1') || 'null'),
+    };
+    live.click();
+    const afterLive = {
+      mode: mode.textContent, reset_disabled: live.disabled,
+      stored: localStorage.getItem('nwe:solar-time-of-day:v1'),
+    };
+    return { status: 'PASS', range: { min: slider.min, max: slider.max, step: slider.step },
+      initial, afterNoon, duringDrag, afterDrag, afterLive };
+  })()`;
+  const result = await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
+  const proof = result?.result?.value;
+  if (result?.exceptionDetails || proof?.status !== 'PASS'
+      || proof.range?.min !== '0' || proof.range?.max !== '1439' || proof.range?.step !== '1'
+      || proof.initial?.mode !== 'Fast visning'
+      || proof.afterNoon?.label !== '12:00' || proof.afterNoon?.mode !== 'Manuell'
+      || proof.afterNoon?.stored?.minutes !== 720
+      || proof.duringDrag?.label !== '05:15' || proof.duringDrag?.mode !== 'Manuell'
+      || proof.afterDrag?.label !== '05:15' || proof.afterDrag?.stored?.minutes !== 315
+      || proof.afterLive?.mode !== 'Faktisk tid' || proof.afterLive?.reset_disabled !== true
+      || proof.afterLive?.stored !== null) {
+    throw new Error(`VISUAL_PROOF_SOLAR_CLOCK_UI_FAILED: ${JSON.stringify(proof)}`);
+  }
+  return proof;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args['runtime-root']) throw new Error('--runtime-root is required');
@@ -252,6 +305,7 @@ async function main() {
       throw new Error(`VISUAL_PROOF_WORLD_TOO_DARK: ${JSON.stringify(daylightEvidence)}`);
     }
     writeFileSync(output, png);
+    const solarClockUi = await assertSolarClockUi(cdp);
     console.log(JSON.stringify({
       schema: 'nwe.preview1-visual-proof/0.1',
       status: 'PASS',
@@ -264,6 +318,7 @@ async function main() {
       solar_clock: 'fixed-utc-presentation-time',
       solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
       daylight_world_viewport: daylightEvidence,
+      solar_clock_ui: solarClockUi,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {

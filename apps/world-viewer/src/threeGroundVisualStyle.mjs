@@ -404,7 +404,7 @@ function installSolarTimeOverlay(renderer, currentClock, onTimeChange, onLiveTim
   Object.assign(output.style, { fontVariantNumeric: 'tabular-nums', fontSize: '14px' });
   header.append(title, output);
   const slider = documentRef.createElement('input');
-  slider.type = 'range'; slider.min = '0'; slider.max = '1439'; slider.step = '5';
+  slider.type = 'range'; slider.min = '0'; slider.max = '1439'; slider.step = '1';
   slider.setAttribute('aria-label', 'Juster klokkeslett i Nannestad');
   slider.style.width = '100%';
   slider.style.margin = '0';

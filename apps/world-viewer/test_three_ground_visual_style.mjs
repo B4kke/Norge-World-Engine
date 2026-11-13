@@ -95,6 +95,7 @@ assert.ok(rain.weather.rain_particle_budget > 0);
 assert.ok(scene.fog.far < GROUND_VISUAL_STYLE.fogFarM);
 assert.equal(lighting.sky.cloudCoverage.value, 0.97);
 
+
 // The shadow window must follow a detached bird camera horizontally while
 // retaining the latest grounded anchor height. Bring the solar clock back to
 // "now" first so this assertion measures only the camera-anchor transition,
