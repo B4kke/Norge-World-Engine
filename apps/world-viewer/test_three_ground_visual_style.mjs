@@ -162,6 +162,8 @@ fixedLighting.updateSolar(Date.parse('2026-12-21T00:00:00Z'), true);
 assert.equal(fixedLighting.snapshot().sun.altitude_deg, fixedSnapshot.sun.altitude_deg,
   'fixed A/B solar time must not drift into nighttime on live browser ticks');
 fixedLighting.dispose();
+if (originalLocation === undefined) delete globalThis.location;
+else globalThis.location = originalLocation;
 
 // Manual control must illuminate a November/December night without mutating world
 // state, and should remain stable on subsequent live browser clock ticks.
@@ -185,8 +187,6 @@ assert.equal(restoredNight.sun.clock, 'live-browser-time');
 assert.equal(restoredNight.sun.fixed_time_utc, null);
 assert.equal(restoredNight.sun.intensity, 0);
 manualLighting.dispose();
-if (originalLocation === undefined) delete globalThis.location;
-else globalThis.location = originalLocation;
 
 mesh.geometry.dispose();
 mesh.material.dispose();
