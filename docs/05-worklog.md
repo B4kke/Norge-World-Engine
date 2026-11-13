@@ -781,3 +781,24 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-NEAR-FIELD-TREES-CAMERA-AB`: deterministic near-conifer targeted daylight A/B, not another unmeasured proxy pass.
+
+## 2026-11-13 13:26 CET — SENTINEL — WEB-REALISM-CLOCK-01-ACCEPTANCE
+
+**What**
+- Read back the exact final code-head build and actual Chrome UI smoke from GitHub Actions.
+- Closed the user-facing daylight/time-control task in the active queue while keeping the source-fidelity/near-tree work independent and the PR unmerged.
+
+**Why**
+- The new real-browser control gate must be proven, not inferred from unit tests or a fixed screenshot.
+
+**Result / evidence**
+- FACT: exact commit `0119b31cb76b0cd330be726df0f926ddcdb7c344` has 12/12 hosted workflows PASS: `preview1-visual-proof` `43424723509`, `world-viewer-vite` `43424723602`, `baseline` `43424723586`, `preview1-realdata-publish` `43424723449`, `viewer-benchmark` `43424723429` and all seven other applicable jobs green.
+- FACT: visual-proof job `131883225783` logged `solar_clock_ui.status=PASS`. It observed `min=0/max=1439/step=1`, initial URL-fixed mode, manual noon output `12:00` persisted minutes 720, slider input/commit `05:15` persisted minutes 315, and `Nå` restored `Faktisk tid` while removing storage.
+- FACT: exact accepted Nannestad daylight screenshot and world-viewport luminance gate PASS; visual capture precedes UI interaction, preserving fixed A/B conditions.
+- LIMITATION: this is an accepted *browser time-control feature*, not a claim that all source geometry or world-game realism is complete. No Unreal Windows/UE 5.8 editor gate is inferred from this WebUI success.
+
+**Changed**
+- `docs/06-task-queue.md`, `docs/05-worklog.md` (this documentation-only evidence closeout); production code remains that exact tested code head.
+
+**Next**
+- `P1-NEAR-FIELD-TREES-CAMERA-AB`: prove the source-verified near-conifer asset on a deterministic daylight target camera against the earlier proxy-only rendering, with frame/triangle/image evidence.

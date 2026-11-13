@@ -224,7 +224,7 @@ A task closes when its stated acceptance passes. One cheap adversarial check may
 
 
 ## WEB-REALISM-CLOCK-01 — User-adjustable Nannestad daylight
-**Priority:** IMPLEMENTED / EXACT CODE-HEAD CI PASS; BROWSER BUTTON SMOKE ADDED — 2026-11-13
+**Priority:** COMPLETED / ALL 12 HOSTED WORKFLOWS + REAL CHROME UI SMOKE PASS — 2026-11-13
 **Owner:** LUMEN
 
 The ordinary browser view retains live Norwegian solar time, but now offers a
@@ -240,9 +240,17 @@ summer/winter offset, DST and fixed-A/B regression tests have been added.
 `world-viewer-vite` run `43424157894`, `preview1-visual-proof` `43424157864`,
 `preview1-realdata-publish` `43424157923`, `baseline` `43424157879`,
 `viewer-benchmark` `43424157824` and all other source/build gates PASS.
-A subsequent exact-browser UI interaction smoke exercises actual noon, slider drag/commit,
-localStorage and live reset on the accepted daylight scene; its hosted result must
-be read back before that stronger claim is accepted.
+Final exact code head `0119b31cb76b0cd330be726df0f926ddcdb7c344`: all 12
+hosted workflows PASS, including `preview1-visual-proof` run `43424723509`,
+`world-viewer-vite` run `43424723602`, `baseline` run `43424723586`,
+`preview1-realdata-publish` run `43424723449`, and `viewer-benchmark`
+run `43424723429`. The actual Chrome screenshot script executed a native
+DOM interaction smoke against the accepted Nannestad scene: fixed-time mode,
+12:00 button and stored minutes 720, 05:15 slider input/commit and stored
+minutes 315, then live `Nå` reset with storage removed. Range min=0/max=1439/
+step=1. Screenshot capture occurred *before* interaction to preserve fixed
+A/B geometry/material evidence. This proves UI control wiring, not gameplay
+quality or visual realism. PR #85 remains draft and unmerged.
 
 ## P0-VISUAL-DAYLIGHT-SNAPSHOT — Reproducible source-pinned, inspectable Nannestad A/B
 **Priority:** COMPLETED — 2026-11-11 / PR #85.
