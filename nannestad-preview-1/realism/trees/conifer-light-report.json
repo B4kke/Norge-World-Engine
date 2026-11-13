@@ -1,0 +1,29 @@
+{
+  "asset_id": "conifer_light",
+  "bake": "trimesh-flatten-transforms-explicit-color0-bake-1mesh-centerXZ-groundY-v0.2",
+  "distinct_material_colors": 2,
+  "runtime": {
+    "byte_size": 232160,
+    "max_near_instances": 36,
+    "mesh_count": 1,
+    "near_radius_m": 125.0,
+    "nominal_height_m": 8.0,
+    "sha256": "77705f017031ac8d7f7a31d78d5b24268eecd56da93bd051cfadee16230be3ba",
+    "triangles": 8792,
+    "vertices": 7856
+  },
+  "runtime_provider_requests": 0,
+  "schema": "nwe.tree-presentation-asset/0.1",
+  "source": {
+    "byte_size": 517112,
+    "license": "CC0-1.0",
+    "mesh_count": 365,
+    "page": "https://www.innerscene.com/tools/library/3d-parts/conifer-light-sprays-1014156d",
+    "sha256": "812f691eb68119681038aed7f45dd80bff0a152afe1fc8160ea5cbeeae9143da",
+    "triangles": 8792,
+    "url": "https://files.innerscene.com/library/conifer-light-sprays-1014156d/b6696b1f65a58e91f7c0/conifer-light.glb"
+  },
+  "status": "PASS",
+  "tile_id": "epsg25832_611000_6677000_1000m",
+  "truth_guard": "generic CC0 conifer model placed at source-derived SR16 representative points; NOT observed individual trees"
+}

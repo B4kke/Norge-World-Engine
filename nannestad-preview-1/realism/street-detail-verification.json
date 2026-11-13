@@ -1,0 +1,39 @@
+{
+  "artifact_byte_size": 645141,
+  "artifact_sha256": "8643b0cc4c3b02b856d56004f877a30fcc1b36c8473d5c301a2c0a4539f6725f",
+  "feature_part_count": 367,
+  "feature_parts_by_type_id": {
+    "174": 1,
+    "181": 41,
+    "20": 0,
+    "48": 1,
+    "5": 0,
+    "519": 12,
+    "80": 29,
+    "87": 57,
+    "9": 19,
+    "95": 67,
+    "953": 0,
+    "96": 115,
+    "99": 25
+  },
+  "features_with_relations": 367,
+  "features_with_source_location": 367,
+  "schema": "nwe.nvdb-street-detail-verification/0.1",
+  "source_raw_sha256": {
+    "174": "88c2523b70c5b77f9c64605027b23f4b8b6ba02431aa107e756d91615adabeb7",
+    "181": "d871147e56f6df57d7f740f3fcccd3167e6f2fbca0f090b7632474ba1e35c981",
+    "20": "580a63648f1b8e10bb45938bdea7c750e3612ede3ac405483c9b9c123584dbb4",
+    "48": "7e256c628156eede05e518970d9dd9d98274f6f66a3525348a66022d98ef4f7c",
+    "5": "3540cb40beb6e12f01eafd668553bcc1fad124a3b9a31377d7031fc56246e4d6",
+    "519": "9a1e8037b9087b922d2691be0c765f5a4e74fbe8b8c85a7fe5704ac2d8551f0e",
+    "80": "b5adcc0ae294f708382fe29b44bf6093a6e14699e2f3cc203cbcdc9ee6413d8d",
+    "87": "4fe4ac544dfd697b664266500946ea2ed4953245118b9f0ad871cad005119f7c",
+    "9": "f4ff8be529d1c3efa490ddc4cb9667b6f5ae0650c5fd880187395a576b0d59fb",
+    "95": "e4bcc6972e1f737b13285d101881f4bddcb720264af5d8c273e57c8f80e7aa1e",
+    "953": "fd357ce5cbc649518e5a5f87416ef4bef7e0a23c7f61b4a043c89412109ea295",
+    "96": "8a8933d1bff462842807a123b720f9f9f9743cb9ce67c2a576b21fa557d35238",
+    "99": "43d6e6cab1e735619321a37988c33e270f1870aed6cc1e927ef47fc2424522f2"
+  },
+  "status": "PASS"
+}
