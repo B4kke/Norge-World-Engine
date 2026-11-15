@@ -42,6 +42,23 @@ solar date/time until manually changed. Neither mode changes authoritative
 geographic data, simulation ticks nor live meteorology. Weather presets are
 separate presentation-only controls.
 
+## Source-backed near-conifer A/B
+
+The normal world view uses the SHA-verified offline CC0 conifer asset in a
+bounded near-camera LOD. For a controlled comparison on the **same accepted
+terrain/road/building and SR16 representative**, use `?treeProof=proxy` or
+`?treeProof=authored` (plus optional `&solarTime=2026-07-23T11%3A00%3A00Z`).
+Both variants use the identical camera target and runtime source identities,
+and the proxy variant deliberately skips the high-detail GPU resource.
+These parameters are presentation diagnostics, not a promise of surveyed
+individual tree locations.
+
+CI captures both images with fixed daylight and clear weather, verifies the
+exact target and camera equality, checks active authored triangles and buffer
+estimate, records headless WebGL2 draw-CPU samples, and measures a fixed tree
+ROI's pixel difference. This is *not* a hardware GPU FPS benchmark, and a
+pixel difference alone is not evidence of photorealism.
+
 ## Deployable app boundary
 
 `index.html` + `src/` form the deployable Vite application shell for the browser viewer. Vite is only the replaceable web build/development tool; it does not select WebGPU, WebGL2, Three.js, Cesium, terrain format or world-coordinate policy.
