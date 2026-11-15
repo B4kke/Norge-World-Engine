@@ -80,4 +80,7 @@ assert.match(adapter, /createThreeGroundRenderer/, 'Preview 1 renderer boundary 
 assert.match(adapter, /loadNannestadRealismRuntime/, 'Preview 1 must load verified realism layers through the explicit runtime boundary');
 assert.doesNotMatch(renderer, /kartverket|nvdb|overpass|openstreetmap/i, 'renderer must not gain raw-source knowledge');
 
+assert.match(renderer, /getTreeProofEvidence/, 'fixed-camera source-bound A/B metrics');
+assert.match(renderer, /setProofCameraPose/, 'proof camera uses bounded adapter');
+assert.match(renderer, /treeProofMode !== 'proxy'/, 'proxy A/B omits authored GPU mesh');
 console.log('THREE_GROUND_RENDERER_STRUCTURE_PASS');
