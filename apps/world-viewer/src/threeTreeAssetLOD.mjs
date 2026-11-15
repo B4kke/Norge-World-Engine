@@ -68,6 +68,11 @@ export async function decodeNearFieldTreeResource(asset) {
   });
 }
 
+function treePositionComponents(value) {
+  return (Array.isArray(value) || value instanceof Float32Array || value instanceof Float64Array)
+    && value.length === 3 && value.every(Number.isFinite);
+}
+
 /** Deterministic, bounded, non-authoritative near-camera candidate selection. */
 export function selectNearFieldTreeRepresentatives(instances, cameraLocal, radiusM, maxInstances) {
   if (!Array.isArray(cameraLocal) || cameraLocal.length !== 3
@@ -80,7 +85,7 @@ export function selectNearFieldTreeRepresentatives(instances, cameraLocal, radiu
   for (const item of instances) {
     if (!['spruce', 'pine', 'conifer-mixed'].includes(item.species_group)) continue;
     const p = item.local_position;
-    if (!Array.isArray(p) || !p.every(Number.isFinite)) continue;
+    if (!treePositionComponents(p)) continue;
     const delta = Math.hypot(p[0] - cameraLocal[0], p[2] - cameraLocal[2]);
     if (delta <= radiusM) near.push({ item, distanceM: delta });
   }
@@ -105,7 +110,7 @@ export function selectProofConifer(instances, maxDistanceM = 350) {
     const q = item?.local_position;
     return ['spruce', 'pine', 'conifer-mixed'].includes(item?.species_group)
       && typeof item.id === 'string' && item.id.length > 0
-      && Array.isArray(q) && q.length === 3 && q.every(Number.isFinite)
+      && treePositionComponents(q)
       && Number.isFinite(item.visual_height_m) && item.visual_height_m > 0
       && Math.hypot(q[0], q[2]) <= maxDistanceM;
   });
