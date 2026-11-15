@@ -107,6 +107,11 @@ flyControls.followTarget([0, centerGround, 0], { headingRadians: 0, initialize: 
 assert.equal(flyControls.snapshot().mode, 'first-person');
 flyWindow.dispatch('keydown', { code: 'KeyF' });
 assert.equal(flyControls.snapshot().mode, 'free-fly');
+const proofPose = flyControls.setProofCameraPose([17, 21, 30], [0, 14, 0]);
+assert.deepEqual(proofPose.eye, [17, 21, 30]);
+assert.deepEqual(flyCamera.lastLookAt.map(x => Number(x.toFixed(6))), [0, 14, 0]);
+assert.throws(() => flyControls.setProofCameraPose([NaN, 0, 0], [0, 0, 0]), /proof eye/);
+flyControls.setProofCameraPose([0, centerGround + 1.7, 0], [0, centerGround + 1.7, -10]);
 flyWindow.dispatch('keydown', { code: 'KeyW' });
 assert.equal(typeof scheduled, 'function');
 scheduled(1000); scheduled(1050);
