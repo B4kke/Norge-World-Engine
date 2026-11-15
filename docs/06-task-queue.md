@@ -261,7 +261,7 @@ quality or visual realism. PR #85 remains draft and unmerged.
 - Proof: `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`. This closes the visual *evidence* gate; it does not close photorealism.
 
 ## P1-NEAR-FIELD-TREES-CAMERA-AB — Fixed source-targeted daylight comparison
-**Priority:** IMPLEMENTED / EXACT CHROME HOSTED ACCEPTANCE PENDING — 2026-11-15
+**Priority:** CHROME A/B PASS / VERCEL PREVIEW READY; QUALITATIVE & HARDWARE PERFORMANCE OPEN — 2026-11-15
 **Owner:** LUMEN + SENTINEL
 
 The WebUI supports isolated `?treeProof=proxy` and
@@ -273,9 +273,28 @@ normal gameplay. The Chrome visual-proof workflow now captures an A/B pair,
 requires identical source IDs/coordinates/camera/terrain identity, and checks
 active authored triangle/byte and frame samples plus source-targeted pixel ROI.
 
-**Evidence pending:** hosted exact-head A/B run and actual image review.
-This is a presentation comparison, not surveyed individual trees or true
-hardware-GPU performance evidence.
+**Evidence:** code-bearing head `4f4bf4da1631598af5bff3c4027052c085011b22` passed
+`preview1-visual-proof` run `43724737720` with Chrome A/B status PASS,
+the same source ID/position and camera in both modes, and fixed clear-weather daylight.
+The near-conifer candidate was a 10.2 m presentation spruce, source-representative
+ID `264886deb2d19d0474ee3630`. The authored variant activates 34 trees ×
+8,792 triangles = **298,928** authored triangles, one instanced draw candidate
+and 325,472 estimated geometry buffer bytes; proxy activates zero authored
+triangles/buffers. The comparison ROI has 41,053 pixel samples, RGB mean absolute
+difference **3.064/255** and changed-pixel share **4.70%** (>18/255 criterion).
+This establishes a measurable different rendering, **not** photorealism or a
+qualitative scene improvement. The headless SwiftShader/WebGL2 CPU draw p50
+was 9.1 ms (proxy) versus 4.2 ms (authored), five samples each with seconds-long
+p95 spikes; **no credible FPS/GPU performance improvement can be inferred**.
+
+`world-viewer-vite` run `43724737878`, `baseline` run `43724737890`,
+`preview1-realdata-publish` run `43724737742` and source/benchmark gates PASS.
+Unrelated `preview3-realdata-publish` run `43724737839` failed at live
+NHM WCS HTTP 504 (not a 1×1 WebUI regression). Vercel Preview
+`dpl_Hf2o4txg4yMQyY2pqj51v3oGRHh8` is READY for that exact code SHA at
+https://norge-world-engine-viewer-qkbhsonhx-b4kkes-projects.vercel.app/.
+Vercel account SSO protection remains enabled. PR #85 remains draft.
+See `docs/proofs/2026-11-15-nannestad-conifer-camera-ab.md`.
 
 ## P1-NEAR-FIELD-TREES — Source-verified CC0 conifer near-field renderer
 **Priority:** CODE + REAL BROWSER GATES PASS; TARGETED NEAR-CONIFER CAMERA VISUAL A/B OPEN (2026-11-11, PR #85).

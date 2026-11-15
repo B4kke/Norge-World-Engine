@@ -823,3 +823,28 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Evaluate the exact A/B screenshot and browser metrics, then verify an exact-commit Vercel Preview without promoting the draft PR.
+
+## 2026-11-15 15:40 CET — SENTINEL — P1-NEAR-FIELD-TREES-CAMERA-AB-ACCEPTANCE
+
+**What**
+- Read back GitHub Actions real-Chrome A/B results for exact code-bearing SHA `4f4bf4da1631598af5bff3c4027052c085011b22`.
+- Diagnosed and corrected a missing `Float32Array` position admission at the near-tree renderer boundary, alongside a proof-camera yaw regression.
+- Scoped Vercel's Ignored Build Step to keep `preview-runtime` excluded but always build the active WebUI PR branch, then explicitly deployed the verified SHA to the existing Vercel Preview project.
+
+**Why**
+- Historical CI screenshots never established near-camera authored-tree visual difference, and Vercel skipped real code changes as CANCELED.
+
+**Result / evidence**
+- FACT: `preview1-visual-proof` run `43724737720`, job `132844121224`, PASS with immutable real Nannestad source, strict Chrome camera/target equality and source-hash equality.
+- FACT: one source-representative spruce at local `[-53.1356964, 17.8324194, -198.1552582]` (10.2 m presentation height) was selected; near-tree layer loads 34 authored instances × 8,792 triangles = 298,928 triangles at one instanced draw candidate and 325,472 estimated geometry buffer bytes.
+- FACT: 41,053 sampled ROI pixels show mean absolute RGB delta 3.064/255 and 4.70% pixels changed >18/255. This is a *detectable* visual difference, not accepted photorealism or subjective quality uplift.
+- FACT: CI passes `world-viewer-vite` `43724737878`, `baseline` `43724737890`, `preview1-realdata-publish` `43724737742` and relevant source/benchmark gates. Provider-dependent `preview3-realdata-publish` run `43724737839` fails at NHM WCS DescribeCoverage with HTTP 504 and remains independent of the accepted 1×1 WebUI scene.
+- FACT: Vercel deployment `dpl_Hf2o4txg4yMQyY2pqj51v3oGRHh8` READY for exact SHA at https://norge-world-engine-viewer-qkbhsonhx-b4kkes-projects.vercel.app/. Preview remains under existing Vercel SSO protection, no production promotion or PR merge.
+- LIMITATION: only five headless SwiftShader/WebGL2 draw-CPU samples per mode, with very large p95 stalls. No hardware GPU/FPS comparison is valid. SR16 tree representatives are not observed individual trees.
+
+**Changed**
+- Web renderer camera/LOD and browser A/B automation, tests, documentation and Vercel project build-skip setting.
+- `docs/proofs/2026-11-15-nannestad-conifer-camera-ab.md`, active queue and this worklog closeout.
+
+**Next**
+- Review targeted near-conifer screenshots qualitatively and measure a repeatable moving-camera frame/GPU budget on actual hardware before changing the visual LOD policy.
