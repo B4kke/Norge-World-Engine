@@ -227,6 +227,7 @@ async function runDefaultPreview() {
   }
 
   let running = false;
+  const treeProofFrames: number[] = [];
   const start = async () => {
     if (running) return;
     running = true;
@@ -236,13 +237,19 @@ async function runDefaultPreview() {
     phaseChip.textContent = 'LOADING';
     const runtimeFetch = createAuditedRuntimeFetch();
     try {
-      const { result } = await runPreview1({
+      const { result, renderer } = await runPreview1({
         canvas,
         manifestUrl,
         groundImageryUrl,
         fetchImpl: runtimeFetch.fetchImpl,
         graphicsProfile: graphicsProfile.id,
         rendererPreference,
+        onFrame: (frame) => {
+          if (params.has('treeProof') && Number.isFinite(frame?.drawCpuMs)) {
+            treeProofFrames.push(frame.drawCpuMs);
+            if (treeProofFrames.length > 90) treeProofFrames.shift();
+          }
+        },
         onPhase: (phase) => {
           phaseChip.textContent = phase.toUpperCase();
           if (phase.includes('verify')) setMetric('metric-provenance', 'VERIFYING', 'warn');
@@ -293,6 +300,25 @@ async function runDefaultPreview() {
           ? ` Ground color: ${result.ground_imagery.provider ?? result.ground_imagery.source_name ?? 'source imagery'} · ${result.ground_imagery.native_ground_sample_distance_m ?? '?'} m GSD · not orthophoto.`
           : ' Ground color: generic PBR fallback.';
         note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale PBR/ground-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${groundColor}${fallback}`;
+      }
+      if (params.has('treeProof')) {
+        const initial = renderer.getTreeProofEvidence?.();
+        if (!initial || initial.mode !== params.get('treeProof') || initial.backend !== result.renderer.backend) {
+          throw new Error('NWE_TREE_PROOF_EVIDENCE_MISSING');
+        }
+        // Read-only diagnostic hook, not authoritative world/simulation state.
+        (globalThis as any).__nweTreeProof = Object.freeze({
+          snapshot() {
+            const evidence = renderer.getTreeProofEvidence();
+            const sorted = [...treeProofFrames].sort((a, b) => a - b);
+            return Object.freeze({
+              ...evidence,
+              frame_sample_count: sorted.length,
+              draw_cpu_p50_ms: sorted.length ? sorted[Math.floor(sorted.length * 0.5)] : null,
+              draw_cpu_p95_ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : null,
+            });
+          },
+        });
       }
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
