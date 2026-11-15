@@ -87,3 +87,35 @@ export function selectNearFieldTreeRepresentatives(instances, cameraLocal, radiu
   near.sort((a, b) => a.distanceM - b.distanceM || String(a.item.id).localeCompare(String(b.item.id)));
   return near.slice(0, maxInstances).map((entry) => entry.item);
 }
+
+/** Renderer-only A/B comparison mode. Invalid variants fail closed. */
+export function resolveTreeProofMode(search = '') {
+  const value = new URLSearchParams(search).get('treeProof');
+  if (value === null) return null;
+  if (!['proxy', 'authored'].includes(value)) throw new RangeError('NWE_TREE_PROOF_MODE_INVALID');
+  return value;
+}
+
+/** Choose a real SR16 representative near tile center; never invent coordinates. */
+export function selectProofConifer(instances, maxDistanceM = 350) {
+  if (!Array.isArray(instances) || !Number.isFinite(maxDistanceM) || maxDistanceM <= 0) {
+    throw new TypeError('NWE_TREE_PROOF_TARGET_INVALID');
+  }
+  const candidates = instances.filter((item) => {
+    const q = item?.local_position;
+    return ['spruce', 'pine', 'conifer-mixed'].includes(item?.species_group)
+      && typeof item.id === 'string' && item.id.length > 0
+      && Array.isArray(q) && q.length === 3 && q.every(Number.isFinite)
+      && Number.isFinite(item.visual_height_m) && item.visual_height_m > 0
+      && Math.hypot(q[0], q[2]) <= maxDistanceM;
+  });
+  candidates.sort((a, b) => Math.hypot(a.local_position[0], a.local_position[2])
+    - Math.hypot(b.local_position[0], b.local_position[2]) || a.id.localeCompare(b.id));
+  const item = candidates[0];
+  return item ? Object.freeze({
+    id: item.id, species_group: item.species_group,
+    local_position: Object.freeze([...item.local_position]),
+    visual_height_m: item.visual_height_m,
+    source_semantics: 'SR16 representative, not an observed individual tree',
+  }) : null;
+}
