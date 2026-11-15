@@ -171,12 +171,15 @@ jobs:
             --runtime-root /tmp/nwe-visual-runtime \
             --ground-imagery-manifest ground/ground-imagery.json \
             --output artifacts/preview1-ground-ready.png \
+            --tree-ab 1 \
             --timeout-ms 90000
 
       - name: Upload exact visual proof
         uses: actions/upload-artifact@v4
         with:
           name: preview1-visual-proof-${{ github.event.pull_request.head.sha || github.sha }}
-          path: artifacts/preview1-ground-ready.png
+          path: |
+            artifacts/preview1-ground-ready*.png
+            artifacts/preview1-tree-ab.json
           if-no-files-found: error
           retention-days: 14
