@@ -802,3 +802,24 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P1-NEAR-FIELD-TREES-CAMERA-AB`: prove the source-verified near-conifer asset on a deterministic daylight target camera against the earlier proxy-only rendering, with frame/triangle/image evidence.
+
+## 2026-11-15 15:32 CET — LUMEN / SENTINEL — P1-NEAR-FIELD-TREES-CAMERA-AB
+
+**What**
+- Built an opt-in source-representative-targeted free-fly camera for a same-scene proxy versus verified CC0 authored conifer A/B.
+- Added deterministic target selection, strict mode parsing, a renderer-only camera framing method, live near-tree triangle/buffer and draw-CPU observables, and a native Chrome dual-screenshot comparison under the existing real-data visual-proof workflow.
+- Both modes use identical accepted runtime artifacts and fixed 2026-07-23 11:00 UTC daylight with clear-weather presentation; the proxy mode skips GLB GPU upload without bypassing byte-level source transport verification.
+
+**Why**
+- Earlier CI images confirmed general Nannestad visibility but not an actual close-up improvement at an admitted conifer.
+
+**Result / evidence**
+- Implementation and narrow negative regressions committed to PR #85. Exact browser A/B CI and visual image comparison remain an open gate until hosted result is read back; no performance uplift or photorealism is asserted before that evidence.
+- Browser software WebGL2 frame measurements are CPU-side draw samples only, not physical GPU measurements. SR16 representatives are not observed individual tree positions.
+
+**Changed**
+- `apps/world-viewer/src/threeTreeAssetLOD.mjs`, `threeVegetationLayer.mjs`, `threePreviewCameraControls.mjs`, `threeGroundRenderer.mjs`, `main.ts` plus camera/tree/renderer regression tests.
+- `apps/world-viewer/capture_preview1_screenshot.mjs`, `.github/workflows/preview1-visual-proof.yml`, viewer README, active queue and worklog.
+
+**Next**
+- Evaluate the exact A/B screenshot and browser metrics, then verify an exact-commit Vercel Preview without promoting the draft PR.
