@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { sampleRenderedTerrainY } from './renderedTerrainHeight.mjs';
-import { selectNearFieldTreeRepresentatives } from './threeTreeAssetLOD.mjs';
+import { selectNearFieldTreeRepresentatives, selectProofConifer } from './threeTreeAssetLOD.mjs';
 
 function hashUnit(text, salt = '') {
   const value = `${text}:${salt}`;
@@ -300,6 +300,7 @@ export function createThreeVegetationLayer({ placement, profile, terrainMesh = n
     dispose,
     updateNearField,
     nearFieldSnapshot,
+    proofTarget() { return selectProofConifer(visible); },
     stats: Object.freeze({
       schema: 'nwe.three-vegetation-layer/0.2',
       source_representative_count: source.length,
