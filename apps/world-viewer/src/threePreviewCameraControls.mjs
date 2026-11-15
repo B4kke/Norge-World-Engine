@@ -314,6 +314,23 @@ export function installThreePreviewCameraControls({
     sync,
     setMode,
     toggleFlyMode() { return setMode(mode === 'free-fly' ? 'first-person' : 'free-fly'); },
+    setProofCameraPose(proofEye, proofTarget) {
+      if (mode !== 'free-fly') throw new Error('NWE_TREE_PROOF_CAMERA_REQUIRES_FLY');
+      const nextEye = finiteVector3(proofEye, 'proof eye');
+      const nextTarget = finiteVector3(proofTarget, 'proof target');
+      const pose = cameraStateFromPose(nextEye, nextTarget);
+      if (pose.pitch < THREE_GROUND_CAMERA_LIMITS.minPitch
+          || pose.pitch > THREE_GROUND_CAMERA_LIMITS.maxPitch) {
+        throw new RangeError('NWE_TREE_PROOF_CAMERA_PITCH_INVALID');
+      }
+      eye = nextEye;
+      state.yaw = pose.y;
+      state.pitch = pose.pitch;
+      state.target.splice(0, 3, ...nextEye);
+      state.distance = 0;
+      sync();
+      return snapshot();
+    },
     followTarget(position, { headingRadians = 0, initialize = false } = {}) {
       const character = finiteVector3(position, 'character position');
       if (!Number.isFinite(headingRadians)) throw new TypeError('headingRadians must be finite');
