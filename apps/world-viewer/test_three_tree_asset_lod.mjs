@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { decodeNearFieldTreeResource, selectNearFieldTreeRepresentatives } from './src/threeTreeAssetLOD.mjs';
+import { decodeNearFieldTreeResource, selectNearFieldTreeRepresentatives, selectProofConifer, resolveTreeProofMode } from './src/threeTreeAssetLOD.mjs';
 import { createThreeVegetationLayer } from './src/threeVegetationLayer.mjs';
 
 const placement = {
@@ -17,6 +17,16 @@ assert.deepEqual(selectNearFieldTreeRepresentatives(placement.instances, [12, 1,
 assert.equal(selectNearFieldTreeRepresentatives(placement.instances, [0, 0, 0], 20, 0).length, 0);
 assert.throws(() => selectNearFieldTreeRepresentatives(placement.instances, [NaN, 0, 0], 20, 3), /NWE_TREE_NEAR_FIELD_INPUT_INVALID/);
 await assert.rejects(() => decodeNearFieldTreeResource({ bytes: new Uint8Array(10) }), /NWE_TREE_RESOURCE_NOT_ADMITTED/);
+assert.equal(resolveTreeProofMode(''), null);
+assert.equal(resolveTreeProofMode('?treeProof=proxy'), 'proxy');
+assert.equal(resolveTreeProofMode('?treeProof=authored'), 'authored');
+assert.throws(() => resolveTreeProofMode('?treeProof=invalid'), /NWE_TREE_PROOF_MODE_INVALID/);
+const sourceProof = selectProofConifer(placement.instances);
+assert.equal(sourceProof.id, 'spruce-a');
+assert.deepEqual(sourceProof.local_position, [0, 0, 0]);
+assert.equal(sourceProof.source_semantics, 'SR16 representative, not an observed individual tree');
+assert.throws(() => selectProofConifer(placement.instances, -1), /NWE_TREE_PROOF_TARGET_INVALID/);
+assert.equal(selectProofConifer(placement.instances.filter(item => item.species_group === 'deciduous')), null);
 
 const detailedTreeResource = {
   geometry: new THREE.ConeGeometry(1, 8, 12),
@@ -35,6 +45,7 @@ const layer = createThreeVegetationLayer({
   detailedTreeResource,
 });
 assert.equal(layer.stats.near_field_authored_asset, true);
+assert.equal(layer.proofTarget().id, 'spruce-a');
 assert.equal(layer.stats.mesh_count, 7);
 assert.equal(layer.stats.draw_calls, 7);
 assert.equal(layer.stats.near_field_initial_count, 1);
