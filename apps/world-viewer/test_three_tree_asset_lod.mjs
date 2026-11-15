@@ -15,6 +15,10 @@ const placement = {
 assert.deepEqual(selectNearFieldTreeRepresentatives(placement.instances, [0, 2, 0], 20, 1).map(x => x.id), ['spruce-a']);
 assert.deepEqual(selectNearFieldTreeRepresentatives(placement.instances, [12, 1, -8], 10, 4).map(x => x.id), ['pine-b']);
 assert.equal(selectNearFieldTreeRepresentatives(placement.instances, [0, 0, 0], 20, 0).length, 0);
+const typedPlacement = [{ ...placement.instances[0], local_position: new Float32Array([0, 0, 0]) }];
+assert.equal(selectNearFieldTreeRepresentatives(typedPlacement, [0, 1, 0], 20, 1)[0].id, 'spruce-a');
+assert.equal(selectProofConifer(typedPlacement).id, 'spruce-a',
+  'real runtime Float32 positions must be selectable for near-field visuals');
 assert.throws(() => selectNearFieldTreeRepresentatives(placement.instances, [NaN, 0, 0], 20, 3), /NWE_TREE_NEAR_FIELD_INPUT_INVALID/);
 await assert.rejects(() => decodeNearFieldTreeResource({ bytes: new Uint8Array(10) }), /NWE_TREE_RESOURCE_NOT_ADMITTED/);
 assert.equal(resolveTreeProofMode(''), null);
