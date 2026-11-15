@@ -109,7 +109,13 @@ flyWindow.dispatch('keydown', { code: 'KeyF' });
 assert.equal(flyControls.snapshot().mode, 'free-fly');
 const proofPose = flyControls.setProofCameraPose([17, 21, 30], [0, 14, 0]);
 assert.deepEqual(proofPose.eye, [17, 21, 30]);
-assert.deepEqual(flyCamera.lastLookAt.map(x => Number(x.toFixed(6))), [0, 14, 0]);
+const actualForward = flyCamera.lastLookAt.map((component, i) => component - [17, 21, 30][i]);
+const targetDirection = [0 - 17, 14 - 21, 0 - 30];
+const length = Math.hypot(...targetDirection);
+for (let i = 0; i < 3; i += 1) {
+  assert.ok(Math.abs(actualForward[i] - targetDirection[i] / length) < 1e-10,
+    'fixed proof camera must point toward the source representative');
+}
 assert.throws(() => flyControls.setProofCameraPose([NaN, 0, 0], [0, 0, 0]), /proof eye/);
 flyControls.setProofCameraPose([0, centerGround + 1.7, 0], [0, centerGround + 1.7, -10]);
 flyWindow.dispatch('keydown', { code: 'KeyW' });
