@@ -8,7 +8,7 @@ import { byteLengthOf, monotonicNow } from './rendererObservability.mjs';
 import { createGroundPostProcessing } from './threeGroundPostProcessing.mjs';
 import { installThreePreviewCameraControls } from './threePreviewCameraControls.mjs';
 import { createThreeVegetationLayer } from './threeVegetationLayer.mjs';
-import { decodeNearFieldTreeResource } from './threeTreeAssetLOD.mjs';
+import { decodeNearFieldTreeResource, resolveTreeProofMode } from './threeTreeAssetLOD.mjs';
 import { createThreeStreetDetailLayer } from './threeStreetDetailLayer.mjs';
 import { createThreeBuildingFacadeLayer } from './threeBuildingFacadeLayer.mjs';
 import {
@@ -116,6 +116,7 @@ export async function createThreeGroundRenderer({ canvas, terrainPayload, roadsA
 }
 
 async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, canvas, terrainPayload, roadsArtifact, buildingsArtifact, vegetationPlacement, treeAsset, streetDetail, realismEvidence, groundImagery, profile, initStartedAt, onFrame }) {
+  const treeProofMode = resolveTreeProofMode(globalThis.location?.search ?? '');
   const sceneStartedAt = monotonicNow();
   const sceneGeometry = createPreviewSceneGeometry({ terrainPayload, roadsArtifact, buildingsArtifact });
   sceneGeometry.roads = drapeRoadOnTerrain(sceneGeometry.roads, terrainPayload.mesh);
@@ -149,7 +150,10 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
-  const detailedTreeResource = treeAsset && vegetationPlacement ? await decodeNearFieldTreeResource(treeAsset) : null;
+  // Same SHA-verified tree transport in both modes; proxy omits the authored
+  // mesh decode/GPU upload to make the comparison meaningful.
+  const detailedTreeResource = treeProofMode !== 'proxy' && treeAsset && vegetationPlacement
+    ? await decodeNearFieldTreeResource(treeAsset) : null;
   const vegetationLayer = vegetationPlacement ? createThreeVegetationLayer({ placement: vegetationPlacement, profile, terrainMesh: terrainPayload.mesh, detailedTreeResource }) : null;
   if (vegetationLayer) scene.add(vegetationLayer.root);
 
@@ -200,6 +204,18 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;
   let characterFollowInitialized = false;
   const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, firstPerson: true, onChange: () => { dirty = true; } });
+  const treeProofTarget = treeProofMode ? vegetationLayer?.proofTarget() ?? null : null;
+  if (treeProofMode) {
+    if (!treeAsset || !treeProofTarget) throw new Error('NWE_TREE_PROOF_SOURCE_TARGET_MISSING');
+    const [x, y, z] = treeProofTarget.local_position;
+    const height = treeProofTarget.visual_height_m;
+    cameraControls.setMode('free-fly');
+    cameraControls.setProofCameraPose(
+      [x + 12, y + Math.max(7, height * 0.6), z + 18],
+      [x, y + height * 0.52, z],
+    );
+    lighting.updateAnchor([x, y, z]);
+  }
   const firstFrame = new Promise((resolve, reject) => { firstFrameResolve = resolve; firstFrameReject = reject; });
 
   function resize() {
@@ -322,6 +338,29 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     },
     getCharacterState() { return humanoid.snapshot(); },
     getCameraState() { return cameraControls.snapshot(); },
+    getTreeProofEvidence() {
+      if (!treeProofMode) return null;
+      const near = vegetationLayer?.nearFieldSnapshot() ?? null;
+      return Object.freeze({
+        schema: 'nwe.tree-camera-ab/0.1',
+        mode: treeProofMode,
+        target: treeProofTarget,
+        camera: cameraControls.snapshot(),
+        near_field: near,
+        source_sha256: treeAsset.source_sha256,
+        runtime_sha256: treeAsset.sha256,
+        source_representative_count: vegetationLayer?.stats.source_representative_count ?? 0,
+        rendered_representative_count: vegetationLayer?.stats.rendered_representative_count ?? 0,
+        authored_triangles_per_tree: treeAsset.triangle_count,
+        authored_triangles_active: (near?.active_count ?? 0) * treeAsset.triangle_count,
+        authored_resource_bytes_estimate: nearTreeGeometryBytesEstimate,
+        authored_render_draws: detailedTreeResource ? 1 : 0,
+        terrain_artifact_sha256: expectedTerrainArtifactSha,
+        backend: activeBackend,
+        graphics_profile: profile.id,
+        truth_guard: 'fixed renderer-only camera and LOD; SR16 coordinates remain unchanged',
+      });
+    },
     getVisualStyle() { return { ...rendererVisualStyle, ...lighting.snapshot() }; },
   };
 }
