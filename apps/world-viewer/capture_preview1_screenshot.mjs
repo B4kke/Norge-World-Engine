@@ -215,6 +215,125 @@ async function assertSolarClockUi(cdp) {
   return proof;
 }
 
+
+/** Reuse the accepted runtime snapshot for both camera-locked vegetation modes. */
+async function waitForTreeProof(cdp, mode, timeoutMs) {
+  const started = Date.now();
+  let last = null;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const response = await cdp.send('Runtime.evaluate', {
+        expression: 'window.__nweTreeProof?.snapshot?.() ?? null',
+        returnByValue: true,
+      });
+      last = response?.result?.value ?? null;
+      if (last?.schema === 'nwe.tree-camera-ab/0.1' && last.mode === mode
+          && last.camera?.mode === 'free-fly'
+          && last.frame_sample_count >= 2
+          && (mode === 'proxy' || last.near_field?.selected_ids?.includes(last.target?.id))) {
+        return last;
+      }
+      const errorState = await cdp.send('Runtime.evaluate', {
+        expression: 'document.querySelector("#phase-chip")?.textContent ?? ""',
+        returnByValue: true,
+      });
+      if (errorState?.result?.value === 'DATA NOT READY') throw new Error('TREE_PROOF_SCENE_FAILED');
+    } catch (error) {
+      if (String(error).includes('TREE_PROOF_SCENE_FAILED')) throw error;
+      // Navigation can temporarily destroy the previous execution context.
+    }
+    await delay(200);
+  }
+  throw new Error('TREE_PROOF_TIMEOUT_' + mode + ': ' + JSON.stringify(last));
+}
+
+async function measureTreePixelDifference(cdp, baselinePng, authoredPng) {
+  const sourceA = 'data:image/png;base64,' + baselinePng.toString('base64');
+  const sourceB = 'data:image/png;base64,' + authoredPng.toString('base64');
+  const expression = '(async () => {'
+    + 'const load = async(src) => { const i = new Image(); i.src = src; await i.decode(); return i; };'
+    + 'const [a,b] = await Promise.all([load(' + JSON.stringify(sourceA) + '),load(' + JSON.stringify(sourceB) + ')]);'
+    + 'if(a.naturalWidth !== b.naturalWidth || a.naturalHeight !== b.naturalHeight) throw new Error("A/B viewport mismatch");'
+    + 'const rect = document.querySelector("#world-canvas")?.getBoundingClientRect();'
+    + 'if(!rect || rect.width < 100 || rect.height < 100) throw new Error("missing world ROI");'
+    + 'const region = {x:Math.max(0,Math.floor(rect.x + rect.width*0.32)), y:Math.max(0,Math.floor(rect.y + rect.height*0.19)),'
+    + 'w:Math.floor(rect.width*0.36), h:Math.floor(rect.height*0.63)};'
+    + 'region.w=Math.min(region.w,a.naturalWidth-region.x);region.h=Math.min(region.h,a.naturalHeight-region.y);'
+    + 'if(region.w<40||region.h<40)throw new Error("invalid tree comparison ROI");'
+    + 'const pixels = (image) => { const c=document.createElement("canvas"); c.width=region.w;c.height=region.h;'
+    + 'const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(image,region.x,region.y,region.w,region.h,0,0,region.w,region.h);'
+    + 'return ctx.getImageData(0,0,region.w,region.h).data; };'
+    + 'const pa=pixels(a),pb=pixels(b);let total=0,changed=0,count=0;'
+    + 'for(let k=0;k<pa.length;k+=16){const d=(Math.abs(pa[k]-pb[k])+Math.abs(pa[k+1]-pb[k+1])+Math.abs(pa[k+2]-pb[k+2]))/3;'
+    + 'total+=d;if(d>18)changed++;count++;}'
+    + 'return {region:[region.x,region.y,region.w,region.h],sampled_pixels:count,mean_abs_rgb_delta:total/count,changed_pixel_share:changed/count};'
+    + '})()';
+  const result = await cdp.send('Runtime.evaluate', {
+    expression, returnByValue: true, awaitPromise: true,
+  });
+  if (result?.exceptionDetails || !(result?.result?.value?.sampled_pixels > 100)) {
+    throw new Error('TREE_PROOF_PIXEL_DIFFERENCE_UNAVAILABLE: ' + JSON.stringify(result?.exceptionDetails ?? null));
+  }
+  return result.result.value;
+}
+
+async function captureTreeAb(cdp, origin, originalQuery, timeoutMs, output) {
+  const measurements = {};
+  const images = {};
+  for (const mode of ['proxy', 'authored']) {
+    const query = new URLSearchParams(originalQuery);
+    query.set('treeProof', mode);
+    query.set('weather', 'clear');
+    query.set('solarTime', VISUAL_PROOF_SOLAR_TIME_UTC);
+    query.set('renderer', 'webgl2');
+    query.set('graphics', 'high');
+    await cdp.send('Page.navigate', { url: origin + '/?' + query.toString() });
+    const proof = await waitForTreeProof(cdp, mode, timeoutMs);
+    await delay(550);
+    measurements[mode] = await waitForTreeProof(cdp, mode, timeoutMs);
+    const shot = await cdp.send('Page.captureScreenshot', {
+      format: 'png', fromSurface: true, captureBeyondViewport: false,
+    });
+    if (!shot?.data) throw new Error('TREE_PROOF_SCREENSHOT_MISSING_' + mode);
+    const png = Buffer.from(shot.data, 'base64');
+    if (png.length < 1000) throw new Error('TREE_PROOF_SCREENSHOT_TOO_SMALL_' + mode);
+    images[mode] = png;
+    writeFileSync(output.replace(/\.png$/, '-tree-' + mode + '.png'), png);
+  }
+  const a = measurements.proxy;
+  const b = measurements.authored;
+  const same = (field) => JSON.stringify(a[field]) === JSON.stringify(b[field]);
+  if (!same('target') || !same('camera') || !same('source_sha256')
+      || !same('runtime_sha256') || !same('terrain_artifact_sha256')
+      || !same('source_representative_count') || !same('rendered_representative_count')
+      || !same('backend') || !same('graphics_profile')) {
+    throw new Error('TREE_PROOF_COMPARISON_NOT_IDENTICAL_SCENE');
+  }
+  if (a.authored_triangles_active !== 0 || a.authored_render_draws !== 0
+      || a.near_field?.active_count !== 0 || a.authored_resource_bytes_estimate !== 0
+      || !(b.authored_triangles_active >= b.authored_triangles_per_tree)
+      || b.authored_render_draws !== 1
+      || !b.near_field?.selected_ids?.includes(b.target?.id)
+      || !(b.authored_resource_bytes_estimate > 0)
+      || !(a.frame_sample_count >= 2 && b.frame_sample_count >= 2)) {
+    throw new Error('TREE_PROOF_MODE_BUDGET_INVALID: ' + JSON.stringify({proxy:a,authored:b}));
+  }
+  const pixelDelta = await measureTreePixelDifference(cdp, images.proxy, images.authored);
+  if (!(pixelDelta.changed_pixel_share > 0.01 && pixelDelta.mean_abs_rgb_delta > 1)) {
+    throw new Error('TREE_PROOF_VISUAL_DIFFERENCE_NOT_OBSERVED: ' + JSON.stringify(pixelDelta));
+  }
+  const report = {
+    schema: 'nwe.tree-camera-ab-proof/0.1', status: 'PASS',
+    solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
+    weather: 'clear', camera_pose_equal: true, source_identity_equal: true,
+    proxy: a, authored: b, pixel_difference: pixelDelta,
+    frame_timing_semantics: 'software WebGL2 browser CPU draw sample, not hardware GPU performance',
+    source_semantics: 'same source tree representative, authored tree is CC0 visual model not observed tree',
+  };
+  writeFileSync(output.replace(/\.png$/, '-tree-ab.json'), JSON.stringify(report, null, 2) + '\n');
+  return report;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args['runtime-root']) throw new Error('--runtime-root is required');
@@ -306,6 +425,9 @@ async function main() {
     }
     writeFileSync(output, png);
     const solarClockUi = await assertSolarClockUi(cdp);
+    const treeAb = args['tree-ab'] === '1'
+      ? await captureTreeAb(cdp, origin, query, timeoutMs, output)
+      : null;
     console.log(JSON.stringify({
       schema: 'nwe.preview1-visual-proof/0.1',
       status: 'PASS',
@@ -319,6 +441,7 @@ async function main() {
       solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
       daylight_world_viewport: daylightEvidence,
       solar_clock_ui: solarClockUi,
+      tree_camera_ab: treeAb,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
   } catch (error) {
