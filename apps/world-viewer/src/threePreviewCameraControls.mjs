@@ -324,7 +324,7 @@ export function installThreePreviewCameraControls({
         throw new RangeError('NWE_TREE_PROOF_CAMERA_PITCH_INVALID');
       }
       eye = nextEye;
-      state.yaw = pose.y;
+      state.yaw = pose.yaw;
       state.pitch = pose.pitch;
       state.target.splice(0, 3, ...nextEye);
       state.distance = 0;
