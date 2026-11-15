@@ -260,6 +260,23 @@ quality or visual realism. PR #85 remains draft and unmerged.
 - Exact code head `d7e097200240de508f437186490aaae2381762f9`: `preview1-visual-proof` run `42931242230` PASS (viewport luminance 177.44/255, 94.02% scene bright pixels); `preview1-realdata-publish` run `42931242287` PASS including real Chrome composition; `world-viewer-vite`, `baseline`, `viewer-benchmark`, `nvdb-road-semantics-proof` PASS.
 - Proof: `docs/proofs/2026-11-11-immutable-daylight-visual-acceptance.md`. This closes the visual *evidence* gate; it does not close photorealism.
 
+## P1-NEAR-FIELD-TREES-CAMERA-AB — Fixed source-targeted daylight comparison
+**Priority:** IMPLEMENTED / EXACT CHROME HOSTED ACCEPTANCE PENDING — 2026-11-15
+**Owner:** LUMEN + SENTINEL
+
+The WebUI supports isolated `?treeProof=proxy` and
+`?treeProof=authored` variants. Both select the nearest eligible SR16 conifer
+representative within 350 m of tile center and use the same fixed free-fly
+camera, geodata, weather and daylight. The proxy variant omits authored GLB
+GPU upload; the authored variant uses the same SHA-verified CC0 resource as
+normal gameplay. The Chrome visual-proof workflow now captures an A/B pair,
+requires identical source IDs/coordinates/camera/terrain identity, and checks
+active authored triangle/byte and frame samples plus source-targeted pixel ROI.
+
+**Evidence pending:** hosted exact-head A/B run and actual image review.
+This is a presentation comparison, not surveyed individual trees or true
+hardware-GPU performance evidence.
+
 ## P1-NEAR-FIELD-TREES — Source-verified CC0 conifer near-field renderer
 **Priority:** CODE + REAL BROWSER GATES PASS; TARGETED NEAR-CONIFER CAMERA VISUAL A/B OPEN (2026-11-11, PR #85).
 
