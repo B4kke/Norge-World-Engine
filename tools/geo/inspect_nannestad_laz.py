@@ -296,6 +296,8 @@ def main() -> int:
     parser.add_argument("path", type=Path)
     parser.add_argument("--source-project")
     parser.add_argument("--expected-sha256")
+    parser.add_argument("--require-candidate", action="store_true",
+                        help="Exit nonzero unless SHA-bound CRS and coarse source gates produce SOURCE_CANDIDATE_ONLY")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -310,6 +312,11 @@ def main() -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(encoded, encoding="utf-8")
     print(encoded, end="")
+    if args.require_candidate and result["reconstruction_gate"]["status"] != "SOURCE_CANDIDATE_ONLY":
+        raise SystemExit(
+            "NWE_NANNESTAD_LAZ_RECONSTRUCTION_BLOCKED: "
+            + ",".join(result["reconstruction_gate"]["blockers"])
+        )
     return 0
 
 
