@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
 import laspy
 import numpy as np
@@ -112,6 +115,20 @@ class InspectNannestadLazTests(unittest.TestCase):
             self.assertEqual(result["tile_measurement"]["grid_100m"]["cells_with_ground_class"], 100)
             self.assertEqual(result["reconstruction_gate"]["status"], "SOURCE_CANDIDATE_ONLY")
             self.assertEqual(result["reconstruction_gate"]["blockers"], [])
+
+    def test_cli_candidate_mode_fails_closed_and_preserves_diagnostic_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "missing-vertical.laz"
+            evidence = Path(temp_dir) / "inspection.json"
+            write_fixture_laz(path, [(611050, 6677050, 50, 2)], "EPSG:25832")
+            with patch("sys.argv", [
+                "inspect_nannestad_laz.py", str(path),
+                "--output", str(evidence), "--require-candidate",
+            ]), redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as rejected:
+                inspect.main()
+            self.assertIn("NWE_NANNESTAD_LAZ_RECONSTRUCTION_BLOCKED", str(rejected.exception))
+            self.assertTrue(evidence.is_file())
+            self.assertIn("VERTICAL_CRS_NN2000_5941_NOT_PROVEN", evidence.read_text())
 
     def test_sha256_file_is_exact_byte_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
