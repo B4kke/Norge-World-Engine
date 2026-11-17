@@ -41,7 +41,9 @@ jobs:
             tools/geo/test_prepare_nannestad_laz_export.py
 
   live-provider:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    # Live Geonorge provider diagnostics are an explicit operator experiment,
+    # not a routine PR correctness gate. PRs test exact-file contracts offline.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
