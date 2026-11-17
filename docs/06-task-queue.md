@@ -52,16 +52,19 @@ Do not displace the active 1×1 km slice with whole-Norway terrain archaeology, 
 - `Gjerdrum Ullensaker Nannestad 5pkt 2020` / `LACHVI04` is confirmed `TILGANG=2` closed and rejected as the anonymous/open default despite the same 5 pkt/m² ordered density;
 - current `Romerike laser 2025` / `LACIAK53` remains a freshness cross-check while its project state is ongoing rather than a delivered open source;
 - fail-closed export request builder for exact polygon/LAZ/EPSG:25832, requiring explicit project, explicit `ProjectProduct`, explicit `CopyEmail` or BAAT user, and explicit `--submit`; operator identity/credentials are redacted from evidence;
-- chunked/NumPy-vectorized LAZ inspector records exact SHA-256, bounds/CRS, point count, exact-tile measured density and LAS class counts for ground/vegetation/buildings;
+- chunked/NumPy-vectorized LAZ inspector records exact SHA-256, bounds, point count and exact-tile measured density;
+- **new 2026-11-17 fail-closed source-byte inspection v0.2** separates whole-file from in-tile LAS class histograms, measures 10×10 coarse 100 m ground/vegetation/building cell occupancy, verifies decompressed/header bounds and explicitly checks horizontal EPSG:25832 plus embedded vertical EPSG:5941 rather than inferring NN2000 from XY;
+- explicit `--require-candidate` exits nonzero on unknown/mismatched CRS, unproven vertical reference, missing ground coverage/classification or bad bounds, while preserving the inspection JSON for diagnosis. A `SOURCE_CANDIDATE_ONLY` result is **not** accepted terrain, roof reconstruction or observed individual trees;
 - normal PR CI validates source/export/inspection contracts without making provider availability a merge gate; manual live discovery remains `workflow_dispatch` only.
 
 **Validation evidence:**
 - diagnostic live WFS run `41308978719`: contract PASS + live-provider PASS; exact source-field artifact `13084781636`;
 - current source/export/inspection contract head `ba40c08604232fbb71ce5c4885a548d9288e54fd`: `nannestad-lidar-source-probe` run `41309741805` PASS, `baseline` run `41309741814` PASS, `world-viewer-vite` run `41309741822` PASS and `viewer-benchmark` run `41309741806` PASS;
+- synthetic compressed-LAZ contract: exact code-bearing SHA `8b927dfc6dd5236d9af55e22d6cea8d0df843422`, `nannestad-lidar-source-probe` run [44126370072](https://github.com/B4kke/Norge-World-Engine/actions/runs/44126370072) **PASS, 21/21 tests** including in-tile-only class support, 100 m occupancy, EPSG mismatch and CLI rejection; hosted parser exercised real LAZ compression/decompression, **not** a real Norwegian source file;
 - actual LAZ bytes are **not yet acquired or admitted**. See `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md`.
 
 **Remaining acceptance sequence:**
-1. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it;
+1. resolve/document the provider's ambiguous `ProjectProduct` requirement for `Format=1` point-cloud export rather than guessing it. The official currently accessible PDF still does not state a LAZ-specific value. Do not submit an export with an invented value;
 2. make one explicit operator export of `NDH Akershus 5pkt 2015` with a supplied delivery identity; raw LAZ stays outside Git/runtime;
 3. SHA-bind the delivered bytes and inspect LAS header, CRS/vertical frame, point count, exact-tile coverage/density and source classes;
 4. fail closed if building/ground/vegetation evidence is insufficient for the intended reconstruction claim.

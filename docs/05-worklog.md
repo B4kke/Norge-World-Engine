@@ -848,3 +848,28 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Review targeted near-conifer screenshots qualitatively and measure a repeatable moving-camera frame/GPU budget on actual hardware before changing the visual LOD policy.
+
+## 2026-11-17 17:32 CET — SENTINEL — P0-HYPERREAL-LIDAR-01-EXACT-BYTE-GATE
+
+**What**
+- Continued draft PR #85 without a new branch; rechecked Kartverket's current public Høydedata export PDF and the 2026 NN2000 reference update.
+- Hardened `tools/geo/inspect_nannestad_laz.py` to count ground/vegetation/building LAS classes **only inside** exact Nannestad 1 km tile rather than the whole LAZ dataset.
+- Added explicit horizontal/vertical CRS identity checks, 10×10 ground occupancy sampling, header-versus-decoded-bounds checks and `--require-candidate` fail-closed CLI status while retaining JSON evidence.
+- Added real synthetic compressed-LAZ regression fixtures using pinned laspy/lazrs/numpy/pyproj; kept live provider diagnostics under manual `workflow_dispatch` instead of making ordinary PR checks depend on source availability.
+
+**Why**
+- An intersecting project tile could appear roof-/forest-ready merely because it contained classes **outside** the exact target area. The accepted Nannestad source is still not delivered, so a wrong admission claim would poison downstream reconstruction.
+
+**Result / evidence**
+- FACT: hosted `nannestad-lidar-source-probe` [run 44126370072](https://github.com/B4kke/Norge-World-Engine/actions/runs/44126370072), contract job `134191159228`, **21/21 Python regressions PASS** against exact code-bearing commit `8b927dfc6dd5236d9af55e22d6cea8d0df843422`.
+- FACT: two distinct class histograms, coarse ground presence and mismatched/unknown CRS rejection are exercised using compressed synthetic LAZ bytes. The CLI emits the blocking reason and preserves the diagnostic JSON on failure.
+- FACT: Kartverket's published API document still leaves `ProjectProduct` interpretation ambiguous for `Format=1` LAZ, and Kartverket now distinguishes NN2000:2018 (source-era EPSG:5941) from NN2000:2025. Neither is silently substituted.
+- LIMITATION: no actual Norwegian LAZ bytes acquired, no real point density measured, no sampled tree/roof truth established. CI is contract evidence, **not** a successful gold-tile acquisition. 
+- Proof: `docs/proofs/2026-11-01-nannestad-lidar-source-admission.md` (2026-11-17 addendum).
+
+**Changed**
+- `tools/geo/inspect_nannestad_laz.py`, `tools/geo/test_inspect_nannestad_laz.py`, `tools/geo/requirements-lidar.txt`, `.github/workflows/nannestad-lidar-source-probe.yml`.
+- `docs/04-decisions.md`, `docs/05-worklog.md`, `docs/06-task-queue.md`, and the LiDAR admission proof.
+
+**Next**
+- `P0-HYPERREAL-LIDAR-01`: obtain an unambiguous official `ProjectProduct` interpretation for point-cloud export, then perform one operator-authorized exact-tile export of the already selected open `NDH Akershus 5pkt 2015` source and run the new candidate inspection on genuine delivered bytes.

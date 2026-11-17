@@ -111,6 +111,20 @@ Only decisions with evidence or an explicit product requirement belong here. Ope
 
 **Consequence:** the 2015 source selection is only the first gold-tile acquisition hypothesis. Full 1×1 km coverage, actual density/classes, roof reconstructability and individual-tree evidence remain open until measured from delivered bytes. Three.js/WebGPU and Unreal may consume only later engine-neutral derived artifacts; neither may stream raw provider data as world truth.
 
+
+**2026-11-17 evidence-qualified clarification (no source-policy promotion):** The
+LAZ inspection gate now reads *in-tile* classes rather than incorrectly
+crediting LAS classes located outside the accepted tile. It reports 10×10
+100 m cell occupancy, verifies explicit CRS EPSG:25832 + vertical EPSG:5941,
+and blocks automatic candidacy for missing datum/coverage through
+`--require-candidate`. The source/format policy is unchanged. Kartverket
+introduced NN2000:2025 on 14 October 2026; newer vertical EPSG:11394 is
+not interchangeable with source-era NN2000:2018 EPSG:5941 without a
+documented transformation. Full data admission and `ProjectProduct`
+semantics remain open. See
+`docs/proofs/2026-11-01-nannestad-lidar-source-admission.md` and
+[the official Kartverket 2026 update](https://kartverket.no/om-kartverket/nyheter/alle/2026/oktober/ny-href-modell-og-nye-epsg-koder-gir-mer-presise-hoyder-og-bedre-datakvalitet).
+
 ## Open decisions
 
 - Exact `ProjectProduct` value/semantics for Kartverket `Format=1` LAZ project export; do not guess until provider behavior or documentation resolves the point-cloud ambiguity.
