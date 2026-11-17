@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Install pinned LAZ parser and CRS dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/geo/requirements-lidar.txt
+
       - name: Syntax and deterministic source-gate regressions
         run: |
           python -m py_compile \
