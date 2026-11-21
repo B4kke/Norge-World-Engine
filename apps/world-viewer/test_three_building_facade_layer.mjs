@@ -33,7 +33,7 @@ const buildingsArtifact = {
 };
 
 const layer = createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPayload, profile: { id: 'high' } });
-assert.equal(layer.stats.schema, 'nwe.three-building-facade-layer/0.2');
+assert.equal(layer.stats.schema, 'nwe.three-building-facade-layer/0.3');
 assert.equal(layer.stats.source_building_count, 1);
 assert.ok(layer.stats.rendered_window_count > 0);
 assert.equal(layer.stats.rendered_window_frame_count, layer.stats.rendered_window_count);
@@ -45,6 +45,15 @@ assert.match(layer.stats.truth_guard, /not source-backed/);
 assert.equal(layer.root.children.length, 3);
 assert.ok(layer.root.children.some((child) => child.name === 'NWE_Procedural_Window_Glass' && child.material?.isMeshPhysicalMaterial));
 assert.ok(layer.root.children.some((child) => child.name === 'NWE_Procedural_Window_Frames'));
+const frames = layer.root.children.find((child) => child.name === 'NWE_Procedural_Window_Frames');
+const doors = layer.root.children.find((child) => child.name === 'NWE_Procedural_Doors');
+assert.ok(frames.instanceColor, 'instanced frame tint is required');
+assert.ok(doors.instanceColor, 'instanced door tint is required');
+assert.ok(layer.stats.instance_color_bytes_estimate > 0);
+assert.equal(layer.stats.distinct_door_colors, 1);
+assert.equal(layer.stats.distinct_window_frame_colors, 1);
+assert.equal(frames.count, layer.stats.rendered_window_count);
+assert.equal(doors.count, layer.stats.rendered_door_count);
 for (const child of layer.root.children) assert.equal(child.isInstancedMesh, true);
 layer.dispose();
 assert.equal(layer.root.parent, null);
