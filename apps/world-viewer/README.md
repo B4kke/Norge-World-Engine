@@ -163,3 +163,36 @@ node apps/world-viewer/run_benchmark.mjs \
 The runner independently checks each staged artifact's `REAL_COMPILED` role, byte size and SHA-256, serves only bundle/artifact bytes plus the repo browser-verifier modules and pinned local JCS dependency to Chrome, and fails if the browser contacts raw Norwegian source services or if the batched vector path does not get below the Issue #5 investigative 100-draw target.
 
 `.github/workflows/viewer-benchmark.yml` produces the hosted reproducible measurement package. Device measurements remain separate evidence: hosted software-renderer frame times must not be presented as Android GPU performance.
+
+## Nannestad: variasjon i bygg og satellittfarget bakke
+
+I den normale Nannestad 1×1 km WebUI-en bygger husene fortsatt på de samme
+SHA-verifiserte OSM-fotavtrykkene og de aksepterte OSM/NHM-høydene. Rendereren
+bruker nå en stabil, typeavhengig presentasjonspalett for vegger og tak:
+hus, landbruksbygg, garasjer og næringsbygg får ulike malings-/taktoner.
+Eksisterende lokale Poly Haven CC0 PBR-kart for weathered-plank siding og
+grey roof (diffuse, normal og roughness) ligger fortsatt under fargene.
+Dette krever ikke ett trekkall per bygning: fargene er vertex-attributter
+i de eksisterende batchede tak-/veggmeshene; rammer/dører får egne
+instansfarger. Tydelig rektangulære gable-kandidater kan få et forsiktig
+visuelt saltak der DOM-orientering mangler. Disse er **ikke** en påstand om
+eksakt observert fasadefarge, vindusutforming eller takform.
+
+Den normale bakkefargen kommer fra den **eksisterende verifiserte
+Sentinel-2-kilden på 10 m/piksel**, ikke fra en oppskalert flyfoto-tekstur.
+Tilknyttede lokale CC0 PBR normal-/roughness-kart gir nærdetalj uten å
+forfalske geografisk pikseloppløsning. Den synlige knappen
+**Bakke · Satellitt (10 m)** bytter til **Bakke · PBR (sammenligning)**
+og tilbake uten å laste ned geodata eller endre terrenggeometri. Hvis
+kilde-/lisensverifisert satellittbilde mangler, forblir ren PBR aktiv
+og satellittknappen er deaktivert.
+
+Kartverkets/Norge i bilder ortofoto har særskilte bruks-/redistribusjonsvilkår;
+de strømmes **ikke** inn i offentlig WebUI som et lovlig bevist
+høyoppløselig bakke-alternativ. Se
+`docs/proofs/2026-11-21-nannestad-buildings-and-satellite-ground.md`.
+
+Kilder:
+- https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2
+- https://www.kartverket.no/en/api-and-data/terms-of-use
+- https://www.geonorge.no/nib
