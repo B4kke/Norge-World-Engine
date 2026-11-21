@@ -320,7 +320,7 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       fallback_height_m: resolved ? null : fallbackHeightMeters,
       ground_lift_m: groundLiftMeters,
       roof_triangulation: roofStylesBySource.dom_oriented_gable > 0
-        ? 'earcut-flat-plus-dom-oriented-and-bounded-fallback-presentation-gables'
+        ? 'earcut-flat-plus-strong-dom-oriented-and-bounded-fallback-presentation-gables'
         : gabledPresentationCount > 0 ? 'earcut-flat-plus-bounded-fallback-presentation-gables' : 'three-earcut-2d-footprint',
       roof_shape_truth: 'gables are renderer-only visual hypotheses on eligible rectangular footprints; DOM only orients strong candidates; never surveyed roof shapes',
       uv_semantics: 'renderer-only-meter-scaled-surface-uv',
