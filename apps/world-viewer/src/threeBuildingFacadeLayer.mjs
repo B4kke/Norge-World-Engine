@@ -1,8 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
+import { buildingPresentationPalette } from './buildingPresentationPalette.mjs';
 
 const FALLBACK_HEIGHT_M = 5;
 const GROUND_LIFT_M = 0.085;
+const FRAME_PALETTE = Object.freeze([0xecebe6, 0xc7cbca, 0x515c60, 0x363e43, 0xd8d3c5]);
+const DOOR_PALETTE = Object.freeze([0x674735, 0x52665c, 0x8b5c49, 0x323e43, 0xbdb8a8, 0x70544d]);
 
 function polygonWithoutClosure(polygon) {
   if (!Array.isArray(polygon)) return [];
@@ -89,7 +92,10 @@ function deterministicIndex(feature, edgeCount) {
   return edgeCount > 0 ? (hash >>> 0) % edgeCount : 0;
 }
 
-function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms, budgets) {
+function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms, windowFrameColors, doorColors, budgets) {
+  const palette = buildingPresentationPalette(feature);
+  const frameColor = FRAME_PALETTE[palette.wall_hex % FRAME_PALETTE.length];
+  const doorColor = DOOR_PALETTE[palette.roof_hex % DOOR_PALETTE.length];
   const polygon = polygonWithoutClosure(feature?.polygon);
   if (polygon.length < 3) return;
   const policy = typePolicy(feature);
@@ -126,6 +132,7 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
       const e = (a[0] + b[0]) * 0.5;
       const n = (a[1] + b[1]) * 0.5;
       doorTransforms.push(matrix(worldToLocal(payload, e, n, 1.05, (groundA + groundB) / 2, outward), yaw, [policy.doorWidth, 2.1, 1]));
+      doorColors.push(doorColor);
     }
 
     if (!policy.windows || windowTransforms.length >= budgets.windows || length < 2.2) continue;
@@ -143,18 +150,23 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
         const width = policy.sparse ? 0.85 : 1.05;
         const paneHeight = policy.sparse ? 0.85 : 1.15;
         windowTransforms.push(matrix(worldToLocal(payload, e, n, centerHeight, groundA + (groundB - groundA) * along / length, outward), yaw, [width, paneHeight, 1]));
+        windowFrameColors.push(frameColor);
       }
     }
   }
 }
 
-function makeInstanced(root, geometry, material, transforms, name, shadow) {
+function makeInstanced(root, geometry, material, transforms, name, shadow, colors = null) {
   if (!transforms.length) return null;
   const mesh = new THREE.InstancedMesh(geometry, material, transforms.length);
   mesh.name = name;
   mesh.castShadow = shadow;
   mesh.receiveShadow = true;
-  transforms.forEach((transform, index) => mesh.setMatrixAt(index, transform));
+  transforms.forEach((transform, index) => {
+    mesh.setMatrixAt(index, transform);
+    if (colors) mesh.setColorAt(index, new THREE.Color(colors[index]));
+  });
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
   mesh.instanceMatrix.needsUpdate = true;
   mesh.computeBoundingSphere?.();
@@ -198,9 +210,11 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
   const budgets = profileBudgets(profile);
   const windowTransforms = [];
   const doorTransforms = [];
+  const windowFrameColors = [];
+  const doorColors = [];
   for (const feature of buildingsArtifact.features) {
     if (windowTransforms.length >= budgets.windows && doorTransforms.length >= budgets.doors) break;
-    pushFacadeInstances(feature, terrainPayload, windowTransforms, doorTransforms, budgets);
+    pushFacadeInstances(feature, terrainPayload, windowTransforms, doorTransforms, windowFrameColors, doorColors, budgets);
   }
 
   const root = new THREE.Group();
@@ -209,12 +223,12 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
   const windowFrame = windowFrameGeometry();
   const doorGeometry = new THREE.BoxGeometry(1, 1, 0.075);
   const windowGlassMaterial = new THREE.MeshPhysicalMaterial({ color: 0x263c46, roughness: 0.16, metalness: 0.08, clearcoat: 1, clearcoatRoughness: 0.1, envMapIntensity: 1.15 });
-  const windowFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x353b3c, roughness: 0.5, metalness: 0.28 });
-  const doorMaterial = new THREE.MeshPhysicalMaterial({ color: 0x5b4432, roughness: 0.72, metalness: 0.02, clearcoat: 0.12, clearcoatRoughness: 0.55 });
+  const windowFrameMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.28 });
+  const doorMaterial = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.72, metalness: 0.02, clearcoat: 0.12, clearcoatRoughness: 0.55 });
 
   const windowPaneMesh = makeInstanced(root, windowPaneGeometry, windowGlassMaterial, windowTransforms, 'NWE_Procedural_Window_Glass', false);
-  const windowFrameMesh = makeInstanced(root, windowFrame, windowFrameMaterial, windowTransforms, 'NWE_Procedural_Window_Frames', true);
-  const doorMesh = makeInstanced(root, doorGeometry, doorMaterial, doorTransforms, 'NWE_Procedural_Doors', true);
+  const windowFrameMesh = makeInstanced(root, windowFrame, windowFrameMaterial, windowTransforms, 'NWE_Procedural_Window_Frames', true, windowFrameColors);
+  const doorMesh = makeInstanced(root, doorGeometry, doorMaterial, doorTransforms, 'NWE_Procedural_Doors', true, doorColors);
 
   function dispose() {
     root.removeFromParent();
@@ -230,19 +244,22 @@ export function createThreeBuildingFacadeLayer({ buildingsArtifact, terrainPaylo
     root,
     dispose,
     stats: Object.freeze({
-      schema: 'nwe.three-building-facade-layer/0.2',
+      schema: 'nwe.three-building-facade-layer/0.3',
       source_building_count: buildingsArtifact.features.length,
       facade_alignment: 'source-footprint-edge-linear-wall-height-and-exterior-panel-offset',
       rendered_window_count: windowTransforms.length,
       rendered_window_frame_count: windowTransforms.length,
       rendered_door_count: doorTransforms.length,
+      distinct_window_frame_colors: new Set(windowFrameColors).size,
+      distinct_door_colors: new Set(doorColors).size,
+      instance_color_bytes_estimate: (windowFrameColors.length + doorColors.length) * 3 * Float32Array.BYTES_PER_ELEMENT,
       draw_calls: Number(Boolean(windowPaneMesh)) + Number(Boolean(windowFrameMesh)) + Number(Boolean(doorMesh)),
       profile: profile?.id ?? 'unknown',
       budgets: Object.freeze({ ...budgets }),
       material_model: Object.freeze({
         glazing: 'clearcoated-dark-reflective-presentation-glass-no-interior-transmission',
-        frames: 'bounded-instanced-metallic-frame',
-        doors: 'clearcoated-painted-wood-like-presentation',
+        frames: 'bounded-instanced-metallic-frame-with-source-id-stable-colour',
+        doors: 'clearcoated-painted-wood-like-presentation-with-source-id-stable-colour',
       }),
       semantics: 'deterministic-renderer-only-facade-detail-over-source-footprints-and-best-available-building-height',
       truth_guard: 'window and door positions/counts/dimensions/materials are not source-backed and must never be presented as observed Nannestad facade truth',
