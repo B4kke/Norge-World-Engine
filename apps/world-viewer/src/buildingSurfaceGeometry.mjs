@@ -1,4 +1,5 @@
 import { Earcut } from 'three/src/extras/Earcut.js';
+import { buildingPresentationPalette } from './buildingPresentationPalette.mjs';
 
 const DEFAULT_FALLBACK_HEIGHT_M = 5;
 const DEFAULT_GROUND_LIFT_M = 0.08;
@@ -143,14 +144,16 @@ function appendGabledBuilding(base, descriptor, wallPositions, wallIndices, wall
   pushUpwardTriangle(wallPositions, wallIndices, wallUvs, lowB, ridgeB, highB);
 }
 
-function typedGeometry(positions, indices, uvs) {
+function typedGeometry(positions, indices, uvs, colors) {
   const vertexCount = positions.length / 3;
   if (uvs.length !== vertexCount * 2) throw new Error('BUILDING_UV_ATTRIBUTE_MISMATCH');
+  if (colors.length !== vertexCount * 3) throw new Error('BUILDING_COLOR_ATTRIBUTE_MISMATCH');
   const IndexArray = vertexCount <= 65535 ? Uint16Array : Uint32Array;
   return {
     positions: new Float32Array(positions),
     indices: new IndexArray(indices),
     uvs: new Float32Array(uvs),
+    colors: new Float32Array(colors),
     vertexCount,
     triangleCount: indices.length / 3,
   };
@@ -171,7 +174,10 @@ function combineGeometry(walls, roofs) {
   for (let index = 0; index < roofs.indices.length; index += 1) {
     indices[walls.indices.length + index] = roofs.indices[index] + roofVertexOffset;
   }
-  return { positions, indices, uvs };
+  const colors = new Float32Array(walls.colors.length + roofs.colors.length);
+  colors.set(walls.colors, 0);
+  colors.set(roofs.colors, walls.colors.length);
+  return { positions, indices, uvs, colors };
 }
 
 function appendBuilding(feature, wallPositions, wallIndices, wallUvs, roofPositions, roofIndices, roofUvs, projectPoint, heightMeters) {
@@ -214,6 +220,12 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
   const wallPositions = [];
   const wallIndices = [];
   const wallUvs = [];
+  const wallColors = [];
+  const roofColors = [];
+  const wallStyles = new Set();
+  const roofStyles = new Set();
+  const buildingFamilies = {};
+  const roofStylesBySource = { dom_oriented_gable: 0, fallback_visual_gable: 0, flat_presentation: 0 };
   const roofPositions = [];
   const roofIndices = [];
   const roofUvs = [];
@@ -228,6 +240,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     const hasResolvedHeight = Number.isFinite(height) && height > 0;
     if (hasResolvedHeight !== resolved) continue;
     const heightMeters = hasResolvedHeight ? height : fallbackHeightMeters;
+    const wallFirstVertex = wallPositions.length / 3;
+    const roofFirstVertex = roofPositions.length / 3;
     const result = appendBuilding(
       feature,
       wallPositions,
@@ -243,6 +257,21 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       heightMeters,
     );
     if (!result.appended) continue;
+    const style = buildingPresentationPalette(feature);
+    for (let vertex = wallFirstVertex; vertex < wallPositions.length / 3; vertex += 1) {
+      wallColors.push(...style.wall_rgb_linear);
+    }
+    for (let vertex = roofFirstVertex; vertex < roofPositions.length / 3; vertex += 1) {
+      roofColors.push(...style.roof_rgb_linear);
+    }
+    wallStyles.add(style.wall_key);
+    roofStyles.add(style.roof_key);
+    buildingFamilies[style.family] = (buildingFamilies[style.family] ?? 0) + 1;
+    if (result.gabled) {
+      const sourceOriented = Number.isFinite(Number(feature?.presentation_gable_direction_deg_from_east_ccw))
+        && feature?.presentation_gable_direction_deg_from_east_ccw != null;
+      roofStylesBySource[sourceOriented ? 'dom_oriented_gable' : 'fallback_visual_gable'] += 1;
+    } else roofStylesBySource.flat_presentation += 1;
     count += 1;
     if (result.gabled) gabledPresentationCount += 1;
     if (hasResolvedHeight) {
@@ -251,8 +280,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     } else fallbackHeightCount += 1;
   }
 
-  const walls = typedGeometry(wallPositions, wallIndices, wallUvs);
-  const roofs = typedGeometry(roofPositions, roofIndices, roofUvs);
+  const walls = typedGeometry(wallPositions, wallIndices, wallUvs, wallColors);
+  const roofs = typedGeometry(roofPositions, roofIndices, roofUvs, roofColors);
   const combined = combineGeometry(walls, roofs);
   const resolvedSemantics = derivedPresentationHeightCount > 0
     ? 'source-backed-or-verified-dom-derived-presentation'
@@ -261,11 +290,12 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     positions: combined.positions,
     indices: combined.indices,
     uvs: combined.uvs,
-    walls: { positions: walls.positions, indices: walls.indices, uvs: walls.uvs },
-    roofs: { positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs },
+    colors: combined.colors,
+    walls: { positions: walls.positions, indices: walls.indices, uvs: walls.uvs, colors: walls.colors },
+    roofs: { positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs, colors: roofs.colors },
     count,
     metadata: {
-      schema: 'nwe.building-surface-render-geometry/0.2',
+      schema: 'nwe.building-surface-render-geometry/0.3',
       footprint_source: 'compiled-building-footprints',
       height_semantics: resolved ? resolvedSemantics : 'renderer-only-fallback',
       fallback_height_m: resolved ? null : fallbackHeightMeters,
@@ -273,6 +303,11 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       roof_triangulation: gabledPresentationCount > 0 ? 'earcut-flat-plus-strong-dom-oriented-presentation-gables' : 'three-earcut-2d-footprint',
       roof_shape_truth: 'source roof shape is not inferred from DOM; gables are explicit renderer policy only',
       uv_semantics: 'renderer-only-meter-scaled-surface-uv',
+      vertex_color_semantics: 'deterministic-per-source-id-presentational-palette-linear-rgb-times-licensed-cc0-pbr',
+      distinct_wall_palette_keys: wallStyles.size,
+      distinct_roof_palette_keys: roofStyles.size,
+      presentation_building_families: buildingFamilies,
+      presentation_roof_types: roofStylesBySource,
       uv_tile_m: SURFACE_UV_TILE_M,
       source_backed_height_count: sourceBackedHeightCount,
       derived_presentation_height_count: derivedPresentationHeightCount,
