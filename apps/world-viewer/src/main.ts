@@ -301,6 +301,24 @@ async function runDefaultPreview() {
           : ' Ground color: generic PBR fallback.';
         note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale PBR/ground-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${groundColor}${fallback}`;
       }
+      // Presentation-only browser evidence for the accepted 1 km Nannestad
+      // slice. The source counts and SHA are immutable; the ground mode is a
+      // disposable renderer setting and never reclassifies satellite pixels.
+      (globalThis as any).__nweSurfaceProof = Object.freeze({
+        snapshot() {
+          return Object.freeze({
+            schema: 'nwe.nannestad-web-surface-proof/0.1',
+            building_source_count: result.buildings.count,
+            building_palette: result.renderer.building_palette,
+            ground_color: result.ground_imagery,
+            ground_color_mode: renderer.getGroundColorMode?.() ?? null,
+            control_label: document.querySelector<HTMLElement>('[data-nwe-ground-color-control]')?.textContent ?? null,
+            terrain_sha256: result.terrain.artifact_sha256,
+            building_sha256: result.buildings.artifact_sha256,
+            truth_guard: 'colour/roof profiles are renderer presentation; Sentinel-2 10m macro RGB is not a submeter orthophoto',
+          });
+        },
+      });
       if (params.has('treeProof')) {
         const initial = renderer.getTreeProofEvidence?.();
         if (!initial || initial.mode !== params.get('treeProof') || initial.backend !== result.renderer.backend) {
