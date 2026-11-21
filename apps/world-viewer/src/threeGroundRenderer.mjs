@@ -211,8 +211,9 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     + ((streetDetailLayer?.stats.source_light_mast_count ?? 0) + (streetDetailLayer?.stats.deduplicated_additional_light_point_count ?? 0)) * 2
     + (streetDetailLayer?.stats.edge_post_count ?? 0);
   const streetInstanceMatrixBytesEstimate = streetInstanceCountEstimate * 16 * Float32Array.BYTES_PER_ELEMENT;
-  const facadeInstanceCount = (buildingFacadeLayer.stats.rendered_window_count ?? 0) + (buildingFacadeLayer.stats.rendered_door_count ?? 0);
+  const facadeInstanceCount = (buildingFacadeLayer.stats.rendered_window_count ?? 0) * 2 + (buildingFacadeLayer.stats.rendered_door_count ?? 0);
   const facadeInstanceMatrixBytesEstimate = facadeInstanceCount * 16 * Float32Array.BYTES_PER_ELEMENT;
+  const facadeInstanceColorBytesEstimate = buildingFacadeLayer.stats.instance_color_bytes_estimate ?? 0;
   const texturePayloadBytesEstimate = materialLibrary.stats.texture_count * 1024 * 1024 * 4;
 
   function makeTerrainMesh(payload) {
@@ -329,11 +330,12 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     draw_call_semantics: 'color-pass-estimate; measured frame drawCalls includes active renderer shadow work',
     shadow_draw_candidates: shadowDrawCandidates,
     gpu_buffer_count: 25 + (vegetationLayer?.stats.mesh_count ?? 0) * 2 + (streetDetailLayer?.stats.rendered_line_mesh_count ?? 0) * 4 + (streetDetailLayer?.stats.rendered_instanced_mesh_count ?? 0) * 2 + facadeDrawCalls * 2,
-    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + nearTreeGeometryBytesEstimate + streetInstanceMatrixBytesEstimate + facadeInstanceMatrixBytesEstimate,
+    gpu_buffer_payload_bytes: terrainPayloadBytes + vectorPayloadBytes + vegetationInstanceMatrixBytesEstimate + nearTreeGeometryBytesEstimate + streetInstanceMatrixBytesEstimate + facadeInstanceMatrixBytesEstimate + facadeInstanceColorBytesEstimate,
     near_field_tree_geometry_bytes_estimate: nearTreeGeometryBytesEstimate,
     vegetation_instance_matrix_bytes_estimate: vegetationInstanceMatrixBytesEstimate,
     street_detail_instance_matrix_bytes_estimate: streetInstanceMatrixBytesEstimate,
     facade_instance_matrix_bytes_estimate: facadeInstanceMatrixBytesEstimate,
+    facade_instance_color_bytes_estimate: facadeInstanceColorBytesEstimate,
     gpu_texture_payload_bytes: texturePayloadBytesEstimate,
     gpu_texture_payload_semantics: 'uncompressed-rgba-estimate', timestamp_query_supported: false, camera_eye_height_m: 1.7, camera_mode: 'first-person', render_origin: sceneGeometry.origin,
     renderer_visual_style: { ...rendererVisualStyle, ...lighting.snapshot() },
