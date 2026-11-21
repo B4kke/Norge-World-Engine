@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { createProceduralBuildingTextures, BUILDING_MAP_SIZE } from './proceduralBuildingMaps.mjs';
 
 export const GROUND_MATERIAL_CATALOG_SCHEMA = 'nwe.polyhaven-material-catalog/0.1';
 export const GROUND_MATERIAL_LIBRARY_SCHEMA = 'nwe.ground-material-library/0.1';
@@ -180,6 +181,8 @@ export async function createGroundMaterialLibrary({
     }
   }
 
+  const plasterTextures=createProceduralBuildingTextures('plaster',{anisotropy,normalMaps:profile.normalMaps!==false});
+  const seamTextures=createProceduralBuildingTextures('standing-seam',{anisotropy,normalMaps:profile.normalMaps!==false});
   const terrainMaterialTextures = {
     ...terrainTextures,
     diffuse: geographicGroundColor ?? terrainTextures.diffuse,
@@ -226,6 +229,10 @@ export async function createGroundMaterialLibrary({
       side: THREE.DoubleSide,
     })),
   };
+  materials.resolvedWallAlt=new THREE.MeshStandardMaterial(materialOptions(plasterTextures,profile,{vertexColors:true,side:THREE.DoubleSide,normalScale:.48}));
+  materials.fallbackWallAlt=materials.resolvedWallAlt;
+  materials.resolvedRoofAlt=new THREE.MeshStandardMaterial(materialOptions(seamTextures,profile,{vertexColors:true,side:THREE.DoubleSide,normalScale:.7,metalness:.18,roughness:.88}));
+  materials.fallbackRoofAlt=materials.resolvedRoofAlt;
   for (const [id, material] of Object.entries(materials)) material.name = `NWE:${id}:${profile.id}`;
 
   // The geographic Sentinel-2 colour is the default whenever a verified,
@@ -248,6 +255,8 @@ export async function createGroundMaterialLibrary({
     ...Object.values(roadTextures),
     ...Object.values(wallTextures),
     ...Object.values(roofTextures),
+    ...Object.values(plasterTextures),
+    ...Object.values(seamTextures),
     ...(geographicGroundColor ? [geographicGroundColor] : []),
   ];
   const localTextureBytes = REQUIRED_SURFACES.reduce((sum, surfaceId) => (
@@ -264,6 +273,8 @@ export async function createGroundMaterialLibrary({
     source: 'Poly Haven local pinned CC0 catalog',
     texture_resolution: catalog.texture_resolution,
     texture_count: textures.length,
+    procedural_building_maps: Object.freeze({kinds:['plaster','standing-seam'],texture_size:BUILDING_MAP_SIZE,truth:'original-generated-presentation-only',texture_count:Object.keys(plasterTextures).length+Object.keys(seamTextures).length,network_bytes:0}),
+    texture_rgba_base_bytes_estimate:textures.reduce((sum,t)=>sum+4*(t.image?.width??1024)*(t.image?.height??1024),0),
     local_compressed_texture_bytes: localTextureBytes,
     anisotropy_requested: requestedAnisotropy,
     anisotropy_active: anisotropy,
@@ -308,7 +319,7 @@ export async function createGroundMaterialLibrary({
     getGroundColorMode() { return groundColorMode; },
     setGroundColorMode,
     dispose() {
-      for (const material of Object.values(materials)) material.dispose();
+      for (const material of new Set(Object.values(materials))) material.dispose();
       for (const texture of textures) texture.dispose();
     },
   };

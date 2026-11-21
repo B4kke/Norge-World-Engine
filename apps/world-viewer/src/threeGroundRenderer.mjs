@@ -44,6 +44,14 @@ function bufferGeometry(positions, indices, normals = null, uvs = null, colors =
   return geometry;
 }
 
+function groupedBuildingGeometry(positions,indices,uvs,colors,groups){
+  const geometry=bufferGeometry(positions,indices,null,uvs,colors);
+  for(const g of groups)geometry.addGroup(g.start,g.count,g.materialIndex);
+  return geometry;
+}
+function meshDrawCandidates(mesh){
+  return mesh?.geometry?.index?.count>0?(Array.isArray(mesh.material)?mesh.geometry.groups.length:1):0;
+}
 function disposeMesh(mesh) { if (mesh) mesh.geometry?.dispose?.(); }
 
 function terrainExtentMeters(payload) {
@@ -180,10 +188,10 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
 
   const vectorStartedAt = monotonicNow();
   const roadMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.roads.positions, sceneGeometry.roads.indices, sceneGeometry.roads.normals ?? null, sceneGeometry.roads.uvs), roadMaterial), { cast: false, receive: true });
-  const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, null, sceneGeometry.buildingsResolved.walls.uvs, sceneGeometry.buildingsResolved.walls.colors), resolvedWallMaterial), { cast: true, receive: true });
-  const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, null, sceneGeometry.buildingsResolved.roofs.uvs, sceneGeometry.buildingsResolved.roofs.colors), resolvedRoofMaterial), { cast: true, receive: true });
-  const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, null, sceneGeometry.buildingsFallback.walls.uvs, sceneGeometry.buildingsFallback.walls.colors), fallbackWallMaterial), { cast: true, receive: true });
-  const fallbackRoofMesh = configureMeshShadowRole(new THREE.Mesh(bufferGeometry(sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices, null, sceneGeometry.buildingsFallback.roofs.uvs, sceneGeometry.buildingsFallback.roofs.colors), fallbackRoofMaterial), { cast: true, receive: true });
+  const resolvedWallMesh = configureMeshShadowRole(new THREE.Mesh(groupedBuildingGeometry(sceneGeometry.buildingsResolved.walls.positions, sceneGeometry.buildingsResolved.walls.indices, sceneGeometry.buildingsResolved.walls.uvs, sceneGeometry.buildingsResolved.walls.colors, sceneGeometry.buildingsResolved.walls.materialGroups), [resolvedWallMaterial, materialLibrary.materials.resolvedWallAlt]), { cast: true, receive: true });
+  const resolvedRoofMesh = configureMeshShadowRole(new THREE.Mesh(groupedBuildingGeometry(sceneGeometry.buildingsResolved.roofs.positions, sceneGeometry.buildingsResolved.roofs.indices, sceneGeometry.buildingsResolved.roofs.uvs, sceneGeometry.buildingsResolved.roofs.colors, sceneGeometry.buildingsResolved.roofs.materialGroups), [resolvedRoofMaterial, materialLibrary.materials.resolvedRoofAlt]), { cast: true, receive: true });
+  const fallbackWallMesh = configureMeshShadowRole(new THREE.Mesh(groupedBuildingGeometry(sceneGeometry.buildingsFallback.walls.positions, sceneGeometry.buildingsFallback.walls.indices, sceneGeometry.buildingsFallback.walls.uvs, sceneGeometry.buildingsFallback.walls.colors, sceneGeometry.buildingsFallback.walls.materialGroups), [fallbackWallMaterial, materialLibrary.materials.fallbackWallAlt]), { cast: true, receive: true });
+  const fallbackRoofMesh = configureMeshShadowRole(new THREE.Mesh(groupedBuildingGeometry(sceneGeometry.buildingsFallback.roofs.positions, sceneGeometry.buildingsFallback.roofs.indices, sceneGeometry.buildingsFallback.roofs.uvs, sceneGeometry.buildingsFallback.roofs.colors, sceneGeometry.buildingsFallback.roofs.materialGroups), [fallbackRoofMaterial, materialLibrary.materials.fallbackRoofAlt]), { cast: true, receive: true });
   const staticMeshes = [roadMesh, resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh];
   scene.add(...staticMeshes);
 
@@ -214,7 +222,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const facadeInstanceCount = (buildingFacadeLayer.stats.rendered_window_count ?? 0) * 2 + (buildingFacadeLayer.stats.rendered_door_count ?? 0);
   const facadeInstanceMatrixBytesEstimate = facadeInstanceCount * 16 * Float32Array.BYTES_PER_ELEMENT;
   const facadeInstanceColorBytesEstimate = buildingFacadeLayer.stats.instance_color_bytes_estimate ?? 0;
-  const texturePayloadBytesEstimate = materialLibrary.stats.texture_count * 1024 * 1024 * 4;
+  const texturePayloadBytesEstimate = materialLibrary.stats.texture_rgba_base_bytes_estimate;
 
   function makeTerrainMesh(payload) {
     assertTerrainPayloadIdentity(payload, expectedTerrainTileId, expectedTerrainArtifactSha);
@@ -283,7 +291,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
       postProcessing.render();
       const cameraState = cameraControls.snapshot();
       const rendererCalls = Number(renderer.info?.render?.calls);
-      const fallbackCalls = [terrainMesh, ...staticMeshes].filter((mesh) => mesh?.visible && mesh.geometry?.index?.count > 0).length
+      const fallbackCalls = [terrainMesh, ...staticMeshes].reduce((sum,mesh)=>sum+(mesh?.visible?meshDrawCandidates(mesh):0),0)
         + humanoid.snapshot().render_mesh_count
         + (vegetationLayer?.stats.draw_calls ?? 0)
         + (streetDetailLayer?.stats.draw_calls ?? 0)
@@ -315,12 +323,12 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
     postProcessing.dispose(); lighting.dispose(); materialLibrary.dispose(); renderer.dispose();
   };
 
-  const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.geometry?.index?.count > 0).length;
+  const buildingDrawCalls = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].reduce((sum,mesh)=>sum+meshDrawCandidates(mesh),0);
   const vegetationDrawCalls = vegetationLayer?.stats.draw_calls ?? 0;
   const streetDetailDrawCalls = streetDetailLayer?.stats.draw_calls ?? 0;
   const facadeDrawCalls = buildingFacadeLayer.stats.draw_calls;
   const colorDrawCalls = 2 + buildingDrawCalls + vegetationDrawCalls + streetDetailDrawCalls + facadeDrawCalls + humanoid.snapshot().render_mesh_count;
-  const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].filter((mesh) => mesh.castShadow && mesh.geometry?.index?.count > 0).length;
+  const shadowBuildingDrawCandidates = [resolvedWallMesh, resolvedRoofMesh, fallbackWallMesh, fallbackRoofMesh].reduce((sum,mesh)=>sum+(mesh.castShadow?meshDrawCandidates(mesh):0),0);
   const shadowDrawCandidates = 1 + shadowBuildingDrawCandidates + (profile.shadows === false ? 0 : vegetationDrawCalls) + (buildingFacadeLayer.stats.rendered_door_count > 0 ? 1 : 0) + humanoidShadowMeshCount;
   const characterSnapshot = humanoid.snapshot();
   const stats = {
@@ -375,7 +383,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
       },
       truth_guard: 'appearance and non-DOM-oriented gable profiles are presentation only, not observed roof or facade truth',
     },
-    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, source_backed: { wall: materialLibrary.stats.assets.building_walls, roof: materialLibrary.stats.assets.building_roofs }, unresolved: { wall: `${materialLibrary.stats.assets.building_walls}:fallback-tint`, roof: `${materialLibrary.stats.assets.building_roofs}:fallback-tint` }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
+    building_materials: { schema: BUILDING_MATERIAL_SCHEMA, presentation_draw_candidates: buildingDrawCalls, resolved_material_counts: sceneGeometry.buildingsResolved.metadata.presentation_material_counts, fallback_material_counts: sceneGeometry.buildingsFallback.metadata.presentation_material_counts, procedural_alternatives: materialLibrary.stats.procedural_building_maps, source_backed: { wall: materialLibrary.stats.assets.building_walls, roof: materialLibrary.stats.assets.building_roofs }, unresolved: { wall: `${materialLibrary.stats.assets.building_walls}:fallback-tint`, roof: `${materialLibrary.stats.assets.building_roofs}:fallback-tint` }, uv_semantics: sceneGeometry.buildingsResolved.metadata.uv_semantics, height_semantics: { source_backed: sceneGeometry.buildingsResolved.metadata.height_semantics, unresolved: sceneGeometry.buildingsFallback.metadata.height_semantics }, roof_triangulation: sceneGeometry.buildingsResolved.metadata.roof_triangulation },
     character: characterSnapshot,
     timing_ms: { scene_build_cpu_ms: sceneBuildCpuMs, material_load_cpu_ms: materialLoadCpuMs, gpu_resource_apply_cpu_ms: gpuResourceApplyCpuMs, humanoid_load_cpu_ms: humanoidLoadCpuMs, renderer_init_cpu_ms: monotonicNow() - initStartedAt },
   };

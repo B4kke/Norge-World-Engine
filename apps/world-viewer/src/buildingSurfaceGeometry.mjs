@@ -1,5 +1,5 @@
 import { Earcut } from 'three/src/extras/Earcut.js';
-import { buildingPresentationPalette, buildingSurfaceStyle } from './buildingPresentationPalette.mjs';
+import { buildingPresentationPalette, buildingSurfaceStyle, buildingMaterialSlots } from './buildingPresentationPalette.mjs';
 
 const DEFAULT_FALLBACK_HEIGHT_M = 5;
 const DEFAULT_GROUND_LIFT_M = 0.08;
@@ -163,14 +163,24 @@ function appendGabledBuilding(base, descriptor, wallPositions, wallIndices, wall
   pushUpwardTriangle(wallPositions, wallIndices, wallUvs, lowB, ridgeB, highB);
 }
 
-function typedGeometry(positions, indices, uvs, colors) {
+function typedGeometry(positions, indices, uvs, colors, spans) {
   const vertexCount = positions.length / 3;
   if (uvs.length !== vertexCount * 2) throw new Error('BUILDING_UV_ATTRIBUTE_MISMATCH');
   if (colors.length !== vertexCount * 3) throw new Error('BUILDING_COLOR_ATTRIBUTE_MISMATCH');
   const IndexArray = vertexCount <= 65535 ? Uint16Array : Uint32Array;
+  const sorted = new IndexArray(indices.length);
+  const materialGroups = [];
+  let cursor = 0;
+  for (let slot=0; slot<2; slot++) {
+    const start=cursor;
+    for (const span of spans) if (span.slot===slot) for(let i=span.start;i<span.end;i++) sorted[cursor++]=indices[i];
+    if(cursor>start) materialGroups.push({start,count:cursor-start,materialIndex:slot});
+  }
+  if(cursor!==indices.length) throw new Error('BUILDING_MATERIAL_PARTITION_INVALID');
   return {
     positions: new Float32Array(positions),
-    indices: new IndexArray(indices),
+    materialGroups,
+    indices: sorted,
     uvs: new Float32Array(uvs),
     colors: new Float32Array(colors),
     vertexCount,
@@ -240,6 +250,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
   const wallIndices = [];
   const wallUvs = [];
   const wallColors = [];
+  const wallSpans = [], roofSpans = [];
+  const materialCounts = {wall:[0,0],roof:[0,0]};
   const roofColors = [];
   const wallStyles = new Set();
   const roofStyles = new Set();
@@ -259,6 +271,7 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     const hasResolvedHeight = Number.isFinite(height) && height > 0;
     if (hasResolvedHeight !== resolved) continue;
     const heightMeters = hasResolvedHeight ? height : fallbackHeightMeters;
+    const wallStart=wallIndices.length, roofStart=roofIndices.length;
     const wallFirstVertex = wallPositions.length / 3;
     const roofFirstVertex = roofPositions.length / 3;
     const result = appendBuilding(
@@ -278,6 +291,10 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     if (!result.appended) continue;
     const style = buildingPresentationPalette(feature);
     const surfaceStyle = buildingSurfaceStyle(feature);
+    const slots = buildingMaterialSlots(feature);
+    wallSpans.push({start:wallStart,end:wallIndices.length,slot:slots.wall});
+    roofSpans.push({start:roofStart,end:roofIndices.length,slot:slots.roof});
+    materialCounts.wall[slots.wall]++; materialCounts.roof[slots.roof]++;
     for (let i = wallFirstVertex * 2; i < wallUvs.length; i += 2) {
       wallUvs[i] = wallUvs[i] * surfaceStyle.wall_uv[0] + surfaceStyle.offset;
       wallUvs[i + 1] *= surfaceStyle.wall_uv[1];
@@ -308,8 +325,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     } else fallbackHeightCount += 1;
   }
 
-  const walls = typedGeometry(wallPositions, wallIndices, wallUvs, wallColors);
-  const roofs = typedGeometry(roofPositions, roofIndices, roofUvs, roofColors);
+  const walls = typedGeometry(wallPositions, wallIndices, wallUvs, wallColors, wallSpans);
+  const roofs = typedGeometry(roofPositions, roofIndices, roofUvs, roofColors, roofSpans);
   const combined = combineGeometry(walls, roofs);
   const resolvedSemantics = derivedPresentationHeightCount > 0
     ? 'source-backed-or-verified-dom-derived-presentation'
@@ -319,8 +336,8 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     indices: combined.indices,
     uvs: combined.uvs,
     colors: combined.colors,
-    walls: { positions: walls.positions, indices: walls.indices, uvs: walls.uvs, colors: walls.colors },
-    roofs: { positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs, colors: roofs.colors },
+    walls: { materialGroups: walls.materialGroups, positions: walls.positions, indices: walls.indices, uvs: walls.uvs, colors: walls.colors },
+    roofs: { materialGroups: roofs.materialGroups, positions: roofs.positions, indices: roofs.indices, uvs: roofs.uvs, colors: roofs.colors },
     count,
     metadata: {
       schema: 'nwe.building-surface-render-geometry/0.3',
@@ -337,6 +354,7 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       distinct_wall_palette_keys: wallStyles.size,
       distinct_roof_palette_keys: roofStyles.size,
       presentation_building_families: buildingFamilies,
+      presentation_material_counts: materialCounts,
       presentation_roof_types: roofStylesBySource,
       uv_tile_m: SURFACE_UV_TILE_M,
       source_backed_height_count: sourceBackedHeightCount,

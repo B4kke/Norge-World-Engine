@@ -104,3 +104,9 @@ assert.throws(() => fallbackLibrary.setGroundColorMode('satellite'), /GROUND_COL
 fallbackLibrary.dispose();
 
 console.log('GROUND_MATERIAL_ASSETS_PASS');
+
+const {generateBuildingMaps,BUILDING_MAP_SIZE}=await import('./src/proceduralBuildingMaps.mjs');
+const plaster=generateBuildingMaps('plaster'),seam=generateBuildingMaps('standing-seam');
+assert.deepEqual(plaster,generateBuildingMaps('plaster'));assert.notDeepEqual(plaster.normal_gl,seam.normal_gl);assert.notDeepEqual(plaster.roughness,seam.roughness);assert.equal(plaster.diffuse.length,BUILDING_MAP_SIZE**2*4);assert.throws(()=>generateBuildingMaps('unknown'),/INVALID/);
+const low=await createGroundMaterialLibrary({...materialOptions,profile:{id:'low',normalMaps:false,textureAnisotropy:1}});
+assert.equal(low.materials.resolvedWallAlt.normalMap,null);assert.equal(low.materials.resolvedRoofAlt.normalMap,null);assert.notEqual(low.materials.resolvedWallAlt.map,low.materials.resolvedWall.map);assert.notEqual(low.materials.resolvedRoofAlt.map,low.materials.resolvedRoof.map);assert.equal(low.stats.procedural_building_maps.network_bytes,0);assert.equal(low.stats.procedural_building_maps.texture_count,4);low.dispose();

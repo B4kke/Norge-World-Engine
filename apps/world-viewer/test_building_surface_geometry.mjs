@@ -156,3 +156,12 @@ const styles = Array.from({length: 60}, (_, i) => buildingSurfaceStyle({source_i
 assert.equal(new Set(styles.map(s => s.variant)).size, 3);
 assert.deepEqual(buildingSurfaceStyle(development[0]), buildingSurfaceStyle({...development[0], polygon:[...development[0].polygon].reverse()}));
 assert.ok(styles.every(s => s.wall_uv.every(v => v > 0) && s.offset >= 0 && s.offset < 1));
+
+for(const surface of [varied.walls,varied.roofs,reversed.walls,reversed.roofs]){
+  assert.ok(surface.materialGroups.length<=2);let cursor=0;
+  for(const g of surface.materialGroups){assert.equal(g.start,cursor);assert.equal(g.count%3,0);assert.ok(g.count>0&&[0,1].includes(g.materialIndex));cursor+=g.count;}
+  assert.equal(cursor,surface.indices.length);assert.ok(surface.indices.every(i=>i<surface.positions.length/3));
+}
+assert.deepEqual(varied.metadata.presentation_material_counts,reversed.metadata.presentation_material_counts);
+assert.ok(varied.metadata.presentation_material_counts.wall.every(n=>n>0));
+assert.ok(varied.metadata.presentation_material_counts.roof.every(n=>n>0));

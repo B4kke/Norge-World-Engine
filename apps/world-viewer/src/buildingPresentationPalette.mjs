@@ -88,3 +88,10 @@ export function buildingSurfaceStyle(feature) {
   const wall = family === 'commercial' ? [[1,1],[0.65,1.5],[1.5,0.8]] : [[1,2],[2,1],[1.4,1.4]];
   return Object.freeze({ variant, wall_uv: Object.freeze(wall[variant]), roof_uv: Object.freeze([[1,1],[1.5,1],[1,1.5]][variant]), offset: (stableHash('offset:' + key) % 1024) / 1024 });
 }
+
+// Renderer-only material selection, not surveyed surface types.
+export function buildingMaterialSlots(feature) {
+  const family = buildingPaletteFamily(feature);
+  const variant = buildingSurfaceStyle(feature).variant;
+  return { wall: Number(family === 'commercial' || (['residential','generic'].includes(family) && variant === 1)), roof: Number(['agricultural','commercial'].includes(family) || (family === 'auxiliary' && variant !== 0)) };
+}
