@@ -897,3 +897,23 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - Perform a bounded source-backed/rights-checked evaluation for higher-quality building-specific materials and ground-color resolution while measuring same-view real-hardware GPU/memory/network budgets; do not claim a photoreal production world or replace the existing provenance-safe 10m Sentinel base prematurely.
+
+## 2026-11-21 08:45 CET — LUMEN — WEB-BUILDING-MATERIAL-02
+
+**What**
+- Previous commit da919b0 verified: all 12 reported workflows completed successfully, including visual proof 44881146261 and Vite 44881146148.
+- Added original deterministic 256² neutral plaster and standing-seam PBR maps (diffuse, roughness, optional tangent-space normal). Reuses existing CC0 plank and roof maps. Type-aware source-ID variation partitions existing indices into at most two material groups per surface, without changing vertex positions or world data. Counts, base texture byte estimates and group-aware draw estimates exposed.
+- Fixed generated normals to use installed indexed topology; added hosted browser assertions for both actual material slots, complete building counts, draw-candidate limit and zero procedural texture downloads.
+- Retained verified 10 m Sentinel-2 default. Reviewed current https://www.geonorge.no/nib and https://www.geonorge.no/kartdata/datasett-i-geonorge/flyfoto/ : open WMTS retired/being phased out, Norge digitalt access required for new service; individual open datasets may exist but no exact Nannestad high-resolution redistribution grant established. No new ortho downloaded.
+
+**Why**
+- Explicit user continuation of building/satellite appearance; true material response rather than tint-only variation. P0 LiDAR remains blocked on provider/operator.
+
+**Result / evidence**
+- New deterministic map/partition/profile and browser regressions included; exact-head hosted acceptance pending at commit creation. Procedural materials are synthetic, not photographs or surveyed facade truth. No physical GPU performance claim.
+
+**Changed**
+- Web viewer palette, geometry, renderer, material library, new procedural map module, tests and visual proof; decisions and task queue.
+
+**Next**
+- Review exact-head browser proof for this material change and benchmark group-aware cost before adding more material classes.

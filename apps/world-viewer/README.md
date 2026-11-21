@@ -196,3 +196,7 @@ Kilder:
 - https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2
 - https://www.kartverket.no/en/api-and-data/terms-of-use
 - https://www.geonorge.no/nib
+
+### Building material variation
+
+The material library shares the pinned CC0 plank siding and roof maps with two deterministic, original synthetic 256×256 PBR alternatives (plaster and standing-seam roofing). The adapter assigns presentation material slots using source type and stable identity, groups existing indices with at most two groups per wall/roof/height mesh, and exposes group-aware draw estimates and material counts. Neither derived material choices nor exact window positions are surveyed. Existing verified Sentinel-2 10 m geographic ground color stays default; no high-resolution ortho has been admitted.

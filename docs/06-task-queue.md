@@ -340,3 +340,8 @@ Compiler algorithm v0.5 follows provider-issued NVDB V4 `metadata.neste.start` c
 - Narrow regressions added for triangle interpolation, road relief and sloped facades; complete world-viewer-vite test/build passed on code head `4c7e7b3920090af379751fc1bf58f3a98198528c` and newest candidate viewer CI is green on `ba3ab7af9b2157d69643c60f2c36cd59f9896537`.
 
 **Quality limits:** this eliminates obvious floating/sinking on mismatched LOD but does not prove photorealism. Vegetation is still procedural proxy crown geometry; walls still have inferred openings; road junction/cross-sectional topology and near-field 1 m source resolution need source/geometric A/B. Exact new screenshot/hardware performance validation remains open, without mixing generated detail into world truth.
+
+## WEB-BUILDING-MATERIAL-02 — Bounded actual PBR material variation
+**Priority:** USER-REQUESTED / IMPLEMENTED; EXACT-HEAD VALIDATION PENDING
+
+Two new generated presentation material classes (plaster, standing-seam roof) complement pinned CC0 wood/roof textures. Geometry index partition uses <=2 groups per surface, <=8 building color draw candidates over four meshes. No raw imagery or authoritative geometry changes. Existing Sentinel remains the geographic base; new high-resolution ortho requires exact dataset license, coverage and byte gate. Validate map determinism, complete index partition, low-profile normal omission, hosted Vite/browser proof and material counts. Then measure actual hardware cost.

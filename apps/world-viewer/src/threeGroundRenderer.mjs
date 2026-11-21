@@ -36,10 +36,11 @@ function assertTerrainPayloadIdentity(payload, expectedTileId, expectedArtifactS
 function bufferGeometry(positions, indices, normals = null, uvs = null, colors = null) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  if (normals) geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3)); else geometry.computeVertexNormals();
+  if (normals) geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   if (uvs) geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   if (colors) geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  if (!normals) geometry.computeVertexNormals(); // Indexed topology must exist before generated normals.
   geometry.computeBoundingSphere();
   return geometry;
 }

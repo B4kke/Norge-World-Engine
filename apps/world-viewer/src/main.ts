@@ -310,6 +310,7 @@ async function runDefaultPreview() {
             schema: 'nwe.nannestad-web-surface-proof/0.1',
             building_source_count: result.buildings.count,
             building_palette: result.renderer.building_palette,
+            building_materials: result.renderer.building_materials,
             ground_color: result.ground_imagery,
             ground_color_mode: renderer.getGroundColorMode?.() ?? null,
             control_label: document.querySelector<HTMLElement>('[data-nwe-ground-color-control]')?.textContent ?? null,

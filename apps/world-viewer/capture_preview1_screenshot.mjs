@@ -236,12 +236,22 @@ async function assertSurfaceProofUi(cdp) {
   const fallback = palettes?.fallback ?? {};
   const wallStyles = (resolved.wall_palette_count ?? 0) + (fallback.wall_palette_count ?? 0);
   const roofStyles = (resolved.roof_palette_count ?? 0) + (fallback.roof_palette_count ?? 0);
+  const materials = sample?.building_materials;
+  const counts = [materials?.resolved_material_counts, materials?.fallback_material_counts];
+  const sumSlots = (surface) => [0,1].map(slot => counts.reduce((n,group) => n+(group?.[surface]?.[slot] ?? 0),0));
+  const wallSlots = sumSlots('wall'), roofSlots = sumSlots('roof');
+  const materialEvidenceOk = wallSlots.every(n=>n>0) && roofSlots.every(n=>n>0)
+    && wallSlots.reduce((a,b)=>a+b,0) === sample?.building_source_count
+    && roofSlots.reduce((a,b)=>a+b,0) === sample?.building_source_count
+    && materials?.presentation_draw_candidates >= 4 && materials.presentation_draw_candidates <= 8
+    && materials?.procedural_alternatives?.texture_count === 6
+    && materials?.procedural_alternatives?.network_bytes === 0;
   const roofs = [resolved.roofs, fallback.roofs];
   const gableCount = roofs.reduce((total, item) => total
     + (item?.dom_oriented_gable ?? 0) + (item?.fallback_visual_gable ?? 0), 0);
   if (output?.exceptionDetails || proof?.status !== 'PASS'
       || sample?.building_source_count < 100
-      || wallStyles < 4 || roofStyles < 3 || gableCount < 1
+      || wallStyles < 4 || roofStyles < 3 || gableCount < 1 || !materialEvidenceOk
       || sample.ground_color?.mode !== 'source-derived-geographic-albedo'
       || !/^[0-9a-f]{64}$/.test(sample.ground_color?.texture_sha256 ?? '')
       || sample.ground_color?.native_ground_sample_distance_m !== 10
@@ -258,6 +268,7 @@ async function assertSurfaceProofUi(cdp) {
     status: 'PASS',
     building_source_count: sample.building_source_count,
     palette: palettes,
+    building_materials: {wall_slots:wallSlots,roof_slots:roofSlots,draw_candidates:materials.presentation_draw_candidates,procedural:materials.procedural_alternatives},
     wall_style_count_sum: wallStyles,
     roof_style_count_sum: roofStyles,
     presentation_gable_count: gableCount,

@@ -138,3 +138,9 @@ semantics remain open. See
 - UE native Landscape/World Partition cell sizing and Nanite choice after measured Windows evidence.
 - Physics/collision library and client/worker/server split for simulation.
 - FKB access/redistribution strategy.
+
+## WEB-BUILDING-MATERIAL-02 — Bounded presentation experiment
+
+**Status:** Implemented candidate; hosted validation pending (2026-11-21).
+**Decision:** Test original neutral plaster and standing-seam PBR maps with source-ID/type-derived presentation slots, grouped indices and existing CC0 surfaces. Maximum two material groups per wall/roof/height group; no per-house materials. No source appearance claim or change to geometry. Do not promote higher-resolution imagery without exact legal admission; Geonorge's new Norge i bilder WMTS is access controlled, and individual datasets must be evaluated separately.
+**Consequence:** Up to four extra building draw candidates, up to six 256² RGBA textures (1.5 MiB base, before mipmaps), zero new texture network bytes. Performance/visual quality on physical hardware remains open.
