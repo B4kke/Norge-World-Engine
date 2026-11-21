@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildBuildingSurfaceGeometry } from './src/buildingSurfaceGeometry.mjs';
+import { buildingPresentationPalette, hexToLinearRgb } from './src/buildingPresentationPalette.mjs';
 
 function pointInPolygon([x, y], polygon) {
   let inside = false;
@@ -100,5 +101,53 @@ for (let index = 1; index < fallback.roofs.positions.length; index += 3) {
 
 assert.throws(() => buildBuildingSurfaceGeometry({}, { resolved: true }), /projectPoint/);
 assert.throws(() => buildBuildingSurfaceGeometry({}, { projectPoint: () => [0, 0, 0] }), /resolved/);
+
+
+const development = [
+  { source_id: 'house-a', building: 'house', height_m: 7.5, presentation_roof_shape: 'gabled',
+    polygon: [[0, 0], [14, 0], [14, 8], [0, 8], [0, 0]] },
+  { source_id: 'house-b', building: 'house', height_m: 7.1, presentation_roof_shape: 'gabled',
+    polygon: [[30, 0], [44, 0], [44, 8], [30, 8], [30, 0]] },
+  { source_id: 'barn-c', building: 'barn', height_m: 9, presentation_roof_shape: 'gabled',
+    polygon: [[60, 0], [82, 0], [82, 10], [60, 10], [60, 0]] },
+  { source_id: 'warehouse-d', building: 'warehouse', height_m: 8.3, presentation_roof_shape: 'flat',
+    polygon: [[100, 0], [116, 0], [116, 12], [100, 12], [100, 0]] },
+];
+const varied = buildBuildingSurfaceGeometry({ features: development }, {
+  resolved: true, projectPoint: ([x, z]) => [x, 20, z],
+});
+const reversed = buildBuildingSurfaceGeometry({ features: [...development].reverse() }, {
+  resolved: true, projectPoint: ([x, z]) => [x, 20, z],
+});
+assert.equal(varied.count, 4);
+assert.equal(varied.metadata.presentation_building_families.residential, 2);
+assert.equal(varied.metadata.presentation_building_families.agricultural, 1);
+assert.equal(varied.metadata.presentation_building_families.commercial, 1);
+assert.equal(varied.metadata.presentation_roof_types.fallback_visual_gable, 3);
+assert.equal(varied.metadata.presentation_roof_types.flat_presentation, 1);
+assert.ok(varied.metadata.distinct_wall_palette_keys >= 3, 'different buildings should have several stable presentation wall materials');
+assert.ok(varied.metadata.distinct_roof_palette_keys >= 2);
+assert.equal(varied.walls.colors.length, varied.walls.positions.length);
+assert.equal(varied.roofs.colors.length, varied.roofs.positions.length);
+assert.equal(varied.colors.length, varied.positions.length);
+assert.equal(reversed.walls.colors.length, varied.walls.colors.length);
+assert.match(varied.metadata.vertex_color_semantics, /per-source-id/);
+for (const feature of development) {
+  const a = buildingPresentationPalette(feature);
+  const b = buildingPresentationPalette({ ...feature, polygon: [...feature.polygon].reverse() });
+  assert.equal(a.wall_hex, b.wall_hex, 'material keyed by stable ID, not footprint winding');
+  assert.equal(a.roof_hex, b.roof_hex);
+  assert.deepEqual(a.wall_rgb_linear, hexToLinearRgb(a.wall_hex));
+  assert.ok(a.wall_rgb_linear.every((n) => n > 0 && n <= 1));
+}
+const knownGable = buildBuildingSurfaceGeometry({
+  features: [{ ...development[0], presentation_gable_direction_deg_from_east_ccw: 0, presentation_gable_rise_m: 2 }],
+}, { resolved: true, projectPoint: ([x, z]) => [x, 20, z] });
+assert.equal(knownGable.metadata.presentation_roof_types.dom_oriented_gable, 1);
+const notRectangular = buildBuildingSurfaceGeometry({
+  features: [{ ...development[0], polygon: [[0, 0], [14, 0], [12, 8], [0, 8], [0, 0]] }],
+}, { resolved: true, projectPoint: ([x, z]) => [x, 20, z] });
+assert.equal(notRectangular.metadata.presentation_roof_types.fallback_visual_gable, 0,
+  'non-rectangular unknown roof geometry must not invent a gable');
 
 console.log('BUILDING_SURFACE_GEOMETRY_PASS');
