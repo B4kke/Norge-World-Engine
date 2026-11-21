@@ -68,6 +68,43 @@ function createTerrainVertexColors(positions, normals) {
   return colors;
 }
 
+function installGroundColorControl(canvas, materialLibrary, onChange) {
+  const doc = globalThis.document;
+  const parent = canvas?.parentElement;
+  if (!doc?.createElement || !parent?.append) return { dispose() {} };
+  const control = doc.createElement('button');
+  const satellite = materialLibrary.stats.ground_color_modes_supported.includes('satellite');
+  control.type = 'button';
+  control.dataset.nweGroundColorControl = 'true';
+  control.setAttribute('aria-label', 'Bakketekstur: bytt mellom satellitt og PBR');
+  control.title = satellite
+    ? 'Ekte Sentinel-2-farger, 10 m/piksel. Lokal CC0 PBR-detalj på nært hold. Trykk for sammenligning.'
+    : 'Ingen SHA-verifisert, redistribusjonsklar satellittfarge i denne scenen.';
+  Object.assign(control.style, {
+    position: 'absolute', bottom: '16px', left: '16px', zIndex: '14',
+    color: '#eef5f4', font: '600 12px/1.2 system-ui,sans-serif',
+    background: 'rgba(11,29,31,.85)', border: '1px solid rgba(213,239,237,.35)',
+    borderRadius: '9px', padding: '8px 11px', cursor: satellite ? 'pointer' : 'default',
+    boxShadow: '0 2px 10px rgba(0,0,0,.28)',
+  });
+  if (!satellite) control.disabled = true;
+  function label() {
+    control.textContent = materialLibrary.getGroundColorMode() === 'satellite'
+      ? 'Bakke · Satellitt (10 m)' : satellite ? 'Bakke · PBR (sammenligning)' : 'Bakke · PBR (uten satellitt)';
+  }
+  label();
+  const toggle = () => {
+    if (!satellite) return;
+    const next = materialLibrary.getGroundColorMode() === 'satellite' ? 'pbr' : 'satellite';
+    materialLibrary.setGroundColorMode(next);
+    label();
+    onChange();
+  };
+  control.addEventListener('click', toggle);
+  parent.append(control);
+  return { dispose() { control.removeEventListener('click', toggle); control.remove(); } };
+}
+
 function groundHeightAtCenter(payload) {
   const header = payload.artifact.header;
   return sampleHeightGrid(payload.elevations, {
@@ -201,6 +238,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
   const postProcessing = createGroundPostProcessing({ renderer, scene, camera, profile, light: lighting.sun });
 
   let stopped = false; let dirty = true; let lastDrawAt = 0; let lastAnimationAt = 0;
+  const groundColorControl = installGroundColorControl(canvas, materialLibrary, () => { dirty = true; });
   let firstFrameResolve; let firstFrameReject; let firstFrameSettled = false;
   let characterFollowInitialized = false;
   const cameraControls = installThreePreviewCameraControls({ canvas, camera, target: cameraTarget, firstPerson: true, onChange: () => { dirty = true; } });
@@ -267,7 +305,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
 
   const invalidate = () => { if (!stopped) dirty = true; };
   const dispose = () => {
-    if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); humanoid.dispose();
+    if (stopped) return; stopped = true; renderer.setAnimationLoop(null); cameraControls.dispose(); groundColorControl.dispose(); humanoid.dispose();
     if (terrainMesh) { scene.remove(terrainMesh); terrainMesh.geometry.dispose(); terrainMesh = null; }
     for (const mesh of staticMeshes) disposeMesh(mesh);
     vegetationLayer?.dispose();
@@ -377,6 +415,7 @@ async function createThreeGroundRendererFromInitialized({ renderer, forceWebGL, 
         truth_guard: 'fixed renderer-only camera and LOD; SR16 coordinates remain unchanged',
       });
     },
+    getGroundColorMode() { return materialLibrary.getGroundColorMode(); },
     getVisualStyle() { return { ...rendererVisualStyle, ...lighting.snapshot() }; },
   };
 }
