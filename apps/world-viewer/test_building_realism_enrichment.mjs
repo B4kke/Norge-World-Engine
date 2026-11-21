@@ -60,7 +60,9 @@ const resolvedGeometry = buildBuildingSurfaceGeometry(enriched, {
 assert.equal(resolvedGeometry.count, 2);
 assert.equal(resolvedGeometry.metadata.source_backed_height_count, 1);
 assert.equal(resolvedGeometry.metadata.derived_presentation_height_count, 1);
-assert.equal(resolvedGeometry.metadata.gabled_presentation_count, 1);
+assert.equal(resolvedGeometry.metadata.gabled_presentation_count, 2);
+assert.equal(resolvedGeometry.metadata.presentation_roof_types.dom_oriented_gable, 1);
+assert.equal(resolvedGeometry.metadata.presentation_roof_types.fallback_visual_gable, 1);
 assert.equal(resolvedGeometry.metadata.height_semantics, 'source-backed-or-verified-dom-derived-presentation');
 assert.match(resolvedGeometry.metadata.roof_triangulation, /strong-dom-oriented/);
 const maxRoofY = Math.max(...Array.from(resolvedGeometry.roofs.positions).filter((_, index) => index % 3 === 1));
