@@ -24,6 +24,41 @@ CC0-1.0. Runtime never contacts Poly Haven. Material choice, tint, UVs, light,
 fog and post processing are presentation only; they do not alter accepted DTM,
 road or building geometry.
 
+## Adjusting the Nannestad time of day
+
+The normal WebUI has **Tid · Nannestad** above the weather selector: drag the
+00:00–23:59 slider or tap **12:00** for daylight even when the PC/browser clock
+is at night. Tap **Nå** to return to real time. Manual time is saved locally in
+the browser and restored on the next visit; storage denial safely falls back to
+the live clock. The selected civil time is always Europe/Oslo (CET/CEST),
+including when a viewer is opened from another timezone. Changing time updates
+the procedural solar direction, sun/shadows, sky and ambient fill immediately;
+expensive environment/IBL capture refreshes only when the slider is released or
+a shortcut is pressed, not on every drag event.
+
+For deterministic screenshots, `?solarTime=2026-07-23T11:00:00Z` still overrides
+the stored preference at startup. This strict UTC timestamp fixes the full
+solar date/time until manually changed. Neither mode changes authoritative
+geographic data, simulation ticks nor live meteorology. Weather presets are
+separate presentation-only controls.
+
+## Source-backed near-conifer A/B
+
+The normal world view uses the SHA-verified offline CC0 conifer asset in a
+bounded near-camera LOD. For a controlled comparison on the **same accepted
+terrain/road/building and SR16 representative**, use `?treeProof=proxy` or
+`?treeProof=authored` (plus optional `&solarTime=2026-07-23T11%3A00%3A00Z`).
+Both variants use the identical camera target and runtime source identities,
+and the proxy variant deliberately skips the high-detail GPU resource.
+These parameters are presentation diagnostics, not a promise of surveyed
+individual tree locations.
+
+CI captures both images with fixed daylight and clear weather, verifies the
+exact target and camera equality, checks active authored triangles and buffer
+estimate, records headless WebGL2 draw-CPU samples, and measures a fixed tree
+ROI's pixel difference. This is *not* a hardware GPU FPS benchmark, and a
+pixel difference alone is not evidence of photorealism.
+
 ## Deployable app boundary
 
 `index.html` + `src/` form the deployable Vite application shell for the browser viewer. Vite is only the replaceable web build/development tool; it does not select WebGPU, WebGL2, Three.js, Cesium, terrain format or world-coordinate policy.
@@ -128,3 +163,40 @@ node apps/world-viewer/run_benchmark.mjs \
 The runner independently checks each staged artifact's `REAL_COMPILED` role, byte size and SHA-256, serves only bundle/artifact bytes plus the repo browser-verifier modules and pinned local JCS dependency to Chrome, and fails if the browser contacts raw Norwegian source services or if the batched vector path does not get below the Issue #5 investigative 100-draw target.
 
 `.github/workflows/viewer-benchmark.yml` produces the hosted reproducible measurement package. Device measurements remain separate evidence: hosted software-renderer frame times must not be presented as Android GPU performance.
+
+## Nannestad: variasjon i bygg og satellittfarget bakke
+
+I den normale Nannestad 1×1 km WebUI-en bygger husene fortsatt på de samme
+SHA-verifiserte OSM-fotavtrykkene og de aksepterte OSM/NHM-høydene. Rendereren
+bruker nå en stabil, typeavhengig presentasjonspalett for vegger og tak:
+hus, landbruksbygg, garasjer og næringsbygg får ulike malings-/taktoner.
+Eksisterende lokale Poly Haven CC0 PBR-kart for weathered-plank siding og
+grey roof (diffuse, normal og roughness) ligger fortsatt under fargene.
+Dette krever ikke ett trekkall per bygning: fargene er vertex-attributter
+i de eksisterende batchede tak-/veggmeshene; rammer/dører får egne
+instansfarger. Tydelig rektangulære gable-kandidater kan få et forsiktig
+visuelt saltak der DOM-orientering mangler. Disse er **ikke** en påstand om
+eksakt observert fasadefarge, vindusutforming eller takform.
+
+Den normale bakkefargen kommer fra den **eksisterende verifiserte
+Sentinel-2-kilden på 10 m/piksel**, ikke fra en oppskalert flyfoto-tekstur.
+Tilknyttede lokale CC0 PBR normal-/roughness-kart gir nærdetalj uten å
+forfalske geografisk pikseloppløsning. Den synlige knappen
+**Bakke · Satellitt (10 m)** bytter til **Bakke · PBR (sammenligning)**
+og tilbake uten å laste ned geodata eller endre terrenggeometri. Hvis
+kilde-/lisensverifisert satellittbilde mangler, forblir ren PBR aktiv
+og satellittknappen er deaktivert.
+
+Kartverkets/Norge i bilder ortofoto har særskilte bruks-/redistribusjonsvilkår;
+de strømmes **ikke** inn i offentlig WebUI som et lovlig bevist
+høyoppløselig bakke-alternativ. Se
+`docs/proofs/2026-11-21-nannestad-buildings-and-satellite-ground.md`.
+
+Kilder:
+- https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2
+- https://www.kartverket.no/en/api-and-data/terms-of-use
+- https://www.geonorge.no/nib
+
+### Building material variation
+
+The material library shares the pinned CC0 plank siding and roof maps with two deterministic, original synthetic 256×256 PBR alternatives (plaster and standing-seam roofing). The adapter assigns presentation material slots using source type and stable identity, groups existing indices with at most two groups per wall/roof/height mesh, and exposes group-aware draw estimates and material counts. Neither derived material choices nor exact window positions are surveyed. Existing verified Sentinel-2 10 m geographic ground color stays default; no high-resolution ortho has been admitted.

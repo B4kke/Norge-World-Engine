@@ -1,8 +1,18 @@
 import * as THREE from 'three/webgpu';
+import { createProceduralBuildingTextures, BUILDING_MAP_SIZE } from './proceduralBuildingMaps.mjs';
 
 export const GROUND_MATERIAL_CATALOG_SCHEMA = 'nwe.polyhaven-material-catalog/0.1';
 export const GROUND_MATERIAL_LIBRARY_SCHEMA = 'nwe.ground-material-library/0.1';
 export const GROUND_MATERIAL_CATALOG_PATH = 'assets/materials/polyhaven/manifest.json';
+export const GROUND_MATERIAL_PRESENTATION = Object.freeze({
+  roadAsphalt: Object.freeze({
+    diffuseTint: 0xffffff,
+    diffuseTintSrgb: '#ffffff',
+    normalScale: 0.58,
+    roughness: 0.94,
+    rationale: 'preserve-pinned-cc0-diffuse-albedo-without-extra-darkening-tint',
+  }),
+});
 
 const REQUIRED_SURFACES = Object.freeze([
   'terrain',
@@ -171,10 +181,13 @@ export async function createGroundMaterialLibrary({
     }
   }
 
+  const plasterTextures=createProceduralBuildingTextures('plaster',{anisotropy,normalMaps:profile.normalMaps!==false});
+  const seamTextures=createProceduralBuildingTextures('standing-seam',{anisotropy,normalMaps:profile.normalMaps!==false});
   const terrainMaterialTextures = {
     ...terrainTextures,
     diffuse: geographicGroundColor ?? terrainTextures.diffuse,
   };
+  const roadPresentation = GROUND_MATERIAL_PRESENTATION.roadAsphalt;
   const materials = {
     terrain: new THREE.MeshStandardMaterial(materialOptions(terrainMaterialTextures, profile, {
       normalScale: 0.42,
@@ -182,43 +195,68 @@ export async function createGroundMaterialLibrary({
       vertexColors: geographicGroundColor == null,
     })),
     roadAsphalt: new THREE.MeshStandardMaterial(materialOptions(roadTextures, profile, {
-      normalScale: 0.58,
-      roughness: 0.94,
-      color: 0xc8c9c8,
+      normalScale: roadPresentation.normalScale,
+      roughness: roadPresentation.roughness,
+      color: roadPresentation.diffuseTint,
       side: THREE.DoubleSide,
     })),
     resolvedWall: new THREE.MeshStandardMaterial(materialOptions(wallTextures, profile, {
       normalScale: 0.62,
       roughness: 0.92,
-      color: 0xe5ded1,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     fallbackWall: new THREE.MeshStandardMaterial(materialOptions(wallTextures, profile, {
       normalScale: 0.48,
       roughness: 0.96,
-      color: 0x909897,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     resolvedRoof: new THREE.MeshStandardMaterial(materialOptions(roofTextures, profile, {
       normalScale: 0.58,
       roughness: 0.92,
-      color: 0xd2d5d6,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     fallbackRoof: new THREE.MeshStandardMaterial(materialOptions(roofTextures, profile, {
       normalScale: 0.44,
       roughness: 0.97,
-      color: 0x858d90,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
   };
+  materials.resolvedWallAlt=new THREE.MeshStandardMaterial(materialOptions(plasterTextures,profile,{vertexColors:true,side:THREE.DoubleSide,normalScale:.48}));
+  materials.fallbackWallAlt=materials.resolvedWallAlt;
+  materials.resolvedRoofAlt=new THREE.MeshStandardMaterial(materialOptions(seamTextures,profile,{vertexColors:true,side:THREE.DoubleSide,normalScale:.7,metalness:.18,roughness:.88}));
+  materials.fallbackRoofAlt=materials.resolvedRoofAlt;
   for (const [id, material] of Object.entries(materials)) material.name = `NWE:${id}:${profile.id}`;
+
+  // The geographic Sentinel-2 colour is the default whenever a verified,
+  // redistribution-allowed tile was delivered. PBR-only is an explicit
+  // renderer-only comparison mode: it never fetches raw imagery at runtime.
+  let groundColorMode = geographicGroundColor ? 'satellite' : 'pbr';
+  function setGroundColorMode(mode) {
+    if (!['satellite', 'pbr'].includes(mode)) throw new Error('GROUND_COLOR_MODE_INVALID');
+    if (mode === 'satellite' && !geographicGroundColor) throw new Error('GROUND_COLOR_SATELLITE_NOT_AVAILABLE');
+    if (mode === groundColorMode) return groundColorMode;
+    groundColorMode = mode;
+    materials.terrain.map = mode === 'satellite' ? geographicGroundColor : terrainTextures.diffuse;
+    materials.terrain.vertexColors = mode !== 'satellite';
+    materials.terrain.needsUpdate = true;
+    return groundColorMode;
+  }
 
   const textures = [
     ...Object.values(terrainTextures),
     ...Object.values(roadTextures),
     ...Object.values(wallTextures),
     ...Object.values(roofTextures),
+    ...Object.values(plasterTextures),
+    ...Object.values(seamTextures),
     ...(geographicGroundColor ? [geographicGroundColor] : []),
   ];
   const localTextureBytes = REQUIRED_SURFACES.reduce((sum, surfaceId) => (
@@ -235,12 +273,24 @@ export async function createGroundMaterialLibrary({
     source: 'Poly Haven local pinned CC0 catalog',
     texture_resolution: catalog.texture_resolution,
     texture_count: textures.length,
+    procedural_building_maps: Object.freeze({kinds:['plaster','standing-seam'],texture_size:BUILDING_MAP_SIZE,truth:'original-generated-presentation-only',texture_count:Object.keys(plasterTextures).length+Object.keys(seamTextures).length,network_bytes:0}),
+    texture_rgba_base_bytes_estimate:textures.reduce((sum,t)=>sum+4*(t.image?.width??1024)*(t.image?.height??1024),0),
     local_compressed_texture_bytes: localTextureBytes,
     anisotropy_requested: requestedAnisotropy,
     anisotropy_active: anisotropy,
     normal_maps: profile.normalMaps !== false,
     normal_convention: 'OpenGL',
     terrain_repeat: Object.freeze(terrainRepeat),
+    ground_color_default_mode: groundColorMode,
+    ground_color_modes_supported: Object.freeze(geographicGroundColor ? ['satellite', 'pbr'] : ['pbr']),
+    ground_color_resolution_policy: 'true-sentinel-2-10m-macro-colour-plus-licensed-cc0-sub-meter-pbr-normals-roughness-no-upsampled-geographic-detail',
+    road_asphalt_presentation: Object.freeze({
+      diffuse_tint_srgb: roadPresentation.diffuseTintSrgb,
+      roughness: roadPresentation.roughness,
+      normal_scale: roadPresentation.normalScale,
+      rationale: roadPresentation.rationale,
+      truth: 'renderer-only-material-calibration-no-road-geometry-or-source-semantics-change',
+    }),
     ground_color: groundImagery ? Object.freeze({
       schema: groundImagery.schema,
       mode: 'source-derived-geographic-albedo',
@@ -266,8 +316,10 @@ export async function createGroundMaterialLibrary({
   return {
     materials,
     stats,
+    getGroundColorMode() { return groundColorMode; },
+    setGroundColorMode,
     dispose() {
-      for (const material of Object.values(materials)) material.dispose();
+      for (const material of new Set(Object.values(materials))) material.dispose();
       for (const texture of textures) texture.dispose();
     },
   };

@@ -227,6 +227,7 @@ async function runDefaultPreview() {
   }
 
   let running = false;
+  const treeProofFrames: number[] = [];
   const start = async () => {
     if (running) return;
     running = true;
@@ -236,13 +237,19 @@ async function runDefaultPreview() {
     phaseChip.textContent = 'LOADING';
     const runtimeFetch = createAuditedRuntimeFetch();
     try {
-      const { result } = await runPreview1({
+      const { result, renderer } = await runPreview1({
         canvas,
         manifestUrl,
         groundImageryUrl,
         fetchImpl: runtimeFetch.fetchImpl,
         graphicsProfile: graphicsProfile.id,
         rendererPreference,
+        onFrame: (frame) => {
+          if (params.has('treeProof') && Number.isFinite(frame?.drawCpuMs)) {
+            treeProofFrames.push(frame.drawCpuMs);
+            if (treeProofFrames.length > 90) treeProofFrames.shift();
+          }
+        },
         onPhase: (phase) => {
           phaseChip.textContent = phase.toUpperCase();
           if (phase.includes('verify')) setMetric('metric-provenance', 'VERIFYING', 'warn');
@@ -268,7 +275,19 @@ async function runDefaultPreview() {
       );
       setMetric('metric-texture-quality', `${materials.anisotropy_active}× ANISO · NORMAL ${materials.normal_maps ? 'ON' : 'OFF'}`, materials.normal_maps ? 'pass' : 'neutral');
       setMetric('metric-lighting', `${visualStyle.shadow.filter.replace('ShadowMap', '').toUpperCase()} · ${visualStyle.shadow.map_size}²`, 'pass');
-      setMetric('metric-post', post.enabled ? `${post.ambient_occlusion ? 'GTAO' : ''}${post.ambient_occlusion && post.bloom ? ' + ' : ''}${post.bloom ? 'BLOOM' : ''}` : 'DIRECT', post.enabled ? 'pass' : 'neutral');
+      const postEffectLabels: Record<string, string> = {
+        screen_space_reflections: 'SSR',
+        ambient_occlusion: 'GTAO',
+        god_rays: 'GOD RAYS',
+        depth_of_field: 'BOKEH',
+        bloom: 'BLOOM',
+        chromatic_aberration: 'LENS',
+        film_grain: 'GRAIN',
+      };
+      const postEffectLabel = post.enabled && Array.isArray(post.effects)
+        ? post.effects.map((effect) => postEffectLabels[effect]).filter(Boolean).join(' + ')
+        : '';
+      setMetric('metric-post', postEffectLabel || 'DIRECT', post.enabled ? 'pass' : 'neutral');
       setMetric('metric-mesh', `${result.renderer.terrain_vertices.toLocaleString()} vertices · ${result.renderer.terrain_triangles.toLocaleString()} tris`);
       setMetric('metric-height-backed', String(result.renderer.source_backed_building_heights), 'pass');
       setMetric('metric-height-fallback', `${result.renderer.unresolved_building_heights} · DEBUG 5 m`, 'warn');
@@ -281,6 +300,44 @@ async function runDefaultPreview() {
           ? ` Ground color: ${result.ground_imagery.provider ?? result.ground_imagery.source_name ?? 'source imagery'} · ${result.ground_imagery.native_ground_sample_distance_m ?? '?'} m GSD · not orthophoto.`
           : ' Ground color: generic PBR fallback.';
         note.textContent = `REAL COMPILED world truth verifisert. ${materials.texture_count} lokale PBR/ground-kart er aktive. Renderer: ${String(result.renderer.backend).toUpperCase()}, profil: ${graphicsProfile.label}.${groundColor}${fallback}`;
+      }
+      // Presentation-only browser evidence for the accepted 1 km Nannestad
+      // slice. The source counts and SHA are immutable; the ground mode is a
+      // disposable renderer setting and never reclassifies satellite pixels.
+      (globalThis as any).__nweSurfaceProof = Object.freeze({
+        snapshot() {
+          return Object.freeze({
+            schema: 'nwe.nannestad-web-surface-proof/0.1',
+            building_source_count: result.buildings.count,
+            building_palette: result.renderer.building_palette,
+            building_materials: result.renderer.building_materials,
+            ground_color: result.ground_imagery,
+            ground_color_mode: renderer.getGroundColorMode?.() ?? null,
+            control_label: document.querySelector<HTMLElement>('[data-nwe-ground-color-control]')?.textContent ?? null,
+            terrain_sha256: result.terrain.artifact_sha256,
+            building_sha256: result.buildings.artifact_sha256,
+            truth_guard: 'colour/roof profiles are renderer presentation; Sentinel-2 10m macro RGB is not a submeter orthophoto',
+          });
+        },
+      });
+      if (params.has('treeProof')) {
+        const initial = renderer.getTreeProofEvidence?.();
+        if (!initial || initial.mode !== params.get('treeProof') || initial.backend !== result.renderer.backend) {
+          throw new Error('NWE_TREE_PROOF_EVIDENCE_MISSING');
+        }
+        // Read-only diagnostic hook, not authoritative world/simulation state.
+        (globalThis as any).__nweTreeProof = Object.freeze({
+          snapshot() {
+            const evidence = renderer.getTreeProofEvidence();
+            const sorted = [...treeProofFrames].sort((a, b) => a - b);
+            return Object.freeze({
+              ...evidence,
+              frame_sample_count: sorted.length,
+              draw_cpu_p50_ms: sorted.length ? sorted[Math.floor(sorted.length * 0.5)] : null,
+              draw_cpu_p95_ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] : null,
+            });
+          },
+        });
       }
       phaseChip.textContent = 'REAL WORLD READY';
       phaseChip.classList.add('pass-chip');
