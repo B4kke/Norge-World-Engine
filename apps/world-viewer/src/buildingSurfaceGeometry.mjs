@@ -80,9 +80,28 @@ function projection(point, axis) {
   return point[0] * axis[0] + point[2] * axis[1];
 }
 
+function fallbackGableDirectionDegrees(base) {
+  if (base.length !== 4) return null;
+  const edges = base.map((point, i) => {
+    const next = base[(i + 1) % base.length];
+    return [next[0] - point[0], next[2] - point[2]];
+  });
+  const lengths = edges.map(([x, z]) => Math.hypot(x, z));
+  if (Math.min(...lengths) < 2.5 || Math.max(...lengths) / Math.min(...lengths) > 5.5) return null;
+  const parallel = (a, b) => Math.abs((a[0] * b[1] - a[1] * b[0]) / (Math.hypot(...a) * Math.hypot(...b)));
+  const perpendicular = (a, b) => Math.abs((a[0] * b[0] + a[1] * b[1]) / (Math.hypot(...a) * Math.hypot(...b)));
+  if (parallel(edges[0], edges[2]) > 0.12 || parallel(edges[1], edges[3]) > 0.12
+      || edges.some((edge, i) => perpendicular(edge, edges[(i + 1) % 4]) > 0.16)) return null;
+  const longest = edges[lengths.indexOf(Math.max(...lengths))];
+  return Math.atan2(-longest[1], longest[0]) * (180 / Math.PI);
+}
+
 function gableDescriptor(feature, base, totalHeightM) {
-  const degrees = Number(feature?.presentation_gable_direction_deg_from_east_ccw);
-  if (!Number.isFinite(degrees) || base.length !== 4 || feature?.presentation_roof_shape !== 'gabled') return null;
+  if (base.length !== 4 || feature?.presentation_roof_shape !== 'gabled') return null;
+  const given = feature?.presentation_gable_direction_deg_from_east_ccw;
+  const degrees = given != null && Number.isFinite(Number(given))
+    ? Number(given) : fallbackGableDirectionDegrees(base);
+  if (!Number.isFinite(degrees)) return null;
   const requestedRise = Number(feature?.presentation_gable_rise_m);
   const rise = Math.max(0.5, Math.min(Number.isFinite(requestedRise) ? requestedRise : 1.5, totalHeightM * 0.45, 5));
   if (!(rise > 0 && totalHeightM - rise >= 1.5)) return null;
@@ -300,8 +319,10 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
       height_semantics: resolved ? resolvedSemantics : 'renderer-only-fallback',
       fallback_height_m: resolved ? null : fallbackHeightMeters,
       ground_lift_m: groundLiftMeters,
-      roof_triangulation: gabledPresentationCount > 0 ? 'earcut-flat-plus-strong-dom-oriented-presentation-gables' : 'three-earcut-2d-footprint',
-      roof_shape_truth: 'source roof shape is not inferred from DOM; gables are explicit renderer policy only',
+      roof_triangulation: roofStylesBySource.dom_oriented_gable > 0
+        ? 'earcut-flat-plus-dom-oriented-and-bounded-fallback-presentation-gables'
+        : gabledPresentationCount > 0 ? 'earcut-flat-plus-bounded-fallback-presentation-gables' : 'three-earcut-2d-footprint',
+      roof_shape_truth: 'gables are renderer-only visual hypotheses on eligible rectangular footprints; DOM only orients strong candidates; never surveyed roof shapes',
       uv_semantics: 'renderer-only-meter-scaled-surface-uv',
       vertex_color_semantics: 'deterministic-per-source-id-presentational-palette-linear-rgb-times-licensed-cc0-pbr',
       distinct_wall_palette_keys: wallStyles.size,
