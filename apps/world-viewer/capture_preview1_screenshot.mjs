@@ -216,6 +216,58 @@ async function assertSolarClockUi(cdp) {
 }
 
 
+async function assertSurfaceProofUi(cdp) {
+  const expression = `(() => {
+    const source = window.__nweSurfaceProof?.snapshot?.();
+    const button = document.querySelector('[data-nwe-ground-color-control]');
+    if (!source || !button) return { status: 'PRESENTATION_EVIDENCE_MISSING', source, button: Boolean(button) };
+    const before = button.textContent;
+    button.click();
+    const pbr = window.__nweSurfaceProof.snapshot();
+    button.click();
+    const restored = window.__nweSurfaceProof.snapshot();
+    return { status: 'PASS', before, pbr, restored };
+  })()`;
+  const output = await cdp.send('Runtime.evaluate', { expression, returnByValue: true });
+  const proof = output?.result?.value;
+  const sample = proof?.restored;
+  const palettes = sample?.building_palette;
+  const resolved = palettes?.resolved ?? {};
+  const fallback = palettes?.fallback ?? {};
+  const wallStyles = (resolved.wall_palette_count ?? 0) + (fallback.wall_palette_count ?? 0);
+  const roofStyles = (resolved.roof_palette_count ?? 0) + (fallback.roof_palette_count ?? 0);
+  const roofs = [resolved.roofs, fallback.roofs];
+  const gableCount = roofs.reduce((total, item) => total
+    + (item?.dom_oriented_gable ?? 0) + (item?.fallback_visual_gable ?? 0), 0);
+  if (output?.exceptionDetails || proof?.status !== 'PASS'
+      || sample?.building_source_count < 100
+      || wallStyles < 4 || roofStyles < 3 || gableCount < 1
+      || sample.ground_color?.mode !== 'source-derived-geographic-albedo'
+      || !/^[0-9a-f]{64}$/.test(sample.ground_color?.texture_sha256 ?? '')
+      || sample.ground_color?.native_ground_sample_distance_m !== 10
+      || !String(proof.before).includes('Satellitt')
+      || proof.pbr?.ground_color_mode !== 'pbr'
+      || !String(proof.pbr?.control_label).includes('PBR')
+      || sample.ground_color_mode !== 'satellite'
+      || !String(sample.control_label).includes('Satellitt')
+      || proof.pbr?.building_sha256 !== sample.building_sha256
+      || proof.pbr?.terrain_sha256 !== sample.terrain_sha256) {
+    throw new Error('VISUAL_PROOF_BUILDING_PALETTE_SATELLITE_UI_FAILED: ' + JSON.stringify(proof));
+  }
+  return {
+    status: 'PASS',
+    building_source_count: sample.building_source_count,
+    palette: palettes,
+    wall_style_count_sum: wallStyles,
+    roof_style_count_sum: roofStyles,
+    presentation_gable_count: gableCount,
+    satellite: { texture_sha256: sample.ground_color.texture_sha256,
+      native_ground_sample_distance_m: sample.ground_color.native_ground_sample_distance_m,
+      default_mode: 'satellite', pbr_toggle: 'PASS', satellite_restore: 'PASS' },
+    truth_guard: sample.truth_guard,
+  };
+}
+
 /** Reuse the accepted runtime snapshot for both camera-locked vegetation modes. */
 async function waitForTreeProof(cdp, mode, timeoutMs) {
   const started = Date.now();
@@ -425,6 +477,7 @@ async function main() {
     }
     writeFileSync(output, png);
     const solarClockUi = await assertSolarClockUi(cdp);
+    const surfaceProof = await assertSurfaceProofUi(cdp);
     const treeAb = args['tree-ab'] === '1'
       ? await captureTreeAb(cdp, origin, query, timeoutMs, output)
       : null;
@@ -441,6 +494,7 @@ async function main() {
       solar_time_utc: VISUAL_PROOF_SOLAR_TIME_UTC,
       daylight_world_viewport: daylightEvidence,
       solar_clock_ui: solarClockUi,
+      building_satellite_ui: surfaceProof,
       tree_camera_ab: treeAb,
       ground_imagery_manifest: args['ground-imagery-manifest'] ?? null,
     }, null, 2));
