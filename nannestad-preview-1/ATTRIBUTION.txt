@@ -1,0 +1,7 @@
+DTM1 height data: Kartverket / Geonorge, CC BY 4.0.
+NHM DOM-derived building surface measurements: Kartverket / Geonorge; downstream derived candidate, source terms retained in provenance.
+Road data: Statens vegvesen, NLOD 1.0.
+Building footprints: © OpenStreetMap contributors, ODbL 1.0.
+Forest semantics: Kilde: NIBIO, SR16V, NLOD 1.0.
+Inneholder data under norsk lisens for offentlige data (NLOD) tilgjengeliggjort av Statens vegvesen.
+Contains modified Copernicus Sentinel data 2026
