@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { sampleHeightGrid } from '../../../engine/streaming/terrain_mesh_buffers.mjs';
-import { buildingPresentationPalette } from './buildingPresentationPalette.mjs';
+import { buildingPresentationPalette, buildingSurfaceStyle } from './buildingPresentationPalette.mjs';
 
 const FALLBACK_HEIGHT_M = 5;
 const GROUND_LIFT_M = 0.085;
@@ -99,6 +99,7 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
   const polygon = polygonWithoutClosure(feature?.polygon);
   if (polygon.length < 3) return;
   const policy = typePolicy(feature);
+  const variant = buildingSurfaceStyle(feature).variant;
   const height = wallHeight(feature);
   const floors = Math.max(1, Math.min(6, Math.floor(height / policy.floorHeight)));
   const doorEdgeIndex = deterministicIndex(feature, polygon.length);
@@ -136,7 +137,7 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
     }
 
     if (!policy.windows || windowTransforms.length >= budgets.windows || length < 2.2) continue;
-    const spacing = policy.sparse ? 3.8 : 2.45;
+    const spacing = policy.sparse ? 3.8 : [2.15, 2.65, 3.1][variant];
     const columns = Math.max(1, Math.min(10, Math.floor((length - 0.8) / spacing)));
     for (let floor = 0; floor < floors && windowTransforms.length < budgets.windows; floor += 1) {
       if (policy.sparse && floor > 1) break;
@@ -147,8 +148,8 @@ function pushFacadeInstances(feature, payload, windowTransforms, doorTransforms,
         if (edgeIndex === doorEdgeIndex && floor === 0 && Math.abs(along - length * 0.5) < policy.doorWidth * 0.75) continue;
         const e = a[0] + ux * along;
         const n = a[1] + un * along;
-        const width = policy.sparse ? 0.85 : 1.05;
-        const paneHeight = policy.sparse ? 0.85 : 1.15;
+        const width = policy.sparse ? 0.85 : [0.85, 1.25, 1.55][variant];
+        const paneHeight = policy.sparse ? 0.85 : [1.3, 1.15, 0.95][variant];
         windowTransforms.push(matrix(worldToLocal(payload, e, n, centerHeight, groundA + (groundB - groundA) * along / length, outward), yaw, [width, paneHeight, 1]));
         windowFrameColors.push(frameColor);
       }

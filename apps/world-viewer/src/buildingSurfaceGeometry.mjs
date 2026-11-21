@@ -1,5 +1,5 @@
 import { Earcut } from 'three/src/extras/Earcut.js';
-import { buildingPresentationPalette } from './buildingPresentationPalette.mjs';
+import { buildingPresentationPalette, buildingSurfaceStyle } from './buildingPresentationPalette.mjs';
 
 const DEFAULT_FALLBACK_HEIGHT_M = 5;
 const DEFAULT_GROUND_LIFT_M = 0.08;
@@ -277,6 +277,15 @@ export function buildBuildingSurfaceGeometry(buildingsArtifact, {
     );
     if (!result.appended) continue;
     const style = buildingPresentationPalette(feature);
+    const surfaceStyle = buildingSurfaceStyle(feature);
+    for (let i = wallFirstVertex * 2; i < wallUvs.length; i += 2) {
+      wallUvs[i] = wallUvs[i] * surfaceStyle.wall_uv[0] + surfaceStyle.offset;
+      wallUvs[i + 1] *= surfaceStyle.wall_uv[1];
+    }
+    for (let i = roofFirstVertex * 2; i < roofUvs.length; i += 2) {
+      roofUvs[i] = roofUvs[i] * surfaceStyle.roof_uv[0] + surfaceStyle.offset;
+      roofUvs[i + 1] *= surfaceStyle.roof_uv[1];
+    }
     for (let vertex = wallFirstVertex; vertex < wallPositions.length / 3; vertex += 1) {
       wallColors.push(...style.wall_rgb_linear);
     }

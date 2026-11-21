@@ -4,11 +4,11 @@ export const BUILDING_PALETTE_SCHEMA = 'nwe.building-presentation-palette/0.1';
 
 const PALETTES = Object.freeze({
   residential: Object.freeze({
-    walls: [0xe5d9c7, 0xdac8b0, 0xd5c7b7, 0xb8c4c3, 0xd9b59e, 0xc3c7b0, 0xe5d9cc, 0xcdbbab],
-    roofs: [0x858787, 0x9d9991, 0x9d6153, 0x6a777b, 0x8c7771, 0x777b77],
+    walls: [0xf2eee5, 0xe4d6b6, 0x9e4034, 0x788b94, 0xb68c51, 0x65765e, 0xe5d9cc, 0x655a50],
+    roofs: [0x55595c, 0x77716a, 0xb45b40, 0x424a50, 0x80534a, 0x33383b],
   }),
   agricultural: Object.freeze({
-    walls: [0xa75f4e, 0xc6af8a, 0x9dafa7, 0xbb9f81, 0x856f5d],
+    walls: [0x943f32, 0xc6af8a, 0x9dafa7, 0x71443a, 0x856f5d],
     roofs: [0x767c7e, 0x98766a, 0x7b8886, 0xa5a2a0],
   }),
   auxiliary: Object.freeze({
@@ -78,4 +78,13 @@ export function buildingPresentationPalette(feature) {
     roof_rgb_linear: Object.freeze(hexToLinearRgb(roofHex)),
     truth: 'deterministic-renderer-only-colour; not measured roof or facade appearance',
   });
+}
+
+// Meter-scaled texture layout variants; presentation only, not surveyed cladding.
+export function buildingSurfaceStyle(feature) {
+  const family = buildingPaletteFamily(feature);
+  const key = String(feature?.source_id ?? feature?.id ?? JSON.stringify(feature?.polygon ?? []));
+  const variant = stableHash('surface:' + key) % 3;
+  const wall = family === 'commercial' ? [[1,1],[0.65,1.5],[1.5,0.8]] : [[1,2],[2,1],[1.4,1.4]];
+  return Object.freeze({ variant, wall_uv: Object.freeze(wall[variant]), roof_uv: Object.freeze([[1,1],[1.5,1],[1,1.5]][variant]), offset: (stableHash('offset:' + key) % 1024) / 1024 });
 }

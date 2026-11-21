@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildBuildingSurfaceGeometry } from './src/buildingSurfaceGeometry.mjs';
-import { buildingPresentationPalette, hexToLinearRgb } from './src/buildingPresentationPalette.mjs';
+import { buildingPresentationPalette, buildingSurfaceStyle, hexToLinearRgb } from './src/buildingPresentationPalette.mjs';
 
 function pointInPolygon([x, y], polygon) {
   let inside = false;
@@ -151,3 +151,8 @@ assert.equal(notRectangular.metadata.presentation_roof_types.fallback_visual_gab
   'non-rectangular unknown roof geometry must not invent a gable');
 
 console.log('BUILDING_SURFACE_GEOMETRY_PASS');
+
+const styles = Array.from({length: 60}, (_, i) => buildingSurfaceStyle({source_id: 'house-'+i, building:'house'}));
+assert.equal(new Set(styles.map(s => s.variant)).size, 3);
+assert.deepEqual(buildingSurfaceStyle(development[0]), buildingSurfaceStyle({...development[0], polygon:[...development[0].polygon].reverse()}));
+assert.ok(styles.every(s => s.wall_uv.every(v => v > 0) && s.offset >= 0 && s.offset < 1));
