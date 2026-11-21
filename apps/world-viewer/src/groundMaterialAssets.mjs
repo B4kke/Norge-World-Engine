@@ -200,29 +200,48 @@ export async function createGroundMaterialLibrary({
     resolvedWall: new THREE.MeshStandardMaterial(materialOptions(wallTextures, profile, {
       normalScale: 0.62,
       roughness: 0.92,
-      color: 0xe5ded1,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     fallbackWall: new THREE.MeshStandardMaterial(materialOptions(wallTextures, profile, {
       normalScale: 0.48,
       roughness: 0.96,
-      color: 0x909897,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     resolvedRoof: new THREE.MeshStandardMaterial(materialOptions(roofTextures, profile, {
       normalScale: 0.58,
       roughness: 0.92,
-      color: 0xd2d5d6,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
     fallbackRoof: new THREE.MeshStandardMaterial(materialOptions(roofTextures, profile, {
       normalScale: 0.44,
       roughness: 0.97,
-      color: 0x858d90,
+      color: 0xffffff,
+      vertexColors: true,
       side: THREE.DoubleSide,
     })),
   };
   for (const [id, material] of Object.entries(materials)) material.name = `NWE:${id}:${profile.id}`;
+
+  // The geographic Sentinel-2 colour is the default whenever a verified,
+  // redistribution-allowed tile was delivered. PBR-only is an explicit
+  // renderer-only comparison mode: it never fetches raw imagery at runtime.
+  let groundColorMode = geographicGroundColor ? 'satellite' : 'pbr';
+  function setGroundColorMode(mode) {
+    if (!['satellite', 'pbr'].includes(mode)) throw new Error('GROUND_COLOR_MODE_INVALID');
+    if (mode === 'satellite' && !geographicGroundColor) throw new Error('GROUND_COLOR_SATELLITE_NOT_AVAILABLE');
+    if (mode === groundColorMode) return groundColorMode;
+    groundColorMode = mode;
+    materials.terrain.map = mode === 'satellite' ? geographicGroundColor : terrainTextures.diffuse;
+    materials.terrain.vertexColors = mode !== 'satellite';
+    materials.terrain.needsUpdate = true;
+    return groundColorMode;
+  }
 
   const textures = [
     ...Object.values(terrainTextures),
@@ -251,6 +270,9 @@ export async function createGroundMaterialLibrary({
     normal_maps: profile.normalMaps !== false,
     normal_convention: 'OpenGL',
     terrain_repeat: Object.freeze(terrainRepeat),
+    ground_color_default_mode: groundColorMode,
+    ground_color_modes_supported: Object.freeze(geographicGroundColor ? ['satellite', 'pbr'] : ['pbr']),
+    ground_color_resolution_policy: 'true-sentinel-2-10m-macro-colour-plus-licensed-cc0-sub-meter-pbr-normals-roughness-no-upsampled-geographic-detail',
     road_asphalt_presentation: Object.freeze({
       diffuse_tint_srgb: roadPresentation.diffuseTintSrgb,
       roughness: roadPresentation.roughness,
@@ -283,6 +305,8 @@ export async function createGroundMaterialLibrary({
   return {
     materials,
     stats,
+    getGroundColorMode() { return groundColorMode; },
+    setGroundColorMode,
     dispose() {
       for (const material of Object.values(materials)) material.dispose();
       for (const texture of textures) texture.dispose();
