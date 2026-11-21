@@ -37,6 +37,12 @@ assert.match(renderer, /resolvedRoofMaterial/, 'source-backed building roofs mus
 assert.match(renderer, /fallbackWallMaterial/, 'fallback-height building walls must remain visually distinct');
 assert.match(renderer, /fallbackRoofMaterial/, 'fallback-height building roofs must remain visually distinct');
 assert.match(renderer, /building_materials:\s*\{/, 'runtime stats must expose building material semantics');
+assert.match(renderer, /buildingsResolved\.walls\.colors/, 'source-id-stable palette attributes must reach merged Three building mesh');
+assert.match(renderer, /buildingsFallback\.roofs\.colors/, 'fallback building roof tint must also preserve deterministic variety');
+assert.match(renderer, /building_palette:\s*\{/, 'palette family and roof-style counts must remain observable');
+assert.match(renderer, /installGroundColorControl/, 'renderer must expose which ground imagery mode is active');
+assert.match(renderer, /getGroundColorMode/, 'renderer must provide a public read-only current ground imagery mode');
+assert.match(materialAssets, /setGroundColorMode/, 'verified Sentinel diffuse must switch without new source acquisition');
 assert.match(renderer, /draw_calls_per_frame:\s*colorDrawCalls/, 'draw-call stats must keep color-pass estimate explicit when shadows add work');
 assert.match(renderer, /shadow_draw_candidates:\s*shadowDrawCandidates/, 'shadow pass cost must be visible in runtime stats');
 assert.match(renderer, /draw_call_semantics:/, 'draw-call stats must explain shadow-pass semantics');
