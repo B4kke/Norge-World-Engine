@@ -83,6 +83,23 @@ When exact LAZ bytes pass source admission, compile a separately versioned deriv
 
 **Acceptance:** fixed-camera A/B against the current scene plus geometry error/source-quality statistics and measured browser CPU/GPU/memory/network cost. Do not promote a LiDAR-first production policy merely because the result looks better.
 
+## WEB-BUILDING-SATELLITE-PBR-VARIATION-01 — Varied Nannestad buildings + verified satellite ground
+**Priority:** USER-REQUESTED / IMPLEMENTED + REAL CHROME PASS + VERCEL READY — 2026-11-21  
+**Owner:** LUMEN + SENTINEL
+
+**Scope and implementation:**
+- Uses the **same accepted 135 OSM source footprints** and guarded OSM/NHM heights. Deterministic source-ID/type-aware residential/farm/auxiliary/commercial/generic wall and roof colors are mapped into linear-RGB vertex attributes on the **same batched geometry meshes** and multiplied with the existing pinned 1k Poly Haven CC0 diffuse/normal/roughness materials.
+- Instanced façade frame and door tints vary deterministically without new per-building draw calls. Conservatively bounded renderer-only rectangular gables supplement DOM-oriented gable candidates; source roof shape never asserted.
+- Existing 10 m native-resolution Sentinel-2 geographic ground color remains the preferred default when manifest-verified; normal/roughness CC0 near-field layers are retained. A visible `Bakke · Satellitt (10 m)` button switches in place to/from local CC0 PBR albedo without re-fetching any Norwegian provider data. No unsafe high-resolution *Norge i bilder* orthophoto admitted.
+
+**Exact acceptance:** code-bearing SHA `6e126ca95500881f8541430baadcfd8690dabd13`: [real Chrome visual-proof run 44875977840](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977840) **PASS**, including daylight, solar controls, existing near-tree A/B and new `building_satellite_ui.status=PASS`. Runtime shows 120 resolved + 15 fallback buildings, 25+9 wall palette keys and 19+8 roof palette keys counted *across these distinct mesh groups*, and 16 visual gables (10 DOM-oriented candidate + 6 source-unverified presentation gables). Verified satellite RGB SHA `0bbe8079f2fb2eedffaec3612f7cdb9724b12b061613b74751db388af1f2e55a`, 10 m source pixels, default mode `satellite`, PBR switch PASS, restore PASS, unchanged source terrain/building SHA. [Screenshot/evidence artifact](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977840/artifacts/14695818501).
+
+Other same-SHA gates: [world-viewer-vite](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977770) **PASS**, [baseline](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977798) **PASS**, [viewer-benchmark](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977772) **PASS**. [Vercel Preview](https://norge-world-engine-viewer-1r8az4h6q-b4kkes-projects.vercel.app/) `dpl_9vs6BZccD4eH2cRpPVoLSQEaYGUp` **READY**; access protected and PR #85 remains draft.
+
+**Limits:** 34/27 are *sums of per-group palette-key counts*, not globally unique surveyed materials; the local CC0 material sources are unchanged, color modulation is visual. 10 m imagery is satellite RGB, **not** 10 cm orthophoto. The 6 extra gables, window/door appearance and exact facade/tile colors are purely renderer presentation. No physical GPU/FPS performance improvement or complete photorealism claimed. P0 LiDAR exact-byte admission remains open. Full proof: `docs/proofs/2026-11-21-nannestad-buildings-and-satellite-ground.md`.
+
+**Next acceptance:** measure moving-camera real-hardware GPU frame/texture budgets before raising PBR variety; pursue separately rights-checked higher-resolution ortho only if licensed, available, correctly aligned and tile-streamable.
+
 ## WEB-REALISM-01 — Verified realism runtime composition
 **Priority:** COMPLETED / IN PR #85  
 **Owner:** LUMEN + FORGE  

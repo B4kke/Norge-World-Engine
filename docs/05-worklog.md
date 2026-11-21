@@ -873,3 +873,27 @@ Every completed work session appends exactly one entry using this structure:
 
 **Next**
 - `P0-HYPERREAL-LIDAR-01`: obtain an unambiguous official `ProjectProduct` interpretation for point-cloud export, then perform one operator-authorized exact-tile export of the already selected open `NDH Akershus 5pkt 2015` source and run the new candidate inspection on genuine delivered bytes.
+
+## 2026-11-21 07:35 CET — LUMEN / SENTINEL — WEB-BUILDING-SATELLITE-PBR-VARIATION-01
+
+**What**
+- Continued existing draft PR #85 on its LUMEN Nannestad 1×1 WebUI branch. Implemented source-ID-keyed, type-aware Norwegian wall/roof color variance on batched PBR building meshes, safe rectangular presentation gables, and instance-colored door/window frames without adding per-house draw calls.
+- Made the already verified/redistibution-admitted Sentinel-2 10m RGB macro ground color the **explicit visible default** with an accessible PBR comparison toggle. Kept existing local pinned CC0 PBR maps (diffuse, normal, roughness) and unchanged authoritative terrain/building artifacts.
+- Added new negative/structural/material tests and real Chrome UI proof of satellite toggle, SHA source invariants and type-wise building style distribution. Corrected the old gable-count test to separately assert DOM-derived orientation and pure render-only fallback.
+
+**Why**
+- Explicit request to improve building variety and building material appearance while using satellite-derived ground texture when legal, not to fabricate roof truth or contact raw providers in the browser.
+
+**Result / evidence**
+- FACT: immutable code-bearing SHA `6e126ca95500881f8541430baadcfd8690dabd13`, [GitHub Actions exact-real-data Chrome run 44875977840](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977840) **PASS**, `building_satellite_ui.status=PASS`; 135 actual compiled footprint buildings, wall palette keys 25+9, roof palette keys 19+8 across resolved/fallback, 16 gables (10 DOM-oriented, 6 visual-only); Sentinel RGB 10m verified SHA `0bbe8079f2fb2eedffaec3612f7cdb9724b12b061613b74751db388af1f2e55a`, satellite default/PBR toggle/satellite restore PASS and source SHA identity maintained. Same run verifies daylight, UI clock and tree A/B. Screenshot evidence in artifact `14695818501`.
+- FACT: [world-viewer-vite run 44875977770](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977770) **PASS**, [baseline 44875977798](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977798) **PASS**, [viewer-benchmark 44875977772](https://github.com/B4kke/Norge-World-Engine/actions/runs/44875977772) **PASS**.
+- FACT: exact code SHA Vercel Preview `dpl_9vs6BZccD4eH2cRpPVoLSQEaYGUp` [READY](https://norge-world-engine-viewer-1r8az4h6q-b4kkes-projects.vercel.app/); preview remains under Vercel access protection, no production promotion.
+- LIMITATION: image color and all new non-DOM gables are renderer-only and not surveyed; Sentinel-2 10m is source-color macro texture, not high-res aerial photography; one pinned wall and roof material asset each remains the source PBR library. GPU/FPS improvements on physical hardware and photorealism are **not** claimed. P0 genuine LiDAR bytes and provider `ProjectProduct` decision still open.
+- Proof: `docs/proofs/2026-11-21-nannestad-buildings-and-satellite-ground.md`.
+
+**Changed**
+- New `apps/world-viewer/src/buildingPresentationPalette.mjs`; updated building geometry, facade, grounded Three renderer, CC0 material library, diagnostic surface hook, screenshot capture, narrow unit tests and existing gable expectation; `apps/world-viewer/README.md`.
+- New proof document, this worklog entry, active queue and roadmap note. Same draft PR #85.
+
+**Next**
+- Perform a bounded source-backed/rights-checked evaluation for higher-quality building-specific materials and ground-color resolution while measuring same-view real-hardware GPU/memory/network budgets; do not claim a photoreal production world or replace the existing provenance-safe 10m Sentinel base prematurely.

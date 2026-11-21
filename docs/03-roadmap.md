@@ -43,6 +43,20 @@ One real Nannestad tile must feel like an actual Norwegian place at human scale:
 
 `1:1` means meter-scale world coordinates and source-backed placement/geometry where admitted. It does **not** mean that every façade, tree, sign face or roof edge has surveyed centimetre-level truth.
 
+### 2026-11-21 browser presentation acceptance
+
+The current 1×1 Nannestad WebUI now has deterministic source-ID/type-aware
+illustrative roof/façade palettes on the existing licensed PBR batch, bounded
+presentation gables on eligible footprints, and varied instanced opening
+frames/doors. Existing verified Sentinel-2 **10 m geographic RGB** is
+visibly selected by default; the viewer can switch in place to the pinned
+local CC0 PBR diffuse while normal/roughness stay available. Source geometry,
+real terrain and artifact identities remain unchanged. The exact
+Chrome/composition screenshot and UI-toggle source-hash contract are PASS,
+alongside Vercel Preview. This is presentation improvement, not new surveyed
+facade/roof geometry or high-resolution orthophotography. See
+`docs/proofs/2026-11-21-nannestad-buildings-and-satellite-ground.md`.
+
 ## P1 — Near-field fidelity
 
 - legal/source-backed façade, roof-shape and building-use enrichment where available;
